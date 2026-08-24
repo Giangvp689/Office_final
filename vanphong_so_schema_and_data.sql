@@ -48,31 +48,33 @@ INSERT INTO `positions` (`id`, `name`, `level`) VALUES
 DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
   `id` varchar(50) NOT NULL,
+  `username` varchar(100) DEFAULT NULL,
+  `password` varchar(255) DEFAULT '123',
   `full_name` varchar(255) NOT NULL,
   `email` varchar(255) NOT NULL,
   `phone` varchar(50) DEFAULT NULL,
-  `avatar` text,
+  `avatar` longtext,
   `department` varchar(255) DEFAULT NULL,
   `department_id` varchar(50) DEFAULT NULL,
   `position` varchar(255) DEFAULT NULL,
   `position_id` varchar(50) DEFAULT NULL,
-  `role` enum('LEADER','CLERK','STAFF','ADMIN') NOT NULL DEFAULT 'STAFF',
-  `status` enum('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
+  `role` varchar(50) NOT NULL DEFAULT 'STAFF',
+  `status` varchar(50) NOT NULL DEFAULT 'ACTIVE',
   `join_date` date DEFAULT NULL,
   `bio` text,
   PRIMARY KEY (`id`),
   UNIQUE KEY `email_unique` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `users` (`id`, `full_name`, `email`, `phone`, `avatar`, `department`, `department_id`, `position`, `position_id`, `role`, `status`, `join_date`, `bio`) VALUES
-('usr-01', 'Nguyễn Văn Hùng', 'hung.nv@donvi.gov.vn', '0912.345.678', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', 'Ban Giám Đốc', 'dept-01', 'Giám Đốc / Thủ Trưởng', 'pos-01', 'LEADER', 'ACTIVE', '2018-03-15', 'Thủ trưởng cơ quan, phụ trách chỉ đạo điều hành chung'),
-('usr-02', 'Trần Thị Mai Phương', 'phuong.ttm@donvi.gov.vn', '0988.765.432', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', 'Phòng Kế Hoạch - Tổng Hợp', 'dept-05', 'Trưởng Phòng', 'pos-03', 'LEADER', 'ACTIVE', '2019-06-01', 'Trưởng phòng Kế hoạch - Tổng hợp, điều phối dự án chiến lược'),
-('usr-03', 'Lê Thanh Bình', 'binh.lt@donvi.gov.vn', '0903.112.233', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', 'Văn Phòng - Hành Chính', 'dept-02', 'Văn Thư Lưu Trữ', 'pos-05', 'CLERK', 'ACTIVE', '2020-01-10', 'Văn thư cơ quan, tiếp nhận và phát hành văn bản đi/đến'),
-('usr-04', 'Phạm Minh Đức', 'duc.pm@donvi.gov.vn', '0977.889.900', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', 'Phòng Tài Chính - Kế Toán', 'dept-03', 'Trưởng Phòng', 'pos-03', 'STAFF', 'ACTIVE', '2020-08-20', 'Trưởng phòng Tài chính - Kế toán, duyệt hồ sơ thanh quyết toán'),
-('usr-05', 'Hoàng Bích Ngọc', 'ngoc.hb@donvi.gov.vn', '0934.556.778', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', 'Phòng Tổ Chức Cán Bộ', 'dept-04', 'Trưởng Phòng', 'pos-03', 'STAFF', 'ACTIVE', '2021-02-15', 'Trưởng phòng Tổ chức Cán bộ, quản lý hồ sơ nhân sự'),
-('usr-06', 'Đặng Quốc Anh', 'anh.dq@donvi.gov.vn', '0919.223.344', 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80', 'Trung Tâm CNTT & Chuyển Đổi Số', 'dept-06', 'Quản Trị Viên', 'pos-06', 'ADMIN', 'ACTIVE', '2021-09-01', 'Quản trị viên hệ thống & phụ trách Chuyển đổi số'),
-('usr-07', 'Vũ Hải Yến', 'yen.vh@donvi.gov.vn', '0945.678.901', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', 'Phòng Kế Hoạch - Tổng Hợp', 'dept-05', 'Chuyên Viên', 'pos-07', 'STAFF', 'ACTIVE', '2022-04-12', 'Chuyên viên tổng hợp báo cáo & theo dõi tiến độ'),
-('usr-08', 'Ngô Tuấn Kiệt', 'kiet.nt@donvi.gov.vn', '0962.113.355', 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80', 'Trung Tâm CNTT & Chuyển Đổi Số', 'dept-06', 'Chuyên Viên Kỹ Thuật', 'pos-07', 'STAFF', 'ACTIVE', '2023-01-05', 'Chuyên viên kỹ thuật hạ tầng & phần mềm');
+INSERT INTO `users` (`id`, `username`, `password`, `full_name`, `email`, `phone`, `avatar`, `department`, `department_id`, `position`, `position_id`, `role`, `status`, `join_date`, `bio`) VALUES
+('usr-01', 'hung.nv', '123', 'Nguyễn Văn Hùng', 'hung.nv@donvi.gov.vn', '0912.345.678', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', 'Ban Giám Đốc', 'dept-01', 'Giám Đốc / Thủ Trưởng', 'pos-01', 'LEADER', 'ACTIVE', '2018-03-15', 'Thủ trưởng cơ quan, phụ trách chỉ đạo điều hành chung'),
+('usr-02', 'phuong.ttm', '123', 'Trần Thị Mai Phương', 'phuong.ttm@donvi.gov.vn', '0988.765.432', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', 'Phòng Kế Hoạch - Tổng Hợp', 'dept-05', 'Trưởng Phòng', 'pos-03', 'LEADER', 'ACTIVE', '2019-06-01', 'Trưởng phòng Kế hoạch - Tổng hợp, điều phối dự án chiến lược'),
+('usr-03', 'binh.lt', '123', 'Lê Thanh Bình', 'binh.lt@donvi.gov.vn', '0903.112.233', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', 'Văn Phòng - Hành Chính', 'dept-02', 'Văn Thư Lưu Trữ', 'pos-05', 'CLERK', 'ACTIVE', '2020-01-10', 'Văn thư cơ quan, tiếp nhận và phát hành văn bản đi/đến'),
+('usr-04', 'duc.pm', '123', 'Phạm Minh Đức', 'duc.pm@donvi.gov.vn', '0977.889.900', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', 'Phòng Tài Chính - Kế Toán', 'dept-03', 'Trưởng Phòng', 'pos-03', 'STAFF', 'ACTIVE', '2020-08-20', 'Trưởng phòng Tài chính - Kế toán, duyệt hồ sơ thanh quyết toán'),
+('usr-05', 'ngoc.hb', '123', 'Hoàng Bích Ngọc', 'ngoc.hb@donvi.gov.vn', '0934.556.778', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', 'Phòng Tổ Chức Cán Bộ', 'dept-04', 'Trưởng Phòng', 'pos-03', 'STAFF', 'ACTIVE', '2021-02-15', 'Trưởng phòng Tổ chức Cán bộ, quản lý hồ sơ nhân sự'),
+('usr-06', 'anh.dq', '123', 'Đặng Quốc Anh', 'anh.dq@donvi.gov.vn', '0919.223.344', 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80', 'Trung Tâm CNTT & Chuyển Đổi Số', 'dept-06', 'Quản Trị Viên', 'pos-06', 'ADMIN', 'ACTIVE', '2021-09-01', 'Quản trị viên hệ thống & phụ trách Chuyển đổi số'),
+('usr-07', 'yen.vh', '123', 'Vũ Hải Yến', 'yen.vh@donvi.gov.vn', '0945.678.901', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', 'Phòng Kế Hoạch - Tổng Hợp', 'dept-05', 'Chuyên Viên', 'pos-07', 'STAFF', 'ACTIVE', '2022-04-12', 'Chuyên viên tổng hợp báo cáo & theo dõi tiến độ'),
+('usr-08', 'kiet.nt', '123', 'Ngô Tuấn Kiệt', 'kiet.nt@donvi.gov.vn', '0962.113.355', 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80', 'Trung Tâm CNTT & Chuyển Đổi Số', 'dept-06', 'Chuyên Viên Kỹ Thuật', 'pos-07', 'STAFF', 'ACTIVE', '2023-01-05', 'Chuyên viên kỹ thuật hạ tầng & phần mềm');
 
 -- 4. BẢNG HỒ SƠ VỤ VIỆC (dossiers)
 DROP TABLE IF EXISTS `dossiers`;
@@ -84,7 +86,7 @@ CREATE TABLE `dossiers` (
   `department_id` varchar(50) DEFAULT NULL,
   `leader_id` varchar(50) DEFAULT NULL,
   `manager_id` varchar(50) DEFAULT NULL,
-  `status` enum('OPEN','IN_PROGRESS','CLOSED','ARCHIVED') NOT NULL DEFAULT 'IN_PROGRESS',
+  `status` varchar(50) NOT NULL DEFAULT 'IN_PROGRESS',
   `start_date` date DEFAULT NULL,
   `end_date` date DEFAULT NULL,
   `description` text,
@@ -107,25 +109,23 @@ CREATE TABLE `incoming_documents` (
   `document_number` varchar(100) NOT NULL,
   `official_number` varchar(100) DEFAULT NULL,
   `received_date` date NOT NULL,
-  `issue_date` date NOT NULL,
+  `issue_date` date DEFAULT NULL,
   `issuing_authority` varchar(255) NOT NULL,
   `summary` text NOT NULL,
   `doc_type` varchar(100) DEFAULT 'Công văn',
-  `urgency` enum('THUONG','KHAN','THUONG_KHAN','HOA_TOC') NOT NULL DEFAULT 'THUONG',
-  `security_level` enum('THUONG','MAT','TOI_MAT','TUYET_MAT') NOT NULL DEFAULT 'THUONG',
+  `urgency` varchar(50) NOT NULL DEFAULT 'THUONG',
+  `security_level` varchar(50) NOT NULL DEFAULT 'THUONG',
   `assignee_id` varchar(50) DEFAULT NULL,
   `co_assignee_ids` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
   `due_date` date DEFAULT NULL,
-  `status` enum('PENDING_ASSIGN','PROCESSING','PROCESSED','OVERDUE','REJECTED') NOT NULL DEFAULT 'PROCESSING',
+  `status` varchar(50) NOT NULL DEFAULT 'PROCESSING',
   `result_summary` text,
   `dossier_id` varchar(50) DEFAULT NULL,
   `linked_task_ids` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
   `created_by_id` varchar(50) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `fk_incoming_dossier` (`dossier_id`),
-  CONSTRAINT `fk_incoming_dossier` FOREIGN KEY (`dossier_id`) REFERENCES `dossiers` (`id`) ON DELETE SET NULL
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `incoming_documents` (`id`, `document_number`, `official_number`, `received_date`, `issue_date`, `issuing_authority`, `summary`, `doc_type`, `urgency`, `security_level`, `assignee_id`, `co_assignee_ids`, `due_date`, `status`, `result_summary`, `dossier_id`, `linked_task_ids`, `created_by_id`, `created_at`, `updated_at`) VALUES
@@ -144,24 +144,23 @@ CREATE TABLE `outgoing_documents` (
   `doc_type` varchar(100) DEFAULT 'Công văn',
   `recipient` varchar(255) NOT NULL,
   `summary` text NOT NULL,
-  `drafter_id` varchar(50) NOT NULL,
-  `signer_id` varchar(50) NOT NULL,
-  `status` enum('DRAFT','PENDING_APPROVAL','APPROVED','SIGNED','ISSUED','SENT','CANCELLED') NOT NULL DEFAULT 'DRAFT',
+  `content` longtext DEFAULT NULL,
+  `drafter_id` varchar(50) DEFAULT NULL,
+  `signer_id` varchar(50) DEFAULT NULL,
+  `status` varchar(50) NOT NULL DEFAULT 'DRAFT',
   `dossier_id` varchar(50) DEFAULT NULL,
   `reply_to_doc_id` varchar(50) DEFAULT NULL,
   `created_by_id` varchar(50) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `fk_outgoing_dossier` (`dossier_id`),
-  CONSTRAINT `fk_outgoing_dossier` FOREIGN KEY (`dossier_id`) REFERENCES `dossiers` (`id`) ON DELETE SET NULL
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `outgoing_documents` (`id`, `document_number`, `release_date`, `doc_type`, `recipient`, `summary`, `drafter_id`, `signer_id`, `status`, `dossier_id`, `reply_to_doc_id`, `created_by_id`, `created_at`, `updated_at`) VALUES
-('vbdi-01', '89/TTr-DV', '2025-08-21', 'Tờ trình', 'Ủy Ban Nhân Dân Tỉnh / Sở Tài Chính', 'Tờ trình xin phê duyệt dự toán kinh phí mua sắm thiết bị an toàn bảo mật mạng năm 2025.', 'usr-06', 'usr-01', 'SIGNED', 'dos-01', 'vbd-02', 'usr-06', '2025-08-20 16:00:00', '2025-08-21 15:30:00'),
-('vbdi-02', '92/BC-DV', '2025-08-22', 'Báo cáo', 'Sở Kế Hoạch và Đầu Tư', 'Báo cáo tình hình thực hiện kế hoạch phát triển kinh tế - xã hội và đầu tư công tháng 8/2025.', 'usr-07', 'usr-02', 'ISSUED', 'dos-01', 'vbd-01', 'usr-07', '2025-08-21 10:00:00', '2025-08-22 14:20:00'),
-('vbdi-03', '95/TB-DV', '2025-08-23', 'Thông báo', 'Các Phòng, Ban và Toàn thể Cán bộ nhân viên', 'Thông báo lịch nghỉ Lễ Quốc khánh 2/9 và phân công trực cơ quan, đảm bảo an toàn an ninh.', 'usr-03', 'usr-01', 'SENT', 'dos-04', NULL, 'usr-03', '2025-08-23 08:30:00', '2025-08-23 11:00:00'),
-('vbdi-04', 'DTh-98/CV-DV', '2025-08-24', 'Công văn', 'Sở Tài Chính', 'Công văn giải trình số liệu quyết toán chi thường xuyên và phân bổ ngân sách quý III.', 'usr-04', 'usr-01', 'DRAFT', 'dos-03', 'vbd-04', 'usr-04', '2025-08-23 14:00:00', '2025-08-23 14:00:00');
+INSERT INTO `outgoing_documents` (`id`, `document_number`, `release_date`, `doc_type`, `recipient`, `summary`, `content`, `drafter_id`, `signer_id`, `status`, `dossier_id`, `reply_to_doc_id`, `created_by_id`, `created_at`, `updated_at`) VALUES
+('vbdi-01', '89/TTr-DV', '2025-08-21', 'Tờ trình', 'Ủy Ban Nhân Dân Tỉnh / Sở Tài Chính', 'Tờ trình xin phê duyệt dự toán kinh phí mua sắm thiết bị an toàn bảo mật mạng năm 2025.', 'Kính gửi: UBND Tỉnh và Sở Tài Chính\nĐơn vị xin kính trình phương án dự toán kinh phí triển khai an toàn thông tin.', 'usr-06', 'usr-01', 'SIGNED', 'dos-01', 'vbd-02', 'usr-06', '2025-08-20 16:00:00', '2025-08-21 15:30:00'),
+('vbdi-02', '92/BC-DV', '2025-08-22', 'Báo cáo', 'Sở Kế Hoạch và Đầu Tư', 'Báo cáo tình hình thực hiện kế hoạch phát triển kinh tế - xã hội và đầu tư công tháng 8/2025.', 'Báo cáo định kỳ tình hình triển khai công tác tháng 8/2025.', 'usr-07', 'usr-02', 'ISSUED', 'dos-01', 'vbd-01', 'usr-07', '2025-08-21 10:00:00', '2025-08-22 14:20:00'),
+('vbdi-03', '95/TB-DV', '2025-08-23', 'Thông báo', 'Các Phòng, Ban và Toàn thể Cán bộ nhân viên', 'Thông báo lịch nghỉ Lễ Quốc khánh 2/9 và phân công trực cơ quan, đảm bảo an toàn an ninh.', 'Thông báo đến toàn thể cán bộ công chức về lịch phân công trực Lễ Quốc khánh 2/9.', 'usr-03', 'usr-01', 'SENT', 'dos-04', NULL, 'usr-03', '2025-08-23 08:30:00', '2025-08-23 11:00:00'),
+('vbdi-04', 'DTh-98/CV-DV', '2025-08-24', 'Công văn', 'Sở Tài Chính', 'Công văn giải trình số liệu quyết toán chi thường xuyên và phân bổ ngân sách quý III.', 'Văn bản dự thảo giải trình chi tiết số liệu phân bổ nguồn ngân sách.', 'usr-04', 'usr-01', 'DRAFT', 'dos-03', 'vbd-04', 'usr-04', '2025-08-23 14:00:00', '2025-08-23 14:00:00');
 
 -- 7. BẢNG CÔNG VIỆC / NHIỆM VỤ (tasks)
 DROP TABLE IF EXISTS `tasks`;
@@ -173,16 +172,16 @@ CREATE TABLE `tasks` (
   `dossier_id` varchar(50) DEFAULT NULL,
   `incoming_doc_id` varchar(50) DEFAULT NULL,
   `linked_doc_id` varchar(50) DEFAULT NULL,
-  `doc_type_relation` enum('INCOMING','OUTGOING') DEFAULT NULL,
+  `doc_type_relation` varchar(50) DEFAULT NULL,
   `creator_id` varchar(50) DEFAULT NULL,
   `created_by_id` varchar(50) DEFAULT NULL,
   `assignee_id` varchar(50) NOT NULL,
   `co_assignee_ids` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
-  `priority` enum('LOW','MEDIUM','HIGH','URGENT') NOT NULL DEFAULT 'MEDIUM',
+  `priority` varchar(50) NOT NULL DEFAULT 'MEDIUM',
   `start_date` date NOT NULL,
   `due_date` date NOT NULL,
   `progress` int(11) NOT NULL DEFAULT 0,
-  `status` enum('TODO','IN_PROGRESS','WAITING_APPROVAL','COMPLETED','OVERDUE','CANCELLED') NOT NULL DEFAULT 'IN_PROGRESS',
+  `status` varchar(50) NOT NULL DEFAULT 'IN_PROGRESS',
   `completed_date` date DEFAULT NULL,
   `result_notes` text,
   `sub_tasks` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
@@ -190,9 +189,7 @@ CREATE TABLE `tasks` (
   `remind_days_before` int(11) DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `fk_task_dossier` (`dossier_id`),
-  CONSTRAINT `fk_task_dossier` FOREIGN KEY (`dossier_id`) REFERENCES `dossiers` (`id`) ON DELETE SET NULL
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `tasks` (`id`, `code`, `title`, `description`, `dossier_id`, `incoming_doc_id`, `linked_doc_id`, `doc_type_relation`, `creator_id`, `created_by_id`, `assignee_id`, `co_assignee_ids`, `priority`, `start_date`, `due_date`, `progress`, `status`, `completed_date`, `result_notes`, `sub_tasks`, `comments`, `remind_days_before`, `created_at`, `updated_at`) VALUES
@@ -211,8 +208,8 @@ CREATE TABLE `attachments` (
   `file_name` varchar(255) NOT NULL,
   `file_size` bigint(20) NOT NULL,
   `file_type` varchar(50) NOT NULL,
-  `file_url` text NOT NULL,
-  `category` enum('VAN_BAN_DEN','VAN_BAN_DI','CONG_VIEC','HO_SO','KHAC') NOT NULL,
+  `file_url` longtext NOT NULL,
+  `category` varchar(50) NOT NULL,
   `related_id` varchar(50) DEFAULT NULL,
   `dossier_code` varchar(100) DEFAULT NULL,
   `dossier_id` varchar(50) DEFAULT NULL,
@@ -236,9 +233,9 @@ CREATE TABLE `audit_logs` (
   `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `user_id` varchar(50) NOT NULL,
   `user_name` varchar(255) NOT NULL,
-  `user_avatar` text,
-  `action` enum('CREATE','UPDATE','DELETE','STATUS_CHANGE','ASSIGN','UPLOAD_FILE','DOWNLOAD_FILE','EXPORT','LOGIN') NOT NULL,
-  `entity_type` enum('INCOMING_DOC','OUTGOING_DOC','TASK','DOSSIER','USER','FILE','MASTER_DATA') NOT NULL,
+  `user_avatar` longtext,
+  `action` varchar(50) NOT NULL,
+  `entity_type` varchar(50) NOT NULL,
   `entity_id` varchar(50) NOT NULL,
   `entity_title` varchar(500) NOT NULL,
   `details` text,
@@ -259,8 +256,8 @@ CREATE TABLE `notifications` (
   `user_id` varchar(50) NOT NULL,
   `title` varchar(255) NOT NULL,
   `message` text NOT NULL,
-  `type` enum('DEADLINE_TODAY','OVERDUE','DOC_ASSIGNED','TASK_ASSIGNED','STATUS_UPDATE','GENERAL') NOT NULL,
-  `link_type` enum('INCOMING_DOC','OUTGOING_DOC','TASK','DOSSIER') DEFAULT NULL,
+  `type` varchar(50) NOT NULL,
+  `link_type` varchar(50) DEFAULT NULL,
   `target_id` varchar(50) DEFAULT NULL,
   `is_read` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -271,3 +268,4 @@ INSERT INTO `notifications` (`id`, `user_id`, `title`, `message`, `type`, `link_
 ('notif-01', 'usr-08', 'Nhiệm vụ sắp đến hạn xử lý', 'Công việc \"Rà soát lỗ hổng bảo mật & Sao lưu dự phòng máy chủ\" có hạn chót vào ngày 24/08/2025.', 'DEADLINE_TODAY', 'TASK', 'task-03', 0, '2025-08-23 07:30:00'),
 ('notif-02', 'usr-04', 'Công văn khẩn yêu cầu báo cáo', 'Bạn được giao xử lý Công văn 890/CV-STC về tiến độ giải ngân ngân sách, hạn xử lý ngày 25/08.', 'DOC_ASSIGNED', 'INCOMING_DOC', 'vbd-04', 0, '2025-08-22 08:00:00'),
 ('notif-03', 'usr-07', 'Cảnh báo: Công việc đã quá hạn', 'Công việc \"Soát xét Hợp đồng Bảo trì Phần mềm\" đã quá hạn từ ngày 20/08/2025. Vui lòng cập nhật tiến độ.', 'OVERDUE', 'TASK', 'task-07', 1, '2025-08-21 09:00:00');
+

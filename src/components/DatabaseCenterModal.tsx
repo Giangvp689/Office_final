@@ -12,6 +12,9 @@ import {
   Server,
   RefreshCw,
   Zap,
+  Settings,
+  ShieldCheck,
+  HardDrive,
 } from 'lucide-react';
 import { db } from '../services/db';
 
@@ -28,9 +31,18 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
 }) => {
   const [jsonText, setJsonText] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
-  const [dbStatus, setDbStatus] = useState<{ connected: boolean; tablesCount?: number; error?: string } | null>(null);
+  const [dbStatus, setDbStatus] = useState<{ connected: boolean; tablesCount?: number; error?: string; config?: any } | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [initResult, setInitResult] = useState<string | null>(null);
+
+  // Editable config state
+  const [showConfig, setShowConfig] = useState(false);
+  const [host, setHost] = useState('localhost');
+  const [port, setPort] = useState('3306');
+  const [user, setUser] = useState('root');
+  const [password, setPassword] = useState('');
+  const [database, setDatabase] = useState('vanphong_so');
+  const [configSaveMsg, setConfigSaveMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -44,9 +56,37 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
       if (res.ok) {
         const data = await res.json();
         setDbStatus(data);
+        if (data.config) {
+          setHost(data.config.host || 'localhost');
+          setPort(String(data.config.port || 3306));
+          setUser(data.config.user || 'root');
+          setPassword(data.config.password || '');
+          setDatabase(data.config.database || 'vanphong_so');
+        }
       }
     } catch {
-      setDbStatus({ connected: false, error: 'Không thể kết nối máy chủ backend' });
+      setDbStatus({ connected: false, error: 'Không thể kết nối máy chủ backend Node.js' });
+    }
+  };
+
+  const handleSaveConfigAndTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setConfigSaveMsg('Đang kiểm tra kết nối...');
+    try {
+      const res = await fetch('/api/db-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host, port: Number(port) || 3306, user, password, database }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConfigSaveMsg('Đã kết nối thành công tới MySQL!');
+        setDbStatus(data.status);
+      } else {
+        setConfigSaveMsg(`Lỗi kết nối: ${data.status?.error || data.error || 'Kiểm tra lại XAMPP/MySQL'}`);
+      }
+    } catch (err: any) {
+      setConfigSaveMsg(`Lỗi kết nối: ${err.message}`);
     }
   };
 
@@ -57,7 +97,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
       const res = await fetch('/api/init-db', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        setInitResult('Khởi tạo cấu trúc bảng và nạp 100% dữ liệu vào MySQL thành công!');
+        setInitResult('Khởi tạo database `vanphong_so`, các bảng và nạp 100% dữ liệu mẫu vào MySQL thành công!');
         await db.checkAndSyncMySql();
         onDataResetOrRestored();
         checkStatus();
@@ -111,13 +151,13 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
       } else {
         setImportStatus('Lỗi cấu trúc dữ liệu không hợp lệ.');
       }
-    } catch (e) {
+    } catch {
       setImportStatus('Định dạng JSON bị lỗi cú pháp.');
     }
   };
 
   const handleResetMock = () => {
-    if (confirm('Bạn có chắc chắn muốn đặt lại toàn bộ dữ liệu mẫu ban đầu? Các thay đổi sẽ bị làm mới.')) {
+    if (confirm('Bạn có chắc chắn muốn đặt lại toàn bộ dữ liệu mẫu ban đầu? Các thay đổi sẽ được làm mới.')) {
       db.resetToMockData();
       onDataResetOrRestored();
       onClose();
@@ -126,7 +166,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -134,8 +174,8 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
               <Database className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="font-bold text-slate-800 text-sm">Quản Trị Cơ Sở Dữ Liệu MySQL (XAMPP)</h2>
-              <p className="text-[11px] text-slate-400">Đồng bộ tự động CRUD vào MySQL, xuất file SQL và sao lưu</p>
+              <h2 className="font-bold text-slate-800 text-sm">Quản Trị Cơ Sở Dữ Liệu MySQL</h2>
+              <p className="text-[11px] text-slate-400">Đồng bộ tự động CRUD vào MySQL, hỗ trợ ảnh Base64 và sao lưu toàn diện</p>
             </div>
           </div>
 
@@ -145,9 +185,9 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-5 text-xs">
+        <div className="p-6 overflow-y-auto space-y-5 text-xs custom-scrollbar">
           {/* Live MySQL Status & Auto Init */}
-          <div className="bg-slate-900 text-white p-4 rounded-xl space-y-3 shadow-md">
+          <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-3.5 shadow-md">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Server className="w-4 h-4 text-emerald-400" />
@@ -162,7 +202,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[11px] border border-amber-500/30">
                     <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                    Sẵn sàng kết nối MySQL (Port 3306)
+                    Chờ kết nối ({host}:{port})
                   </span>
                 )}
                 <button
@@ -176,27 +216,101 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-300 leading-relaxed">
-              Tất cả các thao tác <strong>Thêm mới, Chỉnh sửa, Xóa văn bản / công việc</strong> trên giao diện từ bây giờ sẽ được gửi qua REST API Backend và lưu trực tiếp vào cơ sở dữ liệu MySQL <code className="text-emerald-300 font-mono">vanphong_so</code>.
+              Toàn bộ thao tác <strong>Thêm mới nhân sự (kèm Avatar), Văn bản đến/đi, Hồ sơ vụ việc, Công việc</strong> được lưu trữ trực tiếp vào CSDL MySQL <code className="text-emerald-300 font-mono font-bold">{database}</code>.
             </p>
 
-            <div className="pt-2 border-t border-slate-800 flex items-center justify-between flex-wrap gap-2">
-              <div className="text-[10px] text-slate-400 font-mono">
-                Host: <strong>localhost:3306</strong> | User: <strong>root</strong> | DB: <strong>vanphong_so</strong>
-              </div>
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowConfig(!showConfig)}
+                className="text-[11px] text-indigo-300 hover:text-indigo-200 font-medium flex items-center gap-1 cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>{showConfig ? 'Ẩn cấu hình MySQL' : 'Chỉnh sửa cấu hình kết nối'}</span>
+              </button>
+
               <button
                 onClick={handleInitDb}
                 disabled={isInitializing}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
               >
                 <Zap className="w-3.5 h-3.5" />
                 <span>{isInitializing ? 'Đang khởi tạo...' : '1-Click Tạo Bảng & Nạp Dữ Liệu MySQL'}</span>
               </button>
             </div>
 
+            {/* Editable Config Form */}
+            {showConfig && (
+              <form onSubmit={handleSaveConfigAndTest} className="mt-3 p-3 bg-slate-800/80 rounded-xl space-y-3 border border-slate-700">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                  <div>
+                    <label className="text-slate-400 block mb-0.5">Host</label>
+                    <input
+                      type="text"
+                      value={host}
+                      onChange={(e) => setHost(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-0.5">Port</label>
+                    <input
+                      type="number"
+                      value={port}
+                      onChange={(e) => setPort(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-0.5">Database</label>
+                    <input
+                      type="text"
+                      value={database}
+                      onChange={(e) => setDatabase(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-0.5">User</label>
+                    <input
+                      type="text"
+                      value={user}
+                      onChange={(e) => setUser(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-0.5">Password</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="(Trống nếu là root mặc định)"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white font-mono"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="submit"
+                      className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold p-1.5 rounded-lg text-xs cursor-pointer"
+                    >
+                      Lưu & Kiểm tra
+                    </button>
+                  </div>
+                </div>
+
+                {configSaveMsg && (
+                  <p className={`text-[11px] font-semibold ${configSaveMsg.includes('thành công') ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {configSaveMsg}
+                  </p>
+                )}
+              </form>
+            )}
+
             {initResult && (
               <p
-                className={`text-[11px] font-bold p-2 rounded-lg ${
-                  initResult.includes('thành công') ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'
+                className={`text-[11px] font-bold p-2.5 rounded-xl ${
+                  initResult.includes('thành công') ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
                 }`}
               >
                 {initResult}
@@ -205,27 +319,27 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
           </div>
 
           {/* MySQL Box */}
-          <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200/80 space-y-3">
+          <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileCode className="w-4 h-4 text-amber-700" />
-                <h4 className="font-bold text-amber-900 text-xs">Tải File SQL Dump Hoàn Chỉnh (Cho phpMyAdmin)</h4>
+                <h4 className="font-bold text-amber-900 text-xs">Tải File SQL Dump Hoàn Chỉnh (Cho phpMyAdmin / MySQL Workbench)</h4>
               </div>
               <button
                 onClick={handleExportSQL}
-                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Tải File .SQL</span>
               </button>
             </div>
             <p className="text-[11px] text-amber-800 leading-relaxed">
-              Tải file SQL chứa toàn bộ câu lệnh <code className="font-mono bg-amber-100/80 px-1 py-0.5 rounded font-bold">CREATE TABLE</code> và <code className="font-mono bg-amber-100/80 px-1 py-0.5 rounded font-bold">INSERT</code> dữ liệu để import thủ công qua <strong>phpMyAdmin</strong> nếu muốn.
+              Tải file SQL chứa toàn bộ câu lệnh <code className="font-mono bg-amber-100/80 px-1 py-0.5 rounded font-bold">CREATE TABLE</code> và <code className="font-mono bg-amber-100/80 px-1 py-0.5 rounded font-bold">INSERT</code> dữ liệu (có hỗ trợ cột avatar <code className="font-mono font-bold">LONGTEXT</code>) để import thủ công qua <strong>phpMyAdmin</strong> nếu muốn.
             </p>
           </div>
 
           {/* Export Box */}
-          <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex items-center justify-between">
+          <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 flex items-center justify-between">
             <div>
               <h4 className="font-bold text-indigo-900 text-xs">Sao Lưu Toàn Bộ Dữ Liệu (JSON)</h4>
               <p className="text-[11px] text-indigo-700 mt-0.5">
@@ -234,7 +348,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
             </div>
             <button
               onClick={handleExportJSON}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Tải JSON</span>
@@ -263,7 +377,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
             <button
               onClick={handleImport}
               disabled={!jsonText.trim()}
-              className="w-full bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              className="w-full bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Khôi Phục Dữ Liệu</span>
@@ -278,7 +392,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
             </div>
             <button
               onClick={handleResetMock}
-              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset Dữ Liệu</span>
@@ -290,7 +404,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
         <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+            className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
           >
             Đóng
           </button>
@@ -299,4 +413,3 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
     </div>
   );
 };
-

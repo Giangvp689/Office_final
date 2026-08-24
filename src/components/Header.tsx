@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, Check, Clock, AlertTriangle, ChevronDown, LogOut, KeyRound, Sparkles } from 'lucide-react';
+import { Search, Bell, Check, Clock, AlertTriangle, ChevronDown, LogOut, KeyRound, Sparkles, RefreshCw, Database } from 'lucide-react';
 import { User, SystemNotification } from '../types';
+import { db } from '../services/db';
 
 interface HeaderProps {
   currentUser: User;
@@ -31,10 +32,26 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncToast, setSyncToast] = useState<string | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
   const unreadNotifs = notifications.filter((n) => !n.isRead);
+
+  const handleSyncDb = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await db.reloadFromDatabase();
+      setSyncToast(res.message || 'Đã làm mới dữ liệu từ CSDL thành công!');
+      setTimeout(() => setSyncToast(null), 3000);
+    } catch (e: any) {
+      setSyncToast('Lỗi nạp dữ liệu: ' + (e.message || e));
+      setTimeout(() => setSyncToast(null), 3000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -82,6 +99,30 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right controls */}
       <div className="flex items-center gap-3">
+        {/* DB Sync indicator & button */}
+        <div className="relative flex items-center">
+          <button
+            onClick={handleSyncDb}
+            disabled={isSyncing}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+              isSyncing
+                ? 'bg-amber-50 border-amber-300 text-amber-700'
+                : 'bg-emerald-50/80 hover:bg-emerald-100/80 border-emerald-200 text-emerald-800'
+            }`}
+            title="Nhấn để tải lại toàn bộ dữ liệu mới nhất từ CSDL"
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-600" />
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-700'}`} />
+            <span className="hidden lg:inline">{isSyncing ? 'Đang nạp CSDL...' : 'Lấy dữ liệu từ CSDL'}</span>
+          </button>
+
+          {syncToast && (
+            <div className="absolute top-10 right-0 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap z-50 animate-in fade-in slide-in-from-top-2">
+              {syncToast}
+            </div>
+          )}
+        </div>
+
         {/* Date indicator */}
         <div className="hidden sm:flex items-center gap-2 bg-indigo-50/80 text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-indigo-100">
           <Clock className="w-3.5 h-3.5" />

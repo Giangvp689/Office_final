@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   IncomingDocument,
   User,
@@ -28,8 +28,18 @@ import {
   ChevronRight,
   FolderKanban,
   CheckSquare,
+  Upload,
+  Eye,
+  Download,
+  FileCode,
+  FileSpreadsheet,
+  File,
+  Image as ImageIcon,
+  FileCheck,
+  Scan,
 } from 'lucide-react';
 import { summarizeDocumentWithAI } from '../services/aiService';
+import { FilePreviewModal } from '../components/FilePreviewModal';
 
 interface IncomingDocsViewProps {
   docs: IncomingDocument[];
@@ -61,6 +71,16 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<Partial<IncomingDocument> | null>(null);
 
+  // File attachments state inside form
+  const [formAttachments, setFormAttachments] = useState<AttachmentFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const quickFileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // File Preview Modal State
+  const [previewFile, setPreviewFile] = useState<AttachmentFile | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
   // AI Summarizer State inside modal
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -73,7 +93,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const filteredDocs = docs.filter((doc) => {
     const matchSearch =
       doc.documentNumber.toLowerCase().includes(search.toLowerCase()) ||
-      doc.officialNumber.toLowerCase().includes(search.toLowerCase()) ||
+      (doc.officialNumber && doc.officialNumber.toLowerCase().includes(search.toLowerCase())) ||
       doc.summary.toLowerCase().includes(search.toLowerCase()) ||
       doc.issuingAuthority.toLowerCase().includes(search.toLowerCase());
 
@@ -85,8 +105,9 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   });
 
   const handleOpenAddModal = () => {
+    const newDocId = 'vbd-' + Date.now();
     setEditingDoc({
-      id: 'vbd-' + Date.now(),
+      id: newDocId,
       documentNumber: `${docs.length + 145}/VP-DV`,
       officialNumber: '',
       receivedDate: new Date().toISOString().split('T')[0],
@@ -106,6 +127,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       linkedTaskIds: [],
       createdById: currentUser.id,
     });
+    setFormAttachments([]);
     setRawTextToAnalyze('');
     setAiError(null);
     setShowAiInput(false);
@@ -114,21 +136,116 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
   const handleOpenEditModal = (doc: IncomingDocument) => {
     setEditingDoc({ ...doc });
+    setFormAttachments([...(doc.attachments || [])]);
     setRawTextToAnalyze('');
     setAiError(null);
     setShowAiInput(false);
     setIsModalOpen(true);
   };
 
+  // Process files from file input or drag-and-drop
+  const processUploadedFiles = (files: FileList | null, isQuickUpload = false) => {
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      const extension = file.name.split('.').pop()?.toLowerCase() || 'file';
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        const fileUrl = (e.target?.result as string) || '';
+        const newAttachment: AttachmentFile = {
+          id: 'att-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: extension,
+          fileUrl,
+          category: 'VAN_BAN_DEN',
+          relatedId: editingDoc?.id || selectedDoc?.id || '',
+          dossierId: editingDoc?.dossierId || selectedDoc?.dossierId || undefined,
+          uploadedById: currentUser.id,
+          uploadedByName: currentUser.fullName,
+          uploadedAt: new Date().toISOString(),
+          tags: ['Văn bản đến', extension.toUpperCase()],
+        };
+
+        if (isQuickUpload && selectedDoc) {
+          // Immediately attach to selectedDoc and save to MySQL
+          const updatedAttachments = [...(selectedDoc.attachments || []), newAttachment];
+          const updatedDoc = { ...selectedDoc, attachments: updatedAttachments };
+          setSelectedDoc(updatedDoc);
+          onSaveDoc(updatedDoc);
+        } else {
+          // Add to form state
+          setFormAttachments((prev) => [...prev, newAttachment]);
+        }
+      };
+
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processUploadedFiles(e.target.files, false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleQuickFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processUploadedFiles(e.target.files, true);
+    if (quickFileInputRef.current) quickFileInputRef.current.value = '';
+  };
+
+  const handleDropFiles = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) {
+      processUploadedFiles(e.dataTransfer.files, false);
+    }
+  };
+
+  const handleRemoveFormAttachment = (id?: string) => {
+    setFormAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const handleRemoveDetailAttachment = (id?: string) => {
+    if (!selectedDoc) return;
+    if (confirm('Bạn có chắc muốn xóa tệp đính kèm này khỏi văn bản?')) {
+      const updatedAttachments = (selectedDoc.attachments || []).filter((a) => a.id !== id);
+      const updatedDoc = { ...selectedDoc, attachments: updatedAttachments };
+      setSelectedDoc(updatedDoc);
+      onSaveDoc(updatedDoc);
+    }
+  };
+
+  const handleOpenPreview = (file: AttachmentFile) => {
+    setPreviewFile(file);
+    setIsPreviewOpen(true);
+  };
+
+  const handleDownloadFile = (file: AttachmentFile) => {
+    if (!file.fileUrl) return;
+    const a = document.createElement('a');
+    a.href = file.fileUrl;
+    a.download = file.fileName || 'van-ban';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDoc || !editingDoc.documentNumber || !editingDoc.summary) return;
 
-    onSaveDoc(editingDoc as IncomingDocument);
+    const finalDoc: IncomingDocument = {
+      ...(editingDoc as IncomingDocument),
+      attachments: formAttachments,
+    };
+
+    onSaveDoc(finalDoc);
     setIsModalOpen(false);
     setEditingDoc(null);
-    if (selectedDoc && selectedDoc.id === editingDoc.id) {
-      setSelectedDoc(editingDoc as IncomingDocument);
+    setFormAttachments([]);
+    if (selectedDoc && selectedDoc.id === finalDoc.id) {
+      setSelectedDoc(finalDoc);
     }
   };
 
@@ -167,223 +284,269 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const getUrgencyBadge = (urgency: UrgencyLevel) => {
     switch (urgency) {
       case 'HOA_TOC':
-        return <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-black text-[10px]">HỎA TỐC</span>;
-      case 'KHAN':
+        return <span className="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-200">Hỏa tốc</span>;
       case 'THUONG_KHAN':
-        return <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-bold text-[10px]">KHẨN</span>;
+        return <span className="bg-orange-100 text-orange-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-orange-200">Thượng khẩn</span>;
+      case 'KHAN':
+        return <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-200">Khẩn</span>;
       default:
-        return <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium text-[10px]">Thường</span>;
+        return <span className="bg-slate-100 text-slate-700 text-[10px] font-medium px-2 py-0.5 rounded-full">Thường</span>;
     }
   };
 
   const getStatusBadge = (status: IncomingDocStatus) => {
     switch (status) {
       case 'COMPLETED':
-        return <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold text-[10px]">ĐÃ XỬ LÝ</span>;
-      case 'PROCESSING':
-        return <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px]">ĐANG XỬ LÝ</span>;
+        return <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-emerald-200"><CheckCircle className="w-3 h-3" /> Đã xử lý</span>;
       case 'OVERDUE':
-        return <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-bold text-[10px]">QUÁ HẠN</span>;
+        return <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-rose-200"><AlertCircle className="w-3 h-3" /> Quá hạn</span>;
+      case 'PROCESSING':
+        return <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-blue-200"><Clock className="w-3 h-3" /> Đang xử lý</span>;
       default:
-        return <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-bold text-[10px]">CHƯA GIAO</span>;
+        return <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-[11px] font-medium px-2.5 py-0.5 rounded-lg">Chờ phân công</span>;
     }
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes || bytes === 0) return '0 KB';
+    const k = 1024;
+    if (bytes < k * k) return (bytes / k).toFixed(1) + ' KB';
+    return (bytes / (k * k)).toFixed(2) + ' MB';
+  };
+
+  const renderFileIcon = (fileType?: string) => {
+    const t = (fileType || '').toLowerCase();
+    if (t === 'pdf') return <FileText className="w-4 h-4 text-rose-500 shrink-0" />;
+    if (['png', 'jpg', 'jpeg', 'webp'].includes(t)) return <ImageIcon className="w-4 h-4 text-purple-500 shrink-0" />;
+    if (['doc', 'docx'].includes(t)) return <FileCode className="w-4 h-4 text-blue-500 shrink-0" />;
+    if (['xls', 'xlsx', 'csv'].includes(t)) return <FileSpreadsheet className="w-4 h-4 text-emerald-500 shrink-0" />;
+    return <File className="w-4 h-4 text-slate-400 shrink-0" />;
   };
 
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
-      {/* Header & Actions */}
+      {/* File Preview Modal */}
+      <FilePreviewModal
+        file={previewFile}
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+      />
+
+      {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Quản Lý Văn Bản Đến</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">Sổ Quản Lý Văn Bản Đến</h1>
+            <span className="bg-indigo-100 text-indigo-700 font-bold text-xs px-2.5 py-0.5 rounded-full border border-indigo-200">
+              {docs.length} văn bản
+            </span>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Tiếp nhận, phân công xử lý, gắn mã hồ sơ vụ việc và theo dõi kết quả
+            Tiếp nhận văn bản từ người dân, cơ quan ban ngành; quét (scan) tệp PDF/ảnh đính kèm và lưu trữ trực tiếp vào MySQL
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
-          <button
-            id="add-incoming-doc-btn"
-            onClick={handleOpenAddModal}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tiếp nhận văn bản mới</span>
-          </button>
-        </div>
+
+        <button
+          onClick={handleOpenAddModal}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer self-start sm:self-auto"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Tiếp Nhận Văn Bản Đến Mới</span>
+        </button>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[220px] relative">
+      {/* Search and Filters Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[240px] relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm theo số đến, số ký hiệu, trích yếu, đơn vị gửi..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            placeholder="Tìm theo số đến, số ký hiệu, cơ quan ban hành, trích yếu..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
 
-        {/* Filter Urgency */}
-        <select
-          value={filterUrgency}
-          onChange={(e) => setFilterUrgency(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-        >
-          <option value="ALL">Tất cả độ khẩn</option>
-          <option value="HOA_TOC">Hỏa tốc</option>
-          <option value="KHAN">Khẩn / Thượng khẩn</option>
-          <option value="THUONG">Thường</option>
-        </select>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={filterUrgency}
+            onChange={(e) => setFilterUrgency(e.target.value)}
+            className="bg-slate-50 border border-slate-200 text-xs text-slate-700 font-medium rounded-xl px-3 py-2 outline-none cursor-pointer"
+          >
+            <option value="ALL">Tất cả độ khẩn</option>
+            <option value="HOA_TOC">Hỏa tốc</option>
+            <option value="THUONG_KHAN">Thượng khẩn</option>
+            <option value="KHAN">Khẩn</option>
+            <option value="THUONG">Thường</option>
+          </select>
 
-        {/* Filter Status */}
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-        >
-          <option value="ALL">Tất cả trạng thái</option>
-          <option value="PENDING_ASSIGN">Chưa giao</option>
-          <option value="PROCESSING">Đang xử lý</option>
-          <option value="COMPLETED">Đã xử lý</option>
-          <option value="OVERDUE">Quá hạn</option>
-        </select>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="bg-slate-50 border border-slate-200 text-xs text-slate-700 font-medium rounded-xl px-3 py-2 outline-none cursor-pointer"
+          >
+            <option value="ALL">Tất cả trạng thái</option>
+            <option value="PROCESSING">Đang xử lý</option>
+            <option value="COMPLETED">Đã xử lý</option>
+            <option value="OVERDUE">Quá hạn</option>
+            <option value="PENDING_ASSIGN">Chờ phân công</option>
+          </select>
 
-        {/* Filter Dossier */}
-        <select
-          value={filterDossier}
-          onChange={(e) => setFilterDossier(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-        >
-          <option value="ALL">Tất cả mã hồ sơ</option>
-          {dossiers.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.code} - {d.title.slice(0, 30)}...
-            </option>
-          ))}
-        </select>
+          <select
+            value={filterDossier}
+            onChange={(e) => setFilterDossier(e.target.value)}
+            className="bg-slate-50 border border-slate-200 text-xs text-slate-700 font-medium rounded-xl px-3 py-2 outline-none cursor-pointer"
+          >
+            <option value="ALL">Tất cả hồ sơ vụ việc</option>
+            {dossiers.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.code} - {d.title.slice(0, 25)}...
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Main Table View */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+      {/* Main Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50/80 border-b border-slate-200">
-              <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="px-5 py-3">Số đến / Ký hiệu</th>
-                <th className="px-4 py-3">Ngày nhận</th>
-                <th className="px-5 py-3">Cơ quan ban hành / Trích yếu</th>
-                <th className="px-4 py-3">Người phụ trách</th>
-                <th className="px-4 py-3">Hạn xử lý</th>
-                <th className="px-4 py-3">Độ khẩn</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3 text-right">Thao tác</th>
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <th className="py-3.5 px-4">Số Đến / Loại VB</th>
+                <th className="py-3.5 px-4">Số Ký Hiệu & Cơ Quan Gửi</th>
+                <th className="py-3.5 px-4">Trích Yếu Nội Dung</th>
+                <th className="py-3.5 px-4">Ngày Đến / Hạn Xử Lý</th>
+                <th className="py-3.5 px-4">Cán Bộ Phụ Trách</th>
+                <th className="py-3.5 px-4">Bản Scan / Tệp</th>
+                <th className="py-3.5 px-4">Trạng Thái</th>
+                <th className="py-3.5 px-4 text-right">Thao Tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody className="divide-y divide-slate-100">
               {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400">
-                    Không tìm thấy văn bản đến nào phù hợp.
+                  <td colSpan={8} className="text-center py-12 text-slate-400">
+                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    Không tìm thấy văn bản đến phù hợp
                   </td>
                 </tr>
               ) : (
                 filteredDocs.map((doc) => {
                   const assignee = getUser(doc.assigneeId);
-                  const dossier = getDossier(doc.dossierId);
+                  const attCount = doc.attachments?.length || 0;
+
                   return (
                     <tr
                       key={doc.id}
                       onClick={() => setSelectedDoc(doc)}
                       className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                     >
-                      <td className="px-5 py-3.5">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-800 font-mono">
-                            {doc.documentNumber}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            Gốc: {doc.officialNumber || '—'}
-                          </span>
+                      {/* Document Number & Type */}
+                      <td className="py-3.5 px-4 align-top">
+                        <div className="font-bold text-indigo-700 font-mono text-xs group-hover:text-indigo-800">
+                          {doc.documentNumber}
                         </div>
+                        <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                          {doc.docType || 'Công văn'}
+                        </div>
+                        <div className="mt-1">{getUrgencyBadge(doc.urgency)}</div>
                       </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap text-slate-600">
-                        {new Date(doc.receivedDate).toLocaleDateString('vi-VN')}
-                      </td>
-
-                      <td className="px-5 py-3.5 max-w-xs md:max-w-md">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className="font-bold text-[11px] text-indigo-700">
-                              {doc.issuingAuthority}
-                            </span>
-                            {dossier && (
-                              <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.2 rounded font-mono">
-                                {dossier.code}
-                              </span>
-                            )}
+                      {/* Official Number & Issuing Authority */}
+                      <td className="py-3.5 px-4 align-top max-w-[180px]">
+                        <div className="font-semibold text-slate-800">
+                          {doc.issuingAuthority}
+                        </div>
+                        {doc.officialNumber && (
+                          <div className="text-[11px] text-slate-500 font-mono mt-0.5 truncate">
+                            Số gốc: {doc.officialNumber}
                           </div>
-                          <p className="font-medium text-slate-800 line-clamp-2 leading-relaxed">
-                            {doc.summary}
-                          </p>
+                        )}
+                        {doc.issueDate && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Ký ngày: {doc.issueDate}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Summary */}
+                      <td className="py-3.5 px-4 align-top max-w-[280px]">
+                        <p className="text-slate-800 font-medium line-clamp-2 leading-relaxed">
+                          {doc.summary}
+                        </p>
+                        {doc.dossierId && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">
+                              <FolderKanban className="w-3 h-3 text-indigo-500" />
+                              {getDossier(doc.dossierId)?.code || 'Hồ sơ'}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Dates */}
+                      <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                        <div className="text-slate-600 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Đến: {doc.receivedDate}</span>
+                        </div>
+                        <div className="text-rose-600 font-bold flex items-center gap-1 mt-1">
+                          <Clock className="w-3.5 h-3.5 text-rose-500" />
+                          <span>Hạn: {doc.dueDate}</span>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap">
+                      {/* Assignee */}
+                      <td className="py-3.5 px-4 align-top">
                         {assignee ? (
                           <div className="flex items-center gap-2">
                             <img
                               src={assignee.avatar}
                               alt={assignee.fullName}
-                              className="w-6 h-6 rounded-full object-cover border border-slate-200"
+                              className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0"
                             />
-                            <span className="font-medium text-slate-700">
-                              {assignee.fullName}
-                            </span>
+                            <div className="truncate max-w-[120px]">
+                              <span className="font-bold text-slate-700 block truncate">
+                                {assignee.fullName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 truncate block">
+                                {assignee.position || 'Chuyên viên'}
+                              </span>
+                            </div>
                           </div>
                         ) : (
-                          <span className="text-slate-400 italic">Chưa phân công</span>
+                          <span className="text-slate-400 italic">Chưa giao</span>
                         )}
                       </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap font-medium">
-                        <span
-                          className={
-                            doc.dueDate < new Date().toISOString().split('T')[0] &&
-                            doc.status !== 'COMPLETED'
-                              ? 'text-rose-600 font-bold'
-                              : 'text-slate-600'
-                          }
-                        >
-                          {new Date(doc.dueDate).toLocaleDateString('vi-VN')}
-                        </span>
+                      {/* Attachments / Scans */}
+                      <td className="py-3.5 px-4 align-top">
+                        {attCount > 0 ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-[11px] border border-indigo-100">
+                              <Paperclip className="w-3 h-3" />
+                              {attCount} tệp scan
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">Chưa đính kèm</span>
+                        )}
                       </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        {getUrgencyBadge(doc.urgency)}
-                      </td>
-
-                      <td className="px-4 py-3.5 whitespace-nowrap">
+                      {/* Status */}
+                      <td className="py-3.5 px-4 align-top">
                         {getStatusBadge(doc.status)}
                       </td>
 
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                        <div
-                          className="flex items-center justify-end gap-1.5"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            onClick={() => onCreateTaskFromDoc(doc)}
-                            title="Giao việc từ văn bản này"
-                            className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors"
-                          >
-                            <CheckSquare className="w-3.5 h-3.5" />
-                          </button>
+                      {/* Actions */}
+                      <td className="py-3.5 px-4 align-top text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleOpenEditModal(doc)}
-                            title="Chỉnh sửa thông tin"
-                            className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                            title="Sửa văn bản & tệp scan"
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
@@ -393,8 +556,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                                 onDeleteDoc(doc.id);
                               }
                             }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Xóa văn bản"
-                            className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -409,94 +572,59 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
         </div>
       </div>
 
-      {/* Document Detail Drawer Modal */}
+      {/* View Detail Drawer / Modal */}
       {selectedDoc && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex justify-end z-50 animate-in fade-in duration-150">
-          <div className="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col p-6 overflow-y-auto custom-scrollbar">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <span className="font-bold text-slate-800 text-base">
-                  Chi tiết Văn bản đến: {selectedDoc.documentNumber}
-                </span>
-              </div>
-              <button
-                onClick={() => setSelectedDoc(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-5 text-xs flex-1">
-              {/* Top Badges */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-lg">
-                  {selectedDoc.docType}
-                </span>
-                {getUrgencyBadge(selectedDoc.urgency)}
-                {getStatusBadge(selectedDoc.status)}
-                <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-medium">
-                  Độ mật: {selectedDoc.securityLevel}
-                </span>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-end z-40 animate-in fade-in">
+          <div className="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col justify-between p-6 overflow-y-auto custom-scrollbar animate-in slide-in-from-right duration-200">
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                      {selectedDoc.documentNumber}
+                    </span>
+                    {getUrgencyBadge(selectedDoc.urgency)}
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-base mt-2">
+                    {selectedDoc.summary}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setSelectedDoc(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              {/* Summary Block */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Trích yếu nội dung
-                </span>
-                <p className="text-sm font-semibold text-slate-800 leading-relaxed">
-                  {selectedDoc.summary}
-                </p>
-              </div>
-
-              {/* 2-Column Info Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold block">
-                    Đơn vị ban hành
-                  </span>
-                  <span className="text-xs font-bold text-slate-800 mt-1 block">
-                    {selectedDoc.issuingAuthority}
-                  </span>
+              {/* Status Info */}
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Cơ quan ban hành</span>
+                  <span className="text-xs font-bold text-slate-800">{selectedDoc.issuingAuthority}</span>
                 </div>
-
-                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold block">
-                    Số ký hiệu gốc
-                  </span>
-                  <span className="text-xs font-bold text-slate-800 mt-1 block font-mono">
-                    {selectedDoc.officialNumber || 'Chưa ghi'}
-                  </span>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Số ký hiệu gốc</span>
+                  <span className="text-xs font-mono font-bold text-slate-700">{selectedDoc.officialNumber || 'Chưa có'}</span>
                 </div>
-
-                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold block">
-                    Ngày tiếp nhận
-                  </span>
-                  <span className="text-xs font-bold text-slate-800 mt-1 block">
-                    {new Date(selectedDoc.receivedDate).toLocaleDateString('vi-VN')}
-                  </span>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Ngày tiếp nhận</span>
+                  <span className="text-xs font-semibold text-slate-700">{selectedDoc.receivedDate}</span>
                 </div>
-
-                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold block">
-                    Hạn xử lý
-                  </span>
-                  <span className="text-xs font-bold text-rose-600 mt-1 block">
-                    {new Date(selectedDoc.dueDate).toLocaleDateString('vi-VN')}
-                  </span>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Hạn giải quyết</span>
+                  <span className="text-xs font-bold text-rose-600">{selectedDoc.dueDate}</span>
                 </div>
               </div>
 
               {/* Assignee & Dossier */}
-              <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+              <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
                 <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">
                     Cán bộ chủ trì xử lý
                   </span>
-                  {getUser(selectedDoc.assigneeId) ? (
+                  {selectedDoc.assigneeId ? (
                     <div className="flex items-center gap-2.5">
                       <img
                         src={getUser(selectedDoc.assigneeId)?.avatar}
@@ -504,16 +632,16 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         className="w-8 h-8 rounded-full object-cover border border-slate-200"
                       />
                       <div>
-                        <div className="font-bold text-slate-800">
+                        <div className="font-bold text-slate-800 text-xs">
                           {getUser(selectedDoc.assigneeId)?.fullName}
                         </div>
                         <div className="text-[10px] text-slate-500">
-                          {getUser(selectedDoc.assigneeId)?.email}
+                          {getUser(selectedDoc.assigneeId)?.position} &bull; {getUser(selectedDoc.assigneeId)?.email}
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <span className="text-slate-400 italic">Chưa phân công</span>
+                    <span className="text-slate-400 italic text-xs">Chưa phân công</span>
                   )}
                 </div>
 
@@ -521,7 +649,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                        Mã hồ sơ liên kết
+                        Hồ sơ vụ việc liên kết
                       </span>
                       <span className="text-xs font-bold text-indigo-700">
                         {getDossier(selectedDoc.dossierId)?.code} - {getDossier(selectedDoc.dossierId)?.title}
@@ -533,7 +661,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         setSelectedDoc(null);
                         if (dId) onOpenDossier(dId);
                       }}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
                     >
                       Mở hồ sơ &rarr;
                     </button>
@@ -545,7 +673,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               {selectedDoc.resultSummary && (
                 <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200">
                   <span className="text-[10px] font-bold text-emerald-800 uppercase block mb-1">
-                    Kết quả xử lý & Ghi chú
+                    Kết quả xử lý & Ý kiến chỉ đạo
                   </span>
                   <p className="text-xs text-slate-700 leading-relaxed">
                     {selectedDoc.resultSummary}
@@ -553,31 +681,92 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </div>
               )}
 
-              {/* Attachments */}
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  Tài liệu đính kèm ({selectedDoc.attachments.length})
-                </span>
-                {selectedDoc.attachments.length === 0 ? (
-                  <div className="p-4 bg-slate-50 rounded-lg text-slate-400 text-center border border-dashed border-slate-200">
-                    Chưa có tài liệu đính kèm
+              {/* Attachments / Scanned Files Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Scan className="w-4 h-4 text-indigo-600" />
+                    <span>Tài liệu scan & File đính kèm ({selectedDoc.attachments?.length || 0})</span>
+                  </span>
+
+                  {/* Quick Upload Button */}
+                  <div>
+                    <input
+                      type="file"
+                      ref={quickFileInputRef}
+                      onChange={handleQuickFileChange}
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => quickFileInputRef.current?.click()}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors border border-indigo-200"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>+ Đính kèm file scan</span>
+                    </button>
+                  </div>
+                </div>
+
+                {!selectedDoc.attachments || selectedDoc.attachments.length === 0 ? (
+                  <div className="p-5 bg-slate-50 rounded-xl text-slate-400 text-center border border-dashed border-slate-200 space-y-2">
+                    <Scan className="w-6 h-6 mx-auto text-slate-300" />
+                    <p className="text-xs">Chưa có tệp scan hoặc văn bản đính kèm nào.</p>
+                    <button
+                      type="button"
+                      onClick={() => quickFileInputRef.current?.click()}
+                      className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer"
+                    >
+                      Bấm vào đây để tải file PDF / ảnh scan từ máy tính
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {selectedDoc.attachments.map((file) => (
                       <div
                         key={file.id}
-                        className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border border-slate-200"
+                        className="flex items-center justify-between p-3 bg-slate-50 hover:bg-indigo-50/40 rounded-xl border border-slate-200 transition-colors group"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Paperclip className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span className="font-semibold text-slate-700 truncate">
-                            {file.fileName}
-                          </span>
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          {renderFileIcon(file.fileType)}
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold text-slate-800 truncate block text-xs group-hover:text-indigo-600">
+                              {file.fileName}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {formatFileSize(file.fileSize)} &bull; {file.fileType?.toUpperCase()}
+                            </span>
+                          </div>
                         </div>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {(file.fileSize / 1024).toFixed(0)} KB
-                        </span>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => handleOpenPreview(file)}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            title="Xem văn bản / scan"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>Xem scan</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleDownloadFile(file)}
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200 rounded-lg cursor-pointer transition-colors"
+                            title="Tải về máy"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleRemoveDetailAttachment(file.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                            title="Xóa tệp"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -586,14 +775,14 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
             </div>
 
             {/* Bottom Actions */}
-            <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+            <div className="pt-6 border-t border-slate-100 flex items-center gap-3 mt-6">
               <button
                 onClick={() => {
                   const doc = selectedDoc;
                   setSelectedDoc(null);
                   onCreateTaskFromDoc(doc);
                 }}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs"
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer"
               >
                 <CheckSquare className="w-4 h-4" />
                 <span>Giao việc từ văn bản này</span>
@@ -605,7 +794,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   setSelectedDoc(null);
                   handleOpenEditModal(doc);
                 }}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
               >
                 Sửa thông tin
               </button>
@@ -614,32 +803,39 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
         </div>
       )}
 
-      {/* Add / Edit Incoming Doc Modal */}
+      {/* Add / Edit Incoming Doc Modal with Scan / PDF File Upload */}
       {isModalOpen && editingDoc && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-bold text-slate-800 text-base">
-                  {editingDoc.id?.startsWith('vbd-') && !docs.some((d) => d.id === editingDoc.id)
-                    ? 'Tiếp Nhận Văn Bản Đến Mới'
-                    : `Cập Nhật Văn Bản Đến: ${editingDoc.documentNumber}`}
-                </h3>
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    {editingDoc.id?.startsWith('vbd-') && !docs.some((d) => d.id === editingDoc.id)
+                      ? 'Tiếp Nhận Văn Bản Đến & Đính Kèm File Scan'
+                      : `Cập Nhật Văn Bản Đến: ${editingDoc.documentNumber}`}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Hỗ trợ quét scan giấy tờ người dân nộp (PDF/Ảnh) lưu trực tiếp vào CSDL MySQL
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
+            {/* Modal Body Form */}
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
               {/* AI Assistant Banner Helper */}
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100 space-y-2">
+              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-3.5 rounded-xl border border-indigo-100 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-indigo-600" />
@@ -650,7 +846,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowAiInput(!showAiInput)}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline"
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
                   >
                     {showAiInput ? 'Đóng hộp phân tích' : 'Dán văn bản để AI phân tích'}
                   </button>
@@ -670,7 +866,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                       type="button"
                       onClick={handleRunAiAnalysis}
                       disabled={isAiLoading}
-                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-xs"
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>{isAiLoading ? 'AI đang phân tích...' : 'Phân tích & Điền tự động'}</span>
@@ -680,7 +876,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               </div>
 
               {/* Row 1: Document Numbers */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Số đến nội bộ <span className="text-rose-500">*</span>
@@ -691,37 +887,37 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     value={editingDoc.documentNumber || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, documentNumber: e.target.value })}
                     placeholder="VD: 180/VP-UBND"
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium"
                   />
                 </div>
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Số ký hiệu cơ quan gửi
+                    Số ký hiệu cơ quan / người gửi
                   </label>
                   <input
                     type="text"
                     value={editingDoc.officialNumber || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, officialNumber: e.target.value })}
-                    placeholder="VD: 450/QĐ-UBND"
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    placeholder="VD: 450/QĐ-UBND hoặc Đơn kiến nghị"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
               </div>
 
               {/* Row 2: Authority & Doc Type */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Cơ quan ban hành <span className="text-rose-500">*</span>
+                    Cơ quan ban hành / Người gửi <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={editingDoc.issuingAuthority || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, issuingAuthority: e.target.value })}
-                    placeholder="VD: Ủy Ban Nhân Dân Tỉnh, Sở Tài Chính..."
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    placeholder="VD: Người dân Nguyễn Văn A / UBND Huyện..."
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium"
                   />
                 </div>
 
@@ -732,8 +928,9 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   <select
                     value={editingDoc.docType || 'Công văn'}
                     onChange={(e) => setEditingDoc({ ...editingDoc, docType: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium cursor-pointer"
                   >
+                    <option value="Đơn kiến nghị / Đơn thư">Đơn kiến nghị / Đơn thư của dân</option>
                     <option value="Công văn">Công văn</option>
                     <option value="Quyết định">Quyết định</option>
                     <option value="Tờ trình">Tờ trình</option>
@@ -752,16 +949,108 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </label>
                 <textarea
                   required
-                  rows={3}
+                  rows={2}
                   value={editingDoc.summary || ''}
                   onChange={(e) => setEditingDoc({ ...editingDoc, summary: e.target.value })}
-                  placeholder="Nhập tóm tắt nội dung chính của văn bản..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                  placeholder="Nhập tóm tắt nội dung chính của văn bản / đơn kiến nghị..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium"
                 />
               </div>
 
+              {/* SCAN & FILE UPLOAD SECTION (DRAG & DROP + BROWSE) */}
+              <div className="bg-gradient-to-r from-slate-50 to-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <Scan className="w-4 h-4 text-indigo-600" />
+                    <span>Tải Lên Bản Quét (Scan) / File Đính Kèm Từ Máy Tính</span>
+                  </label>
+                  <span className="text-[11px] text-indigo-600 font-semibold">
+                    Đã chọn {formAttachments.length} tệp
+                  </span>
+                </div>
+
+                {/* Drag and Drop Zone */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDropFiles}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                    isDragging
+                      ? 'border-indigo-600 bg-indigo-50'
+                      : 'border-slate-300 bg-white hover:border-indigo-400 hover:bg-slate-50/60'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                    className="hidden"
+                  />
+                  <div className="flex flex-col items-center gap-1.5">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-2xs">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-700">
+                        Nhấn vào đây để chọn file từ máy tính, hoặc kéo thả file vào khung
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Hỗ trợ tệp scan <strong className="text-rose-600">.PDF</strong>, hình ảnh quét <strong className="text-purple-600">.PNG, .JPG</strong>, văn bản <strong className="text-blue-600">.DOCX</strong>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selected Files List */}
+                {formAttachments.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    {formAttachments.map((file) => (
+                      <div
+                        key={file.id}
+                        className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 text-xs shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {renderFileIcon(file.fileType)}
+                          <span className="font-semibold text-slate-800 truncate text-xs">
+                            {file.fileName}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                            ({formatFileSize(file.fileSize)})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPreview(file)}
+                            className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded cursor-pointer"
+                            title="Xem thử file"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFormAttachment(file.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                            title="Xóa khỏi danh sách"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Row 3: Dates */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Ngày tiếp nhận
@@ -770,7 +1059,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     type="date"
                     value={editingDoc.receivedDate || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, receivedDate: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                   />
                 </div>
 
@@ -782,7 +1071,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     type="date"
                     value={editingDoc.issueDate || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, issueDate: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                   />
                 </div>
 
@@ -795,19 +1084,19 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     required
                     value={editingDoc.dueDate || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, dueDate: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-rose-600"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-rose-600"
                   />
                 </div>
               </div>
 
               {/* Row 4: Urgency & Security & Status */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Độ khẩn</label>
                   <select
                     value={editingDoc.urgency || 'THUONG'}
                     onChange={(e) => setEditingDoc({ ...editingDoc, urgency: e.target.value as UrgencyLevel })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
                   >
                     <option value="THUONG">Thường</option>
                     <option value="KHAN">Khẩn</option>
@@ -821,7 +1110,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   <select
                     value={editingDoc.securityLevel || 'THUONG'}
                     onChange={(e) => setEditingDoc({ ...editingDoc, securityLevel: e.target.value as SecurityLevel })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
                   >
                     <option value="THUONG">Thường</option>
                     <option value="MAT">Mật</option>
@@ -831,13 +1120,13 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Trạng thái</label>
+                  <label className="block font-bold text-slate-700 mb-1">Trạng thái xử lý</label>
                   <select
                     value={editingDoc.status || 'PROCESSING'}
                     onChange={(e) => setEditingDoc({ ...editingDoc, status: e.target.value as IncomingDocStatus })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
                   >
-                    <option value="PENDING_ASSIGN">Chưa phân công</option>
+                    <option value="PENDING_ASSIGN">Chờ phân công</option>
                     <option value="PROCESSING">Đang xử lý</option>
                     <option value="COMPLETED">Đã xử lý xong</option>
                     <option value="OVERDUE">Quá hạn</option>
@@ -846,7 +1135,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               </div>
 
               {/* Row 5: Assignee & Dossier Binding */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Cán bộ chủ trì xử lý
@@ -854,7 +1143,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   <select
                     value={editingDoc.assigneeId || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, assigneeId: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium cursor-pointer"
                   >
                     <option value="">-- Chọn cán bộ phụ trách --</option>
                     {users.map((u) => (
@@ -867,12 +1156,12 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Gắn vào Mã Hồ Sơ vụ việc
+                    Gắn vào Hồ Sơ vụ việc
                   </label>
                   <select
                     value={editingDoc.dossierId || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, dossierId: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium cursor-pointer"
                   >
                     <option value="">-- Chưa gắn hồ sơ --</option>
                     {dossiers.map((d) => (
@@ -887,14 +1176,14 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               {/* Result Summary Note */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  Kết quả xử lý / Ý kiến chỉ đạo
+                  Ghi chú kết quả xử lý / Ý kiến chỉ đạo
                 </label>
                 <textarea
                   rows={2}
                   value={editingDoc.resultSummary || ''}
                   onChange={(e) => setEditingDoc({ ...editingDoc, resultSummary: e.target.value })}
                   placeholder="Ghi chú kết quả xử lý hoặc ý kiến chỉ đạo của Lãnh đạo..."
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                 />
               </div>
 
@@ -903,15 +1192,16 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
                 >
                   Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-xs"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm hover:shadow-md cursor-pointer transition-all flex items-center gap-1.5"
                 >
-                  Lưu văn bản đến
+                  <FileCheck className="w-4 h-4" />
+                  <span>Lưu Văn Bản Đến (MySQL)</span>
                 </button>
               </div>
             </form>

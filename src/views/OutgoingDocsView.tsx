@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   OutgoingDocument,
   User,
   Dossier,
   IncomingDocument,
   OutgoingDocStatus,
+  AttachmentFile,
 } from '../types';
 import {
   Search,
@@ -20,8 +21,21 @@ import {
   Copy,
   Check,
   FolderKanban,
+  Upload,
+  Download,
+  Eye,
+  FileText,
+  FileSpreadsheet,
+  FileCode,
+  File,
+  Image as ImageIcon,
+  Building,
+  UserCheck,
+  Calendar,
+  Layers,
 } from 'lucide-react';
 import { draftOutgoingDocWithAI } from '../services/aiService';
+import { FilePreviewModal } from '../components/FilePreviewModal';
 
 interface OutgoingDocsViewProps {
   docs: OutgoingDocument[];
@@ -52,6 +66,15 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<Partial<OutgoingDocument> | null>(null);
 
+  // File Preview Modal
+  const [previewFile, setPreviewFile] = useState<AttachmentFile | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Drag and drop & File Input refs for scanning/uploading
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const quickFileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
   // AI Drafting State
   const [showAiDraftModal, setShowAiDraftModal] = useState(false);
   const [aiGoal, setAiGoal] = useState('');
@@ -70,7 +93,8 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
     const matchSearch =
       doc.documentNumber.toLowerCase().includes(search.toLowerCase()) ||
       doc.summary.toLowerCase().includes(search.toLowerCase()) ||
-      doc.recipient.toLowerCase().includes(search.toLowerCase());
+      doc.recipient.toLowerCase().includes(search.toLowerCase()) ||
+      (doc.content && doc.content.toLowerCase().includes(search.toLowerCase()));
 
     const matchStatus = filterStatus === 'ALL' || doc.status === filterStatus;
     const matchType = filterType === 'ALL' || doc.docType === filterType;
@@ -81,11 +105,12 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   const handleOpenAddModal = () => {
     setEditingDoc({
       id: 'vbdi-' + Date.now(),
-      documentNumber: `${docs.length + 95}/CV-DV`,
+      documentNumber: `${docs.length + 105}/UBND-VP`,
       releaseDate: new Date().toISOString().split('T')[0],
       docType: 'Công văn',
       recipient: 'Ủy Ban Nhân Dân Tỉnh',
       summary: '',
+      content: '',
       drafterId: currentUser.id,
       signerId: users.find((u) => u.role === 'LEADER')?.id || currentUser.id,
       status: 'DRAFT',
@@ -97,19 +122,135 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   };
 
   const handleOpenEditModal = (doc: OutgoingDocument) => {
-    setEditingDoc({ ...doc });
+    setEditingDoc({
+      ...doc,
+      attachments: doc.attachments || [],
+    });
     setIsModalOpen(true);
+  };
+
+  // Convert uploaded computer files to base64 and add to editingDoc.attachments
+  const handleFilesUpload = (files: FileList | null) => {
+    if (!files || files.length === 0 || !editingDoc) return;
+
+    const newAttachments: AttachmentFile[] = [];
+    let processed = 0;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf';
+
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        newAttachments.push({
+          id: 'att-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: ext,
+          fileUrl: dataUrl,
+          category: 'VAN_BAN_DI',
+          uploadedAt: new Date().toISOString(),
+          uploadedById: currentUser.id,
+          uploadedByName: currentUser.fullName,
+          dossierId: editingDoc.dossierId || undefined,
+          tags: ['Văn bản đi', ext.toUpperCase(), 'Scan từ máy tính'],
+        });
+
+        processed++;
+        if (processed === files.length) {
+          setEditingDoc((prev) => ({
+            ...prev,
+            attachments: [...(prev?.attachments || []), ...newAttachments],
+          }));
+        }
+      };
+
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Quick file attachment directly from Details Drawer
+  const handleQuickUploadFromDetail = (files: FileList | null) => {
+    if (!files || files.length === 0 || !selectedDoc) return;
+
+    const newAttachments: AttachmentFile[] = [];
+    let processed = 0;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf';
+
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        newAttachments.push({
+          id: 'att-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: ext,
+          fileUrl: dataUrl,
+          category: 'VAN_BAN_DI',
+          uploadedAt: new Date().toISOString(),
+          uploadedById: currentUser.id,
+          uploadedByName: currentUser.fullName,
+          dossierId: selectedDoc.dossierId || undefined,
+          tags: ['Văn bản đi', ext.toUpperCase()],
+        });
+
+        processed++;
+        if (processed === files.length) {
+          const updatedDoc: OutgoingDocument = {
+            ...selectedDoc,
+            attachments: [...(selectedDoc.attachments || []), ...newAttachments],
+          };
+          onSaveDoc(updatedDoc);
+          setSelectedDoc(updatedDoc);
+        }
+      };
+
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemoveAttachment = (attId: string) => {
+    if (!editingDoc) return;
+    setEditingDoc({
+      ...editingDoc,
+      attachments: (editingDoc.attachments || []).filter((a) => a.id !== attId),
+    });
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingDoc || !editingDoc.documentNumber || !editingDoc.summary) return;
+    if (!editingDoc || !editingDoc.documentNumber || !editingDoc.summary) {
+      alert('Vui lòng nhập đầy đủ Số văn bản đi và Trích yếu nội dung.');
+      return;
+    }
 
-    onSaveDoc(editingDoc as OutgoingDocument);
+    const docToSave: OutgoingDocument = {
+      id: editingDoc.id || 'vbdi-' + Date.now(),
+      documentNumber: editingDoc.documentNumber.trim(),
+      releaseDate: editingDoc.releaseDate || new Date().toISOString().split('T')[0],
+      docType: editingDoc.docType || 'Công văn',
+      recipient: editingDoc.recipient || 'Ủy Ban Nhân Dân',
+      summary: editingDoc.summary.trim(),
+      content: editingDoc.content || '',
+      drafterId: editingDoc.drafterId || currentUser.id,
+      signerId: editingDoc.signerId || currentUser.id,
+      status: (editingDoc.status as OutgoingDocStatus) || 'DRAFT',
+      dossierId: editingDoc.dossierId || undefined,
+      replyToDocId: editingDoc.replyToDocId || undefined,
+      attachments: editingDoc.attachments || [],
+      createdById: editingDoc.createdById || currentUser.id,
+      createdAt: editingDoc.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    onSaveDoc(docToSave);
     setIsModalOpen(false);
     setEditingDoc(null);
-    if (selectedDoc && selectedDoc.id === editingDoc.id) {
-      setSelectedDoc(editingDoc as OutgoingDocument);
+
+    if (selectedDoc && selectedDoc.id === docToSave.id) {
+      setSelectedDoc(docToSave);
     }
   };
 
@@ -137,6 +278,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
           summary: result.title || editingDoc.summary,
           docType: aiDocType,
           recipient: aiRecipient || editingDoc.recipient,
+          content: result.draftContent,
         });
       }
     } catch (err: any) {
@@ -154,37 +296,105 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
     }
   };
 
+  const handleDownloadFile = (file: AttachmentFile) => {
+    if (!file.fileUrl) return;
+    const a = document.createElement('a');
+    a.href = file.fileUrl;
+    a.download = file.fileName || 'van-ban-di';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const getFileIcon = (type?: string) => {
+    const t = (type || '').toLowerCase();
+    switch (t) {
+      case 'pdf':
+        return <FileText className="w-4 h-4 text-rose-500 shrink-0" />;
+      case 'xlsx':
+      case 'xls':
+      case 'csv':
+        return <FileSpreadsheet className="w-4 h-4 text-emerald-500 shrink-0" />;
+      case 'docx':
+      case 'doc':
+        return <FileCode className="w-4 h-4 text-blue-500 shrink-0" />;
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+      case 'webp':
+        return <ImageIcon className="w-4 h-4 text-purple-500 shrink-0" />;
+      default:
+        return <File className="w-4 h-4 text-slate-400 shrink-0" />;
+    }
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes || bytes === 0) return '0 KB';
+    const k = 1024;
+    if (bytes < k * k) return (bytes / k).toFixed(1) + ' KB';
+    return (bytes / (k * k)).toFixed(2) + ' MB';
+  };
+
   const getStatusBadge = (status: OutgoingDocStatus) => {
     switch (status) {
       case 'ISSUED':
       case 'SENT':
-        return <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold text-[10px]">ĐÃ PHÁT HÀNH</span>;
+        return (
+          <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] border border-emerald-200">
+            ĐÃ PHÁT HÀNH
+          </span>
+        );
       case 'SIGNED':
-        return <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px]">ĐÃ KÝ DUYỆT</span>;
+        return (
+          <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] border border-indigo-200">
+            ĐÃ KÝ DUYỆT
+          </span>
+        );
       case 'REVIEWING':
-        return <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 font-bold text-[10px]">CHỜ DUYỆT</span>;
+        return (
+          <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold text-[10px] border border-purple-200">
+            CHỜ DUYỆT
+          </span>
+        );
       default:
-        return <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-bold text-[10px]">DỰ THẢO</span>;
+        return (
+          <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold text-[10px] border border-slate-200">
+            DỰ THẢO
+          </span>
+        );
     }
   };
 
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
+      {/* File Preview Modal */}
+      <FilePreviewModal
+        file={previewFile}
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+      />
+
       {/* Header & Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Quản Lý Văn Bản Đi</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-800">Quản Lý Văn Bản Đi & Phát Hành</h1>
+            <span className="bg-emerald-100 text-emerald-700 font-bold text-xs px-2.5 py-0.5 rounded-full border border-emerald-200">
+              {docs.length} văn bản
+            </span>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Theo dõi số văn bản phát hành, người ký duyệt, đơn vị nhận và lưu trữ theo hồ sơ
+            Theo dõi phát hành, đính kèm bản quét (Scan/PDF), người ký duyệt và lưu trữ đồng bộ MySQL
           </p>
         </div>
+
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => {
               handleOpenAddModal();
               setShowAiDraftModal(true);
             }}
-            className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all"
+            className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
           >
             <Sparkles className="w-4 h-4" />
             <span>AI Soạn Thảo Văn Bản</span>
@@ -193,31 +403,31 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
           <button
             id="add-outgoing-doc-btn"
             onClick={handleOpenAddModal}
-            className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all"
+            className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Tạo mới văn bản đi</span>
+            <span>+ Tạo Mới Văn Bản Đi</span>
           </button>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[220px] relative">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[240px] relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm số đi, trích yếu, nơi nhận..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            placeholder="Tìm số đi, trích yếu, cơ quan nhận..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
           />
         </div>
 
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 font-medium rounded-xl px-3 py-2 outline-none cursor-pointer"
         >
           <option value="ALL">Tất cả trạng thái</option>
           <option value="DRAFT">Dự thảo</option>
@@ -230,7 +440,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 font-medium rounded-xl px-3 py-2 outline-none cursor-pointer"
         >
           <option value="ALL">Tất cả loại văn bản</option>
           <option value="Công văn">Công văn</option>
@@ -238,29 +448,31 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
           <option value="Báo cáo">Báo cáo</option>
           <option value="Thông báo">Thông báo</option>
           <option value="Quyết định">Quyết định</option>
+          <option value="Kế hoạch">Kế hoạch</option>
         </select>
       </div>
 
       {/* Table List */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50/80 border-b border-slate-200">
               <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="px-5 py-3">Số văn bản đi</th>
-                <th className="px-4 py-3">Ngày phát hành</th>
-                <th className="px-4 py-3">Loại VB</th>
-                <th className="px-5 py-3">Đơn vị nhận & Trích yếu</th>
-                <th className="px-4 py-3">Người soạn / Người ký</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3 text-right">Thao tác</th>
+                <th className="px-5 py-3.5">Số văn bản đi</th>
+                <th className="px-4 py-3.5">Ngày phát hành</th>
+                <th className="px-4 py-3.5">Loại VB</th>
+                <th className="px-5 py-3.5">Nơi nhận & Trích yếu nội dung</th>
+                <th className="px-4 py-3.5">Tệp scan / File đính kèm</th>
+                <th className="px-4 py-3.5">Soạn / Ký</th>
+                <th className="px-4 py-3.5">Trạng thái</th>
+                <th className="px-4 py-3.5 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredDocs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
-                    Không có văn bản đi nào phù hợp.
+                  <td colSpan={8} className="p-12 text-center text-slate-400">
+                    Không có văn bản đi nào phù hợp với bộ lọc.
                   </td>
                 </tr>
               ) : (
@@ -268,34 +480,39 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                   const drafter = getUser(doc.drafterId);
                   const signer = getUser(doc.signerId);
                   const dossier = getDossier(doc.dossierId);
+                  const hasFiles = doc.attachments && doc.attachments.length > 0;
+
                   return (
                     <tr
                       key={doc.id}
                       onClick={() => setSelectedDoc(doc)}
                       className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                     >
-                      <td className="px-5 py-3.5 font-bold font-mono text-slate-800">
-                        {doc.documentNumber}
+                      <td className="px-5 py-3.5 font-bold font-mono text-slate-800 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Send className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>{doc.documentNumber}</span>
+                        </div>
                       </td>
 
-                      <td className="px-4 py-3.5 whitespace-nowrap text-slate-600">
+                      <td className="px-4 py-3.5 whitespace-nowrap text-slate-600 font-mono text-[11px]">
                         {new Date(doc.releaseDate).toLocaleDateString('vi-VN')}
                       </td>
 
                       <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className="bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded text-[10px]">
+                        <span className="bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-md text-[10px] border border-indigo-100">
                           {doc.docType}
                         </span>
                       </td>
 
                       <td className="px-5 py-3.5 max-w-xs md:max-w-md">
                         <div className="flex flex-col">
-                          <div className="flex items-center gap-1.5 mb-0.5">
+                          <div className="flex items-center gap-1.5 mb-1">
                             <span className="font-bold text-slate-700">
                               Kính gửi: {doc.recipient}
                             </span>
                             {dossier && (
-                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">
+                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono font-bold">
                                 {dossier.code}
                               </span>
                             )}
@@ -304,6 +521,31 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                             {doc.summary}
                           </p>
                         </div>
+                      </td>
+
+                      {/* Attachment / Scan preview */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        {hasFiles ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full text-[10px] border border-purple-200 flex items-center gap-1">
+                              <Paperclip className="w-3 h-3" />
+                              <span>{doc.attachments.length} tệp scan</span>
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewFile(doc.attachments[0]);
+                                setIsPreviewOpen(true);
+                              }}
+                              className="p-1 hover:bg-purple-100 text-purple-700 rounded transition-colors cursor-pointer"
+                              title="Xem bản scan"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">Chưa có tệp</span>
+                        )}
                       </td>
 
                       <td className="px-4 py-3.5 whitespace-nowrap">
@@ -323,13 +565,13 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
 
                       <td className="px-4 py-3.5 text-right whitespace-nowrap">
                         <div
-                          className="flex items-center justify-end gap-1.5"
+                          className="flex items-center justify-end gap-1"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
                             onClick={() => handleOpenEditModal(doc)}
                             title="Chỉnh sửa văn bản"
-                            className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors"
+                            className="p-1.5 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 rounded-lg transition-colors cursor-pointer"
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
@@ -340,7 +582,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                               }
                             }}
                             title="Xóa văn bản"
-                            className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg transition-colors"
+                            className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -355,43 +597,235 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
         </div>
       </div>
 
-      {/* Add / Edit Outgoing Modal */}
+      {/* Selected Outgoing Document Detail Drawer */}
+      {selectedDoc && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex justify-end z-50 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col justify-between p-6 overflow-y-auto custom-scrollbar">
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2">
+                  <Send className="w-5 h-5 text-emerald-600" />
+                  <span className="font-bold text-slate-800 text-base">Chi Tiết Văn Bản Đi</span>
+                </div>
+                <button
+                  onClick={() => setSelectedDoc(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Status and Numbers */}
+              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Số văn bản đi</span>
+                  <span className="font-bold font-mono text-base text-slate-800">{selectedDoc.documentNumber}</span>
+                  <span className="text-xs text-slate-500 block mt-0.5">Ngày phát hành: {selectedDoc.releaseDate}</span>
+                </div>
+                <div>{getStatusBadge(selectedDoc.status)}</div>
+              </div>
+
+              {/* Metadata */}
+              <div className="grid grid-cols-2 gap-3 bg-white p-4 rounded-xl border border-slate-200 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Cơ quan / Nơi nhận</span>
+                  <span className="font-bold text-slate-800">{selectedDoc.recipient}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Loại văn bản</span>
+                  <span className="font-bold text-indigo-700">{selectedDoc.docType}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Cán bộ soạn thảo</span>
+                  <span className="font-semibold text-slate-700">{getUser(selectedDoc.drafterId)?.fullName || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Lãnh đạo ký duyệt</span>
+                  <span className="font-semibold text-slate-700">{getUser(selectedDoc.signerId)?.fullName || '—'}</span>
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">
+                  Trích yếu nội dung văn bản
+                </span>
+                <p className="text-xs font-medium text-slate-800 leading-relaxed whitespace-pre-line">
+                  {selectedDoc.summary}
+                </p>
+              </div>
+
+              {/* Content / Full Text if available */}
+              {selectedDoc.content && (
+                <div className="bg-white p-4 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">
+                    Nội dung chi tiết / Dự thảo văn bản
+                  </span>
+                  <div className="p-3 bg-slate-50 rounded-lg text-xs font-serif text-slate-800 max-h-48 overflow-y-auto whitespace-pre-line leading-relaxed custom-scrollbar">
+                    {selectedDoc.content}
+                  </div>
+                </div>
+              )}
+
+              {/* Scanned Attachments List & Quick Upload */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <Paperclip className="w-4 h-4 text-purple-600" />
+                    <span className="font-bold text-slate-800 text-xs">
+                      Tệp Scan / Văn bản đính kèm ({selectedDoc.attachments?.length || 0})
+                    </span>
+                  </div>
+
+                  <div>
+                    <input
+                      type="file"
+                      ref={quickFileInputRef}
+                      onChange={(e) => handleQuickUploadFromDetail(e.target.files)}
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => quickFileInputRef.current?.click()}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>+ Đính kèm file scan</span>
+                    </button>
+                  </div>
+                </div>
+
+                {selectedDoc.attachments && selectedDoc.attachments.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedDoc.attachments.map((file) => (
+                      <div
+                        key={file.id}
+                        className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-purple-50/50 rounded-xl border border-slate-200 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                          {getFileIcon(file.fileType)}
+                          <div className="min-w-0">
+                            <p className="font-bold text-xs text-slate-800 truncate">{file.fileName}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">
+                              {formatFileSize(file.fileSize)} &bull; {new Date(file.uploadedAt).toLocaleDateString('vi-VN')}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setPreviewFile(file);
+                              setIsPreviewOpen(true);
+                            }}
+                            className="p-1.5 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors cursor-pointer"
+                            title="Xem bản scan"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDownloadFile(file)}
+                            className="p-1.5 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors cursor-pointer"
+                            title="Tải về máy tính"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <p className="text-[11px] text-slate-400">Chưa có bản scan nào đính kèm cho văn bản này</p>
+                    <button
+                      onClick={() => quickFileInputRef.current?.click()}
+                      className="mt-2 text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                    >
+                      Nhấn để tải lên bản scan PDF từ máy tính
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3 mt-6">
+              <button
+                onClick={() => {
+                  if (confirm(`Bạn có chắc muốn xóa văn bản đi ${selectedDoc.documentNumber}?`)) {
+                    onDeleteDoc(selectedDoc.id);
+                    setSelectedDoc(null);
+                  }
+                }}
+                className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xóa văn bản</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const doc = selectedDoc;
+                  setSelectedDoc(null);
+                  handleOpenEditModal(doc);
+                }}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              >
+                <Edit className="w-4 h-4" />
+                <span>Chỉnh sửa văn bản</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Outgoing Document Modal with Computer File Upload & Drag-Drop */}
       {isModalOpen && editingDoc && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <Send className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-bold text-slate-800 text-base">
-                  {editingDoc.id?.startsWith('vbdi-') && !docs.some((d) => d.id === editingDoc.id)
-                    ? 'Soạn Thảo Văn Bản Đi Mới'
-                    : `Cập Nhật Văn Bản Đi: ${editingDoc.documentNumber}`}
-                </h3>
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                  <Send className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    {editingDoc.id?.startsWith('vbdi-') && !docs.some((d) => d.id === editingDoc.id)
+                      ? 'Soạn Thảo & Phát Hành Văn Bản Đi Mới'
+                      : `Cập Nhật Văn Bản Đi: ${editingDoc.documentNumber}`}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Hỗ trợ quét scan PDF từ máy tính và lưu trữ đồng bộ vào MySQL
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-              {/* AI Draft Assist Modal Section */}
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
+              {/* AI Draft Assist Banner */}
               <div className="bg-linear-to-r from-purple-50 to-indigo-50 p-4 rounded-xl border border-purple-100 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-purple-600" />
                     <span className="font-bold text-purple-900 text-xs">
-                      AI Tự Động Soạn Thảo Dự Thảo Chuẩn Nghị Định 30/2020/NĐ-CP
+                      Trợ Lý AI Soạn Thảo Văn Bản Chuẩn Nghị Định 30/2020/NĐ-CP
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowAiDraftModal(!showAiDraftModal)}
-                    className="text-[11px] font-bold text-purple-700 hover:underline"
+                    className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
                   >
-                    {showAiDraftModal ? 'Thu gọn AI' : 'Mở bảng tạo tự động'}
+                    {showAiDraftModal ? 'Thu gọn AI' : 'Mở trợ lý AI'}
                   </button>
                 </div>
 
@@ -404,7 +838,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                           type="text"
                           value={aiGoal}
                           onChange={(e) => setAiGoal(e.target.value)}
-                          placeholder="VD: Đề xuất phê duyệt kinh phí mua sắm thiết bị CNTT 2025"
+                          placeholder="VD: Phê duyệt kinh phí chuyển đổi số năm 2025"
                           className="w-full p-2 bg-white border border-purple-200 rounded-lg text-xs"
                         />
                       </div>
@@ -426,7 +860,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                         type="text"
                         value={aiKeyPoints}
                         onChange={(e) => setAiKeyPoints(e.target.value)}
-                        placeholder="VD: Khảo sát hiện trạng máy cũ hỏng, dự toán 1.8 tỷ, cam kết sử dụng hiệu quả"
+                        placeholder="VD: Nêu căn cứ Quyết định 06, đề xuất cấp máy quét và máy chủ, dự toán 500tr"
                         className="w-full p-2 bg-white border border-purple-200 rounded-lg text-xs"
                       />
                     </div>
@@ -438,7 +872,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                         type="button"
                         onClick={handleGenerateAIDraft}
                         disabled={isAiDrafting}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-xs"
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         <span>{isAiDrafting ? 'AI đang soạn thảo văn bản...' : 'Tạo dự thảo văn bản'}</span>
@@ -448,7 +882,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                         <button
                           type="button"
                           onClick={handleCopyDraft}
-                          className="px-3 py-2 bg-white border border-purple-300 text-purple-700 hover:bg-purple-50 font-bold rounded-lg text-xs flex items-center gap-1"
+                          className="px-3 py-2 bg-white border border-purple-300 text-purple-700 hover:bg-purple-50 font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer"
                         >
                           {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                           <span>{copied ? 'Đã sao chép' : 'Sao chép dự thảo'}</span>
@@ -457,7 +891,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                     </div>
 
                     {generatedDraft && (
-                      <div className="p-3 bg-white border border-purple-200 rounded-lg max-h-48 overflow-y-auto text-xs whitespace-pre-line font-serif text-slate-800 leading-relaxed custom-scrollbar">
+                      <div className="p-3 bg-white border border-purple-200 rounded-lg max-h-40 overflow-y-auto text-xs whitespace-pre-line font-serif text-slate-800 leading-relaxed custom-scrollbar">
                         {generatedDraft}
                       </div>
                     )}
@@ -465,8 +899,8 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                 )}
               </div>
 
-              {/* Document Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Document Info Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Số văn bản đi <span className="text-rose-500">*</span>
@@ -476,7 +910,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                     required
                     value={editingDoc.documentNumber || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, documentNumber: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold"
                   />
                 </div>
 
@@ -485,7 +919,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                   <select
                     value={editingDoc.docType || 'Công văn'}
                     onChange={(e) => setEditingDoc({ ...editingDoc, docType: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer"
                   >
                     <option value="Công văn">Công văn</option>
                     <option value="Tờ trình">Tờ trình</option>
@@ -493,6 +927,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                     <option value="Thông báo">Thông báo</option>
                     <option value="Quyết định">Quyết định</option>
                     <option value="Kế hoạch">Kế hoạch</option>
+                    <option value="Giấy mời">Giấy mời</option>
                   </select>
                 </div>
 
@@ -502,61 +937,160 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                     type="date"
                     value={editingDoc.releaseDate || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, releaseDate: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  Đơn vị / Cơ quan nhận <span className="text-rose-500">*</span>
+                  Đơn vị / Cơ quan nhận văn bản <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={editingDoc.recipient || ''}
                   onChange={(e) => setEditingDoc({ ...editingDoc, recipient: e.target.value })}
-                  placeholder="VD: Ủy Ban Nhân Dân Tỉnh, Sở Tài Chính..."
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  placeholder="VD: Ủy Ban Nhân Dân Tỉnh, Sở Nội Vụ..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                 />
               </div>
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  Trích yếu nội dung <span className="text-rose-500">*</span>
+                  Trích yếu nội dung văn bản <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   required
-                  rows={3}
+                  rows={2}
                   value={editingDoc.summary || ''}
                   onChange={(e) => setEditingDoc({ ...editingDoc, summary: e.target.value })}
-                  placeholder="Nhập trích yếu nội dung văn bản..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  placeholder="Nhập tóm tắt nội dung văn bản phát hành..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Upload Scan / PDF Section */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Upload className="w-4 h-4 text-indigo-600" />
+                    <span className="font-bold text-slate-800 text-xs">
+                      Tải lên bản quét (Scan) / Tệp đính kèm từ máy tính
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Lưu trữ trực tiếp MySQL</span>
+                </div>
+
+                {/* Drag and Drop Box */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    handleFilesUpload(e.dataTransfer.files);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                    isDragging
+                      ? 'border-indigo-600 bg-indigo-50'
+                      : 'border-slate-300 bg-white hover:border-indigo-400 hover:bg-slate-50/50'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={(e) => handleFilesUpload(e.target.files)}
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                    className="hidden"
+                  />
+                  <div className="flex flex-col items-center justify-center gap-1">
+                    <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                      <Upload className="w-4 h-4" />
+                    </div>
+                    <p className="font-bold text-slate-700 text-xs">
+                      Kéo & thả file scan vào đây hoặc <span className="text-indigo-600 underline">chọn từ máy tính</span>
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      Hỗ trợ tệp PDF bản scan, hình ảnh (.png, .jpg), văn bản Word (.docx), Excel (.xlsx)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Attached files list in form */}
+                {editingDoc.attachments && editingDoc.attachments.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                      Danh sách file scan đã chọn ({editingDoc.attachments.length}):
+                    </span>
+                    {editingDoc.attachments.map((file) => (
+                      <div
+                        key={file.id}
+                        className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 pr-2">
+                          {getFileIcon(file.fileType)}
+                          <span className="font-bold text-slate-800 text-xs truncate">{file.fileName}</span>
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                            ({formatFileSize(file.fileSize)})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewFile(file);
+                              setIsPreviewOpen(true);
+                            }}
+                            className="p-1 text-slate-500 hover:text-indigo-600 rounded cursor-pointer"
+                            title="Xem thử"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(file.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                            title="Xóa tệp"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Signers & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Người soạn thảo</label>
+                  <label className="block font-bold text-slate-700 mb-1">Cán bộ soạn thảo</label>
                   <select
                     value={editingDoc.drafterId || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, drafterId: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer"
                   >
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName}
+                        {u.fullName} ({u.position || u.role})
                       </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Người ký duyệt</label>
+                  <label className="block font-bold text-slate-700 mb-1">Lãnh đạo ký duyệt</label>
                   <select
                     value={editingDoc.signerId || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, signerId: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer font-bold"
                   >
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
@@ -567,15 +1101,15 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Trạng thái phát hành</label>
+                  <label className="block font-bold text-slate-700 mb-1">Trạng thái văn bản</label>
                   <select
                     value={editingDoc.status || 'DRAFT'}
                     onChange={(e) => setEditingDoc({ ...editingDoc, status: e.target.value as OutgoingDocStatus })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold cursor-pointer"
                   >
                     <option value="DRAFT">Dự thảo</option>
                     <option value="REVIEWING">Chờ duyệt</option>
-                    <option value="SIGNED">Đã ký</option>
+                    <option value="SIGNED">Đã ký duyệt</option>
                     <option value="ISSUED">Đã phát hành</option>
                     <option value="SENT">Đã gửi đi</option>
                   </select>
@@ -583,15 +1117,15 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
               </div>
 
               {/* Link Dossier & Reply */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Gắn vào Mã Hồ Sơ</label>
                   <select
                     value={editingDoc.dossierId || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, dossierId: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer"
                   >
-                    <option value="">-- Chưa gắn hồ sơ --</option>
+                    <option value="">-- Không gắn hồ sơ --</option>
                     {dossiers.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.code} - {d.title.slice(0, 35)}...
@@ -601,35 +1135,36 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Trả lời cho Văn bản đến (nếu có)</label>
+                  <label className="block font-bold text-slate-700 mb-1">Trả lời cho Văn bản đến</label>
                   <select
                     value={editingDoc.replyToDocId || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, replyToDocId: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer"
                   >
                     <option value="">-- Không trả lời văn bản nào --</option>
                     {incomingDocs.map((inDoc) => (
                       <option key={inDoc.id} value={inDoc.id}>
-                        Số {inDoc.documentNumber} ({inDoc.issuingAuthority})
+                        Số {inDoc.documentNumber} - {inDoc.summary.slice(0, 30)}...
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
                 >
                   Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md cursor-pointer transition-all flex items-center gap-1.5"
                 >
-                  Lưu văn bản đi
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Lưu & Phát Hành Vào MySQL</span>
                 </button>
               </div>
             </form>

@@ -68,6 +68,9 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // Initial fetch directly from the server database
+    db.checkAndSyncMySql();
+
     const unsubscribe = db.subscribe(() => {
       reloadData();
     });

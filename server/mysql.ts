@@ -12,7 +12,7 @@ import {
   INITIAL_NOTIFICATIONS,
 } from '../src/data/mockData';
 
-interface DbConfig {
+export interface DbConfig {
   host: string;
   user: string;
   password?: string;
@@ -21,17 +21,44 @@ interface DbConfig {
 }
 
 let pool: mysql.Pool | null = null;
+let currentConfig: DbConfig | null = null;
 let isConnected = false;
 let connectionError: string | null = null;
 
 export function getDbConfig(): DbConfig {
-  return {
-    host: process.env.DB_HOST || process.env.MYSQL_HOST || 'localhost',
-    user: process.env.DB_USER || process.env.MYSQL_USER || 'root',
-    password: process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD || '',
-    database: process.env.DB_NAME || process.env.MYSQL_DATABASE || 'vanphong_so',
-    port: parseInt(process.env.DB_PORT || process.env.MYSQL_PORT || '3306', 10),
+  if (currentConfig) return currentConfig;
+
+  const host = (process.env.DB_HOST || process.env.MYSQL_HOST || '').trim() || 'localhost';
+  const user = (process.env.DB_USER || process.env.MYSQL_USER || '').trim() || 'root';
+  const password = (process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : (process.env.MYSQL_PASSWORD !== undefined ? process.env.MYSQL_PASSWORD : '')).trim();
+  const database = (process.env.DB_NAME || process.env.MYSQL_DATABASE || '').trim() || 'vanphong_so';
+  const rawPort = (process.env.DB_PORT || process.env.MYSQL_PORT || '').trim() || '3306';
+  const port = parseInt(rawPort, 10) || 3306;
+
+  return { host, user, password, database, port };
+}
+
+export function setDbConfig(newConfig: Partial<DbConfig>) {
+  const current = getDbConfig();
+  currentConfig = {
+    host: (newConfig.host ?? current.host).trim() || 'localhost',
+    user: (newConfig.user ?? current.user).trim() || 'root',
+    password: newConfig.password !== undefined ? newConfig.password.trim() : current.password,
+    database: (newConfig.database ?? current.database).trim() || 'vanphong_so',
+    port: Number(newConfig.port) || 3306,
   };
+  resetPool();
+}
+
+export function resetPool() {
+  if (pool) {
+    try {
+      pool.end();
+    } catch {
+      // ignore
+    }
+    pool = null;
+  }
 }
 
 export function getPool(): mysql.Pool | null {
@@ -49,6 +76,7 @@ export function getPool(): mysql.Pool | null {
       queueLimit: 0,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
+      connectTimeout: 5000,
     });
     return pool;
   } catch (err: any) {
@@ -66,7 +94,7 @@ export async function checkMySqlConnection(): Promise<{
   const config = getDbConfig();
   try {
     const p = getPool();
-    if (!p) throw new Error('Cannot create MySQL pool');
+    if (!p) throw new Error('Không thể khởi tạo kết nối MySQL Pool');
     const [rows] = (await p.query('SHOW TABLES')) as any;
     isConnected = true;
     connectionError = null;
@@ -86,11 +114,37 @@ export async function checkMySqlConnection(): Promise<{
   }
 }
 
+/**
+ * Ensures the database and all tables exist, with support for base64 avatars and long content
+ */
 export async function initTablesAndSeed(): Promise<{ success: boolean; message: string }> {
+  const config = getDbConfig();
+
+  // Step 1: Connect to server without database to create database if not exists
+  let rootConn: mysql.Connection | null = null;
+  try {
+    rootConn = await mysql.createConnection({
+      host: config.host,
+      user: config.user,
+      password: config.password,
+      port: config.port,
+      connectTimeout: 5000,
+    });
+    await rootConn.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+    await rootConn.end();
+  } catch (err: any) {
+    console.warn('Note: Could not run CREATE DATABASE on root connection, attempting pool:', err.message);
+    if (rootConn) {
+      try { await rootConn.end(); } catch {}
+    }
+  }
+
+  // Step 2: Connect via pool to target database
+  resetPool();
   const p = getPool();
   if (!p) throw new Error('Không thể kết nối MySQL pool');
 
-  // 1. Create tables
+  // Create tables
   await p.query(`
     CREATE TABLE IF NOT EXISTS departments (
       id VARCHAR(50) PRIMARY KEY,
@@ -117,7 +171,7 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
       full_name VARCHAR(255) NOT NULL,
       email VARCHAR(255) NOT NULL,
       phone VARCHAR(50),
-      avatar TEXT,
+      avatar LONGTEXT,
       department VARCHAR(255),
       department_id VARCHAR(50),
       position VARCHAR(255),
@@ -128,6 +182,11 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
       bio TEXT
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+
+  // Ensure avatar column is LONGTEXT for base64 images
+  try {
+    await p.query(`ALTER TABLE users MODIFY COLUMN avatar LONGTEXT;`);
+  } catch {}
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS dossiers (
@@ -180,6 +239,7 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
       doc_type VARCHAR(100) DEFAULT 'Công văn',
       recipient VARCHAR(255) NOT NULL,
       summary TEXT NOT NULL,
+      content LONGTEXT,
       drafter_id VARCHAR(50),
       signer_id VARCHAR(50),
       status VARCHAR(50) DEFAULT 'DRAFT',
@@ -226,7 +286,7 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
       file_name VARCHAR(255) NOT NULL,
       file_size BIGINT NOT NULL,
       file_type VARCHAR(50) NOT NULL,
-      file_url TEXT NOT NULL,
+      file_url LONGTEXT NOT NULL,
       category VARCHAR(50) NOT NULL,
       related_id VARCHAR(50),
       dossier_code VARCHAR(100),
@@ -238,13 +298,17 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
+  try {
+    await p.query(`ALTER TABLE attachments MODIFY COLUMN file_url LONGTEXT;`);
+  } catch {}
+
   await p.query(`
     CREATE TABLE IF NOT EXISTS audit_logs (
       id VARCHAR(50) PRIMARY KEY,
       timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       user_id VARCHAR(50) NOT NULL,
       user_name VARCHAR(255) NOT NULL,
-      user_avatar TEXT,
+      user_avatar LONGTEXT,
       action VARCHAR(50) NOT NULL,
       entity_type VARCHAR(50) NOT NULL,
       entity_id VARCHAR(50) NOT NULL,
@@ -252,6 +316,10 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
       details TEXT
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+
+  try {
+    await p.query(`ALTER TABLE audit_logs MODIFY COLUMN user_avatar LONGTEXT;`);
+  } catch {}
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS notifications (
@@ -267,228 +335,392 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
-  // 2. Check and Seed if empty
-  const [uRows] = (await p.query('SELECT COUNT(*) as count FROM users')) as any;
-  if (uRows[0].count === 0) {
+  // Seed default data if empty
+  const [userCount] = (await p.query('SELECT COUNT(*) as count FROM users')) as any;
+  if (userCount[0]?.count === 0) {
     for (const d of INITIAL_DEPARTMENTS) {
-      await p.query('INSERT IGNORE INTO departments (id, code, name, description, manager_id) VALUES (?, ?, ?, ?, ?)', [
-        d.id, d.code, d.name, d.description || '', d.managerId || null
-      ]);
+      await p.query(
+        'INSERT IGNORE INTO departments (id, code, name, description, manager_id) VALUES (?, ?, ?, ?, ?)',
+        [d.id, d.code, d.name, d.description || null, d.managerId || null]
+      );
     }
+
     for (const pos of INITIAL_POSITIONS) {
-      await p.query('INSERT IGNORE INTO positions (id, name, level) VALUES (?, ?, ?)', [
-        pos.id, pos.name, pos.level || 5
-      ]);
+      await p.query(
+        'INSERT IGNORE INTO positions (id, name, level) VALUES (?, ?, ?)',
+        [pos.id, pos.name, pos.level || 5]
+      );
     }
+
     for (const u of INITIAL_USERS) {
-      await p.query('INSERT IGNORE INTO users (id, username, password, full_name, email, phone, avatar, department, department_id, position, position_id, role, status, join_date, bio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-        u.id, u.username, u.password || '123', u.fullName, u.email, u.phone || '', u.avatar || '', u.department || '', u.departmentId || null, u.position || '', u.positionId || null, u.role, u.status || 'ACTIVE', u.joinDate || null, u.bio || ''
-      ]);
+      await p.query(
+        `INSERT IGNORE INTO users 
+        (id, username, password, full_name, email, phone, avatar, department, department_id, position, position_id, role, status, join_date, bio) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          u.id,
+          u.username || u.email.split('@')[0],
+          u.password || '123',
+          u.fullName,
+          u.email,
+          u.phone || null,
+          u.avatar || null,
+          u.department || null,
+          u.departmentId || null,
+          u.position || null,
+          u.positionId || null,
+          u.role || 'STAFF',
+          u.status || 'ACTIVE',
+          u.joinDate ? u.joinDate : null,
+          u.bio || null,
+        ]
+      );
     }
-    for (const dos of INITIAL_DOSSIERS) {
-      await p.query('INSERT IGNORE INTO dossiers (id, code, title, department, department_id, leader_id, manager_id, status, start_date, end_date, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-        dos.id, dos.code, dos.title, dos.department || '', dos.departmentId || null, dos.leaderId || null, dos.managerId || null, dos.status, dos.startDate, dos.endDate || null, dos.description || ''
-      ]);
+
+    for (const d of INITIAL_DOSSIERS) {
+      await p.query(
+        `INSERT IGNORE INTO dossiers 
+        (id, code, title, department, department_id, leader_id, manager_id, status, start_date, end_date, description) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          d.id,
+          d.code,
+          d.title,
+          d.department || null,
+          d.departmentId || null,
+          d.leaderId || null,
+          d.managerId || null,
+          d.status || 'IN_PROGRESS',
+          d.startDate ? d.startDate : null,
+          d.endDate ? d.endDate : null,
+          d.description || null,
+        ]
+      );
     }
-    for (const inc of INITIAL_INCOMING_DOCS) {
-      await p.query('INSERT IGNORE INTO incoming_documents (id, document_number, official_number, received_date, issue_date, issuing_authority, summary, doc_type, urgency, security_level, assignee_id, co_assignee_ids, due_date, status, result_summary, dossier_id, linked_task_ids, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-        inc.id, inc.documentNumber, inc.officialNumber || '', inc.receivedDate, inc.issueDate || null, inc.issuingAuthority, inc.summary, inc.docType, inc.urgency, inc.securityLevel, inc.assigneeId || null, JSON.stringify(inc.coAssigneeIds || []), inc.dueDate, inc.status, inc.resultSummary || '', inc.dossierId || null, JSON.stringify(inc.linkedTaskIds || []), inc.createdById || null
-      ]);
+
+    for (const doc of INITIAL_INCOMING_DOCS) {
+      await p.query(
+        `INSERT IGNORE INTO incoming_documents 
+        (id, document_number, official_number, received_date, issue_date, issuing_authority, summary, doc_type, urgency, security_level, assignee_id, co_assignee_ids, due_date, status, result_summary, dossier_id, linked_task_ids, created_by_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          doc.id,
+          doc.documentNumber,
+          doc.officialNumber || null,
+          doc.receivedDate,
+          doc.issueDate ? doc.issueDate : null,
+          doc.issuingAuthority,
+          doc.summary,
+          doc.docType || 'Công văn',
+          doc.urgency || 'THUONG',
+          doc.securityLevel || 'THUONG',
+          doc.assigneeId || null,
+          JSON.stringify(doc.coAssigneeIds || []),
+          doc.dueDate ? doc.dueDate : null,
+          doc.status || 'PROCESSING',
+          doc.resultSummary || null,
+          doc.dossierId || null,
+          JSON.stringify(doc.linkedTaskIds || []),
+          doc.createdById || null,
+        ]
+      );
     }
-    for (const out of INITIAL_OUTGOING_DOCS) {
-      await p.query('INSERT IGNORE INTO outgoing_documents (id, document_number, release_date, doc_type, recipient, summary, drafter_id, signer_id, status, dossier_id, reply_to_doc_id, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-        out.id, out.documentNumber, out.releaseDate, out.docType, out.recipient, out.summary, out.drafterId || null, out.signerId || null, out.status, out.dossierId || null, out.replyToDocId || null, out.createdById || null
-      ]);
+
+    for (const doc of INITIAL_OUTGOING_DOCS) {
+      await p.query(
+        `INSERT IGNORE INTO outgoing_documents 
+        (id, document_number, release_date, doc_type, recipient, summary, content, drafter_id, signer_id, status, dossier_id, reply_to_doc_id, created_by_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          doc.id,
+          doc.documentNumber,
+          doc.releaseDate,
+          doc.docType || 'Công văn',
+          doc.recipient,
+          doc.summary,
+          (doc as any).content || null,
+          doc.drafterId || null,
+          doc.signerId || null,
+          doc.status || 'DRAFT',
+          doc.dossierId || null,
+          doc.replyToDocId || null,
+          doc.createdById || null,
+        ]
+      );
     }
+
     for (const t of INITIAL_TASKS) {
-      await p.query('INSERT IGNORE INTO tasks (id, code, title, description, dossier_id, incoming_doc_id, linked_doc_id, doc_type_relation, creator_id, created_by_id, assignee_id, co_assignee_ids, priority, start_date, due_date, progress, status, completed_date, result_notes, sub_tasks, comments, remind_days_before) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-        t.id, t.code, t.title, t.description, t.dossierId || null, t.incomingDocId || null, t.linkedDocId || null, t.docTypeRelation || null, t.creatorId || null, t.createdById || null, t.assigneeId, JSON.stringify(t.coAssigneeIds || []), t.priority, t.startDate, t.dueDate, t.progress || 0, t.status, t.completedDate || null, t.resultNotes || '', JSON.stringify(t.subTasks || []), JSON.stringify(t.comments || []), t.remindDaysBefore || 1
-      ]);
+      await p.query(
+        `INSERT IGNORE INTO tasks 
+        (id, code, title, description, dossier_id, incoming_doc_id, linked_doc_id, doc_type_relation, creator_id, created_by_id, assignee_id, co_assignee_ids, priority, start_date, due_date, progress, status, completed_date, result_notes, sub_tasks, comments, remind_days_before) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          t.id,
+          t.code,
+          t.title,
+          t.description || null,
+          t.dossierId || null,
+          t.incomingDocId || null,
+          t.linkedDocId || null,
+          t.docTypeRelation || null,
+          t.creatorId || null,
+          t.createdById || null,
+          t.assigneeId,
+          JSON.stringify(t.coAssigneeIds || []),
+          t.priority || 'MEDIUM',
+          t.startDate,
+          t.dueDate,
+          t.progress || 0,
+          t.status || 'IN_PROGRESS',
+          t.completedDate ? t.completedDate : null,
+          t.resultNotes || null,
+          JSON.stringify(t.subTasks || []),
+          JSON.stringify(t.comments || []),
+          t.remindDaysBefore || 1,
+        ]
+      );
     }
+
     for (const a of INITIAL_ATTACHMENTS) {
-      await p.query('INSERT IGNORE INTO attachments (id, file_name, file_size, file_type, file_url, category, related_id, dossier_code, dossier_id, uploaded_by_id, uploaded_by_name, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-        a.id, a.fileName, a.fileSize || 0, a.fileType || '', a.fileUrl || '', a.category, a.relatedId || null, a.dossierCode || '', a.dossierId || null, a.uploadedById || '', a.uploadedByName || '', JSON.stringify(a.tags || [])
-      ]);
+      await p.query(
+        `INSERT IGNORE INTO attachments 
+        (id, file_name, file_size, file_type, file_url, category, related_id, dossier_code, dossier_id, uploaded_by_id, uploaded_by_name, tags) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          a.id,
+          a.fileName,
+          a.fileSize,
+          a.fileType,
+          a.fileUrl,
+          a.category,
+          a.relatedId || null,
+          a.dossierCode || null,
+          a.dossierId || null,
+          a.uploadedById,
+          a.uploadedByName,
+          JSON.stringify(a.tags || []),
+        ]
+      );
     }
-    for (const l of INITIAL_AUDIT_LOGS) {
-      await p.query('INSERT IGNORE INTO audit_logs (id, user_id, user_name, user_avatar, action, entity_type, entity_id, entity_title, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-        l.id, l.userId || '', l.userName, l.userAvatar || '', l.action, l.entityType, l.entityId, l.entityTitle, l.details
-      ]);
+
+    for (const log of INITIAL_AUDIT_LOGS) {
+      await p.query(
+        `INSERT IGNORE INTO audit_logs 
+        (id, user_id, user_name, user_avatar, action, entity_type, entity_id, entity_title, details) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          log.id,
+          log.userId,
+          log.userName,
+          log.userAvatar || null,
+          log.action,
+          log.entityType,
+          log.entityId,
+          log.entityTitle,
+          log.details || null,
+        ]
+      );
     }
+
     for (const n of INITIAL_NOTIFICATIONS) {
-      await p.query('INSERT IGNORE INTO notifications (id, user_id, title, message, type, link_type, target_id, is_read) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
-        n.id, n.userId || '', n.title, n.message, n.type, n.linkType || null, n.targetId || null, n.isRead ? 1 : 0
-      ]);
+      await p.query(
+        `INSERT IGNORE INTO notifications 
+        (id, user_id, title, message, type, link_type, target_id, is_read) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          n.id,
+          n.userId,
+          n.title,
+          n.message,
+          n.type,
+          n.linkType || null,
+          n.targetId || null,
+          n.isRead ? 1 : 0,
+        ]
+      );
     }
   }
 
-  return { success: true, message: 'Đã khởi tạo bảng và dữ liệu MySQL thành công' };
+  return { success: true, message: 'Đã khởi tạo thành công cấu trúc CSDL và nạp dữ liệu mẫu!' };
 }
 
-// Map helper to parse JSON fields safely
-const parseJson = (val: any, fallback: any = []) => {
-  if (!val) return fallback;
-  if (typeof val === 'object') return val;
+function parseJson(str: any, fallback: any) {
+  if (!str) return fallback;
+  if (typeof str === 'object') return str;
   try {
-    return JSON.parse(val);
+    return JSON.parse(str);
   } catch {
     return fallback;
   }
-};
+}
 
-const formatDate = (val: any) => {
-  if (!val) return undefined;
-  if (val instanceof Date) return val.toISOString().split('T')[0];
-  return String(val).split('T')[0];
-};
+function formatDate(val: any): string {
+  if (!val) return '';
+  if (typeof val === 'string') {
+    return val.substring(0, 10);
+  }
+  if (val instanceof Date) {
+    return val.toISOString().substring(0, 10);
+  }
+  return '';
+}
 
 export async function fetchAllDataFromMySql() {
   const p = getPool();
   if (!p) throw new Error('MySQL Pool không khả dụng');
 
   const [departments] = (await p.query('SELECT * FROM departments')) as any[];
+  const [positions] = (await p.query('SELECT * FROM positions ORDER BY level ASC')) as any[];
   const [users] = (await p.query('SELECT * FROM users')) as any[];
   const [dossiers] = (await p.query('SELECT * FROM dossiers ORDER BY created_at DESC')) as any[];
   const [incomingDocs] = (await p.query('SELECT * FROM incoming_documents ORDER BY received_date DESC')) as any[];
   const [outgoingDocs] = (await p.query('SELECT * FROM outgoing_documents ORDER BY release_date DESC')) as any[];
   const [tasks] = (await p.query('SELECT * FROM tasks ORDER BY due_date ASC')) as any[];
   const [attachments] = (await p.query('SELECT * FROM attachments ORDER BY uploaded_at DESC')) as any[];
-  const [auditLogs] = (await p.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100')) as any[];
-  const [notifications] = (await p.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50')) as any[];
+  const [auditLogs] = (await p.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 200')) as any[];
+  const [notifications] = (await p.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 100')) as any[];
 
-  return {
-    departments: departments.map((d: any) => ({
-      id: d.id,
-      code: d.code,
-      name: d.name,
-      description: d.description,
-      managerId: d.manager_id,
-    })),
-    users: users.map((u: any) => ({
-      id: u.id,
-      username: u.username || u.email.split('@')[0],
-      password: u.password || '123',
-      fullName: u.full_name,
-      email: u.email,
-      phone: u.phone,
-      avatar: u.avatar,
-      department: u.department,
-      departmentId: u.department_id,
-      position: u.position,
-      positionId: u.position_id,
-      role: u.role,
-      status: u.status,
-      joinDate: formatDate(u.join_date),
-      bio: u.bio,
-    })),
-    dossiers: dossiers.map((d: any) => ({
-      id: d.id,
-      code: d.code,
-      title: d.title,
-      department: d.department,
-      departmentId: d.department_id,
-      leaderId: d.leader_id,
-      managerId: d.manager_id,
-      status: d.status,
-      startDate: formatDate(d.start_date),
-      endDate: formatDate(d.end_date),
-      description: d.description,
-      createdAt: d.created_at,
-      updatedAt: d.updated_at,
-    })),
-    incomingDocs: incomingDocs.map((doc: any) => ({
-      id: doc.id,
-      documentNumber: doc.document_number,
-      officialNumber: doc.official_number,
-      receivedDate: formatDate(doc.received_date),
-      issueDate: formatDate(doc.issue_date),
-      issuingAuthority: doc.issuing_authority,
-      summary: doc.summary,
-      docType: doc.doc_type,
-      urgency: doc.urgency,
-      securityLevel: doc.security_level,
-      assigneeId: doc.assignee_id,
-      coAssigneeIds: parseJson(doc.co_assignee_ids, []),
-      dueDate: formatDate(doc.due_date),
-      status: doc.status,
-      resultSummary: doc.result_summary,
-      dossierId: doc.dossier_id,
-      linkedTaskIds: parseJson(doc.linked_task_ids, []),
-      attachments: [],
-      createdById: doc.created_by_id,
-      createdAt: doc.created_at,
-      updatedAt: doc.updated_at,
-    })),
-    outgoingDocs: outgoingDocs.map((doc: any) => ({
-      id: doc.id,
-      documentNumber: doc.document_number,
-      releaseDate: formatDate(doc.release_date),
-      docType: doc.doc_type,
-      recipient: doc.recipient,
-      summary: doc.summary,
-      drafterId: doc.drafter_id,
-      signerId: doc.signer_id,
-      status: doc.status,
-      dossierId: doc.dossier_id,
-      replyToDocId: doc.reply_to_doc_id,
-      attachments: [],
-      createdById: doc.created_by_id,
-      createdAt: doc.created_at,
-      updatedAt: doc.updated_at,
-    })),
-    tasks: tasks.map((t: any) => ({
-      id: t.id,
-      code: t.code,
-      title: t.title,
-      description: t.description,
-      dossierId: t.dossier_id,
-      incomingDocId: t.incoming_doc_id,
-      linkedDocId: t.linked_doc_id,
-      docTypeRelation: t.doc_type_relation,
-      creatorId: t.creator_id,
-      createdById: t.created_by_id,
-      assigneeId: t.assignee_id,
-      coAssigneeIds: parseJson(t.co_assignee_ids, []),
-      priority: t.priority,
-      startDate: formatDate(t.start_date),
-      dueDate: formatDate(t.due_date),
-      progress: t.progress,
-      status: t.status,
-      completedDate: formatDate(t.completed_date),
-      resultNotes: t.result_notes,
-      subTasks: parseJson(t.sub_tasks, []),
-      attachments: [],
-      comments: parseJson(t.comments, []),
-      remindDaysBefore: t.remind_days_before,
-      createdAt: t.created_at,
-      updatedAt: t.updated_at,
-    })),
-    attachments: attachments.map((a: any) => ({
+    const mappedAttachments = attachments.map((a: any) => ({
       id: a.id,
       fileName: a.file_name,
-      fileSize: Number(a.file_size),
-      fileType: a.file_type,
-      fileUrl: a.file_url,
-      category: a.category,
-      relatedId: a.related_id,
-      dossierCode: a.dossier_code,
-      dossierId: a.dossier_id,
-      uploadedById: a.uploaded_by_id,
-      uploadedByName: a.uploaded_by_name,
+      fileSize: Number(a.file_size) || 0,
+      fileType: a.file_type || 'file',
+      fileUrl: a.file_url || '',
+      category: a.category || 'KHAC',
+      relatedId: a.related_id || '',
+      dossierCode: a.dossier_code || '',
+      dossierId: a.dossier_id || '',
+      uploadedById: a.uploaded_by_id || '',
+      uploadedByName: a.uploaded_by_name || '',
       uploadedAt: a.uploaded_at,
       tags: parseJson(a.tags, []),
-    })),
-    auditLogs: auditLogs.map((l: any) => ({
+    }));
+
+    return {
+      departments: departments.map((d: any) => ({
+        id: d.id,
+        code: d.code,
+        name: d.name,
+        description: d.description || '',
+        managerId: d.manager_id || undefined,
+      })),
+      positions: positions.map((pos: any) => ({
+        id: pos.id,
+        name: pos.name,
+        level: pos.level,
+      })),
+      users: users.map((u: any) => ({
+        id: u.id,
+        username: u.username || u.email.split('@')[0],
+        password: u.password || '123',
+        fullName: u.full_name,
+        email: u.email,
+        phone: u.phone || '',
+        avatar: u.avatar || '',
+        department: u.department || '',
+        departmentId: u.department_id || '',
+        position: u.position || '',
+        positionId: u.position_id || '',
+        role: u.role || 'STAFF',
+        status: u.status || 'ACTIVE',
+        joinDate: formatDate(u.join_date),
+        bio: u.bio || '',
+      })),
+      dossiers: dossiers.map((d: any) => ({
+        id: d.id,
+        code: d.code,
+        title: d.title,
+        department: d.department || '',
+        departmentId: d.department_id || '',
+        leaderId: d.leader_id || '',
+        managerId: d.manager_id || '',
+        status: d.status || 'IN_PROGRESS',
+        startDate: formatDate(d.start_date),
+        endDate: formatDate(d.end_date),
+        description: d.description || '',
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+      })),
+      incomingDocs: incomingDocs.map((doc: any) => ({
+        id: doc.id,
+        documentNumber: doc.document_number,
+        officialNumber: doc.official_number || '',
+        receivedDate: formatDate(doc.received_date),
+        issueDate: formatDate(doc.issue_date),
+        issuingAuthority: doc.issuing_authority,
+        summary: doc.summary,
+        docType: doc.doc_type || 'Công văn',
+        urgency: doc.urgency || 'THUONG',
+        securityLevel: doc.security_level || 'THUONG',
+        assigneeId: doc.assignee_id || '',
+        coAssigneeIds: parseJson(doc.co_assignee_ids, []),
+        dueDate: formatDate(doc.due_date),
+        status: doc.status || 'PROCESSING',
+        resultSummary: doc.result_summary || '',
+        dossierId: doc.dossier_id || '',
+        linkedTaskIds: parseJson(doc.linked_task_ids, []),
+        attachments: mappedAttachments.filter((a: any) => a.relatedId === doc.id),
+        createdById: doc.created_by_id || '',
+        createdAt: doc.created_at,
+        updatedAt: doc.updated_at,
+      })),
+      outgoingDocs: outgoingDocs.map((doc: any) => ({
+        id: doc.id,
+        documentNumber: doc.document_number,
+        releaseDate: formatDate(doc.release_date),
+        docType: doc.doc_type || 'Công văn',
+        recipient: doc.recipient,
+        summary: doc.summary,
+        content: doc.content || '',
+        drafterId: doc.drafter_id || '',
+        signerId: doc.signer_id || '',
+        status: doc.status || 'DRAFT',
+        dossierId: doc.dossier_id || '',
+        replyToDocId: doc.reply_to_doc_id || '',
+        attachments: mappedAttachments.filter((a: any) => a.relatedId === doc.id),
+        createdById: doc.created_by_id || '',
+        createdAt: doc.created_at,
+        updatedAt: doc.updated_at,
+      })),
+      tasks: tasks.map((t: any) => ({
+        id: t.id,
+        code: t.code,
+        title: t.title,
+        description: t.description || '',
+        dossierId: t.dossier_id || '',
+        incomingDocId: t.incoming_doc_id || '',
+        linkedDocId: t.linked_doc_id || '',
+        docTypeRelation: t.doc_type_relation || undefined,
+        creatorId: t.creator_id || '',
+        createdById: t.created_by_id || '',
+        assigneeId: t.assignee_id,
+        coAssigneeIds: parseJson(t.co_assignee_ids, []),
+        priority: t.priority || 'MEDIUM',
+        startDate: formatDate(t.start_date),
+        dueDate: formatDate(t.due_date),
+        progress: t.progress || 0,
+        status: t.status || 'IN_PROGRESS',
+        completedDate: formatDate(t.completed_date),
+        resultNotes: t.result_notes || '',
+        subTasks: parseJson(t.sub_tasks, []),
+        attachments: mappedAttachments.filter((a: any) => a.relatedId === t.id),
+        comments: parseJson(t.comments, []),
+        remindDaysBefore: t.remind_days_before || 1,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+      })),
+      attachments: mappedAttachments,
+      auditLogs: auditLogs.map((l: any) => ({
       id: l.id,
       timestamp: l.timestamp,
       userId: l.user_id,
       userName: l.user_name,
-      userAvatar: l.user_avatar,
+      userAvatar: l.user_avatar || '',
       action: l.action,
       entityType: l.entity_type,
       entityId: l.entity_id,
       entityTitle: l.entity_title,
-      details: l.details,
+      details: l.details || '',
     })),
     notifications: notifications.map((n: any) => ({
       id: n.id,
@@ -496,8 +728,8 @@ export async function fetchAllDataFromMySql() {
       title: n.title,
       message: n.message,
       type: n.type,
-      linkType: n.link_type,
-      targetId: n.target_id,
+      linkType: n.link_type || undefined,
+      targetId: n.target_id || undefined,
       isRead: Boolean(n.is_read),
       createdAt: n.created_at,
     })),

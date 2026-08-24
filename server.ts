@@ -1,34 +1,53 @@
 import express from 'express';
 import { GoogleGenAI } from '@google/genai';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import {
   checkMySqlConnection,
   initTablesAndSeed,
   fetchAllDataFromMySql,
   getPool,
+  getDbConfig,
+  setDbConfig,
 } from './server/mysql';
+import {
+  loadStore,
+  saveStore,
+  syncStoreWithMySql,
+} from './server/store';
 import { INITIAL_USERS } from './src/data/mockData';
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Helper to safely run DB queries without throwing unhandled connection errors if MySQL is offline
-async function safeDbRun(fn: (pool: any) => Promise<any>): Promise<boolean> {
+// Helper to safely run DB queries with detailed logging
+async function safeDbRun(fn: (pool: any) => Promise<any>): Promise<{ success: boolean; error?: string; fromDb: boolean }> {
   try {
     const pool = getPool();
-    if (!pool) return false;
+    if (!pool) {
+      return { success: false, error: 'Chưa kết nối MySQL', fromDb: false };
+    }
     await fn(pool);
-    return true;
+    return { success: true, fromDb: true };
   } catch (err: any) {
-    // If MySQL connection error or offline, handle silently so client isn't blocked
-    return false;
+    console.error('[MySQL Execution Error]:', err?.message || err);
+    return { success: false, error: err?.message || 'Lỗi truy vấn CSDL', fromDb: false };
   }
 }
+
+// Auto-sync store on boot
+syncStoreWithMySql().then(({ connected }) => {
+  console.log(`[Database Boot Status]: MySQL Connected = ${connected}`);
+});
 
 // Lazy Google GenAI Client
 let aiClient: GoogleGenAI | null = null;
@@ -43,14 +62,13 @@ function getAIClient(): GoogleGenAI {
   return aiClient;
 }
 
-// Helper to call Gemini with automatic model fallback and retry for transient errors (503/429)
+// Helper to call Gemini with automatic model fallback and retry
 async function generateGeminiContent(options: { prompt: string; jsonMode?: boolean }): Promise<string> {
   const ai = getAIClient();
-  const models = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.7-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-pro'];
   let lastError: any = null;
 
   for (const model of models) {
-    // Try up to 2 attempts per model in case of temporary 503 spike
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const response = await ai.models.generateContent({
@@ -64,11 +82,9 @@ async function generateGeminiContent(options: { prompt: string; jsonMode?: boole
       } catch (err: any) {
         lastError = err;
         console.warn(`[Gemini] Model ${model} (attempt ${attempt}) encountered error:`, err?.message || err);
-        // If 503 (high demand) or 429, wait 600ms before retrying or switching
         if (err?.message?.includes('503') || err?.status === 'UNAVAILABLE' || err?.message?.includes('429')) {
           await new Promise((r) => setTimeout(r, 600));
         } else {
-          // If 404 or other permanent error, break attempt loop immediately and try next model
           break;
         }
       }
@@ -79,10 +95,10 @@ async function generateGeminiContent(options: { prompt: string; jsonMode?: boole
 }
 
 // ==========================================
-// 0. MYSQL DATABASE & SYNC API ROUTES
+// 0. MYSQL DATABASE & CONFIG API ROUTES
 // ==========================================
 
-// Kiểm tra trạng thái kết nối MySQL
+// Lấy cấu hình và trạng thái kết nối MySQL
 app.get('/api/db-status', async (_req, res) => {
   try {
     const status = await checkMySqlConnection();
@@ -90,8 +106,34 @@ app.get('/api/db-status', async (_req, res) => {
   } catch (error: any) {
     res.json({
       connected: false,
+      config: getDbConfig(),
       error: error.message,
     });
+  }
+});
+
+// Cập nhật cấu hình MySQL động (Host, Port, User, Password, DB Name)
+app.post('/api/db-config', async (req, res) => {
+  try {
+    const { host, port, user, password, database } = req.body;
+    setDbConfig({
+      host,
+      port: Number(port) || 3306,
+      user,
+      password: password !== undefined ? password : '',
+      database,
+    });
+    const status = await checkMySqlConnection();
+    if (status.connected) {
+      await syncStoreWithMySql();
+    }
+    res.json({
+      success: status.connected,
+      status,
+      message: status.connected ? 'Kết nối MySQL thành công và đã đồng bộ CSDL!' : `Không thể kết nối: ${status.error}`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -99,6 +141,7 @@ app.get('/api/db-status', async (_req, res) => {
 app.post('/api/init-db', async (_req, res) => {
   try {
     const result = await initTablesAndSeed();
+    await syncStoreWithMySql();
     res.json(result);
   } catch (error: any) {
     console.error('Init DB error:', error);
@@ -106,43 +149,256 @@ app.post('/api/init-db', async (_req, res) => {
   }
 });
 
-// Lấy toàn bộ dữ liệu từ MySQL (hoặc khởi tạo nếu chưa có)
+// Lấy toàn bộ dữ liệu từ MySQL & Store
 app.get('/api/sync-all', async (_req, res) => {
   try {
-    const status = await checkMySqlConnection();
-    if (!status.connected) {
-      return res.json({
-        connected: false,
-        message: 'MySQL chưa bật hoặc chưa tạo Database, đang dùng local cache.',
-        data: null,
-      });
-    }
-
-    // Nếu bảng chưa có, tự động tạo và seed
-    if ((status.tablesCount || 0) < 5) {
-      await initTablesAndSeed();
-    }
-
-    const data = await fetchAllDataFromMySql();
+    const syncResult = await syncStoreWithMySql();
     res.json({
-      connected: true,
-      data,
+      connected: syncResult.connected,
+      data: syncResult.data,
+      message: syncResult.connected
+        ? 'Dữ liệu được tải trực tiếp từ MySQL thành công!'
+        : 'Dữ liệu được tải từ kho lưu trữ CSDL của máy chủ',
     });
   } catch (error: any) {
     console.error('Sync MySQL error:', error);
+    const store = loadStore();
     res.json({
       connected: false,
       error: error.message,
-      data: null,
+      data: store,
     });
   }
 });
 
-// --- CRUD: VĂN BẢN ĐẾN (incoming_documents) ---
+// Helper to sanitize dates for MySQL (empty string -> null)
+function sanitizeDate(dateStr: any): string | null {
+  if (!dateStr || String(dateStr).trim() === '') return null;
+  const s = String(dateStr).trim();
+  if (s.length >= 10) return s.substring(0, 10);
+  return s;
+}
+
+// ==========================================
+// 1. GET ALL ENTITY APIS (DIRECT FROM DB)
+// ==========================================
+app.get('/api/users', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.users, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().users, connected: false });
+  }
+});
+
+app.get('/api/incoming-docs', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.incomingDocs, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().incomingDocs, connected: false });
+  }
+});
+
+app.get('/api/outgoing-docs', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.outgoingDocs, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().outgoingDocs, connected: false });
+  }
+});
+
+app.get('/api/tasks', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.tasks, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().tasks, connected: false });
+  }
+});
+
+app.get('/api/dossiers', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.dossiers, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().dossiers, connected: false });
+  }
+});
+
+app.get('/api/attachments', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.attachments, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().attachments, connected: false });
+  }
+});
+
+app.get('/api/departments', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.departments, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().departments, connected: false });
+  }
+});
+
+app.get('/api/positions', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.positions, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().positions, connected: false });
+  }
+});
+
+app.get('/api/audit-logs', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.auditLogs, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().auditLogs, connected: false });
+  }
+});
+
+app.get('/api/notifications', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    res.json({ success: true, data: sync.data.notifications, connected: sync.connected });
+  } catch (e: any) {
+    res.json({ success: true, data: loadStore().notifications, connected: false });
+  }
+});
+
+// ==========================================
+// 2. CRUD: NGƯỜI DÙNG & CÁN BỘ (users)
+// ==========================================
+app.post('/api/users', async (req, res) => {
+  try {
+    const u = req.body;
+    if (!u.id || !u.fullName || !u.email) {
+      return res.status(400).json({ success: false, error: 'Thiếu thông tin người dùng bắt buộc' });
+    }
+
+    // Update persistent store
+    const store = loadStore();
+    const existingIdx = store.users.findIndex((x) => x.id === u.id);
+    if (existingIdx >= 0) {
+      store.users[existingIdx] = { ...store.users[existingIdx], ...u };
+    } else {
+      store.users.unshift(u);
+    }
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
+      await pool.query(
+        `INSERT INTO users 
+        (id, username, password, full_name, email, phone, avatar, department, department_id, position, position_id, role, status, join_date, bio) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+        username=VALUES(username), password=VALUES(password), full_name=VALUES(full_name), email=VALUES(email), phone=VALUES(phone), avatar=VALUES(avatar), department=VALUES(department), department_id=VALUES(department_id), position=VALUES(position), position_id=VALUES(position_id), role=VALUES(role), status=VALUES(status), join_date=VALUES(join_date), bio=VALUES(bio)`,
+        [
+          u.id,
+          u.username || u.email.split('@')[0] || u.id,
+          u.password || '123',
+          u.fullName,
+          u.email,
+          u.phone || null,
+          u.avatar || null,
+          u.department || null,
+          u.departmentId || null,
+          u.position || null,
+          u.positionId || null,
+          u.role || 'STAFF',
+          u.status || 'ACTIVE',
+          sanitizeDate(u.joinDate),
+          u.bio || null,
+        ]
+      );
+    });
+
+    res.json({ success: true, user: u, fromDb: dbResult.fromDb, error: dbResult.error });
+  } catch (error: any) {
+    console.error('Error saving user:', error);
+    res.status(500).json({ success: false, error: error.message, user: req.body });
+  }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const u = req.body;
+
+    const store = loadStore();
+    const existingIdx = store.users.findIndex((x) => x.id === id);
+    if (existingIdx >= 0) {
+      store.users[existingIdx] = { ...store.users[existingIdx], ...u };
+    } else {
+      store.users.unshift(u);
+    }
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
+      await pool.query(
+        `UPDATE users SET 
+        username=?, password=?, full_name=?, email=?, phone=?, avatar=?, department=?, department_id=?, position=?, position_id=?, role=?, status=?, join_date=?, bio=?
+        WHERE id=?`,
+        [
+          u.username || u.email?.split('@')[0] || id,
+          u.password || '123',
+          u.fullName,
+          u.email,
+          u.phone || null,
+          u.avatar || null,
+          u.department || null,
+          u.departmentId || null,
+          u.position || null,
+          u.positionId || null,
+          u.role || 'STAFF',
+          u.status || 'ACTIVE',
+          sanitizeDate(u.joinDate),
+          u.bio || null,
+          id,
+        ]
+      );
+    });
+    res.json({ success: true, user: u, fromDb: dbResult.fromDb, error: dbResult.error });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message, user: req.body });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const store = loadStore();
+    store.users = store.users.filter((u) => u.id !== id);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
+      await pool.query('DELETE FROM users WHERE id=?', [id]);
+    });
+    res.json({ success: true, id, fromDb: dbResult.fromDb });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message, id: req.params.id });
+  }
+});
+
+// ==========================================
+// 3. CRUD: VĂN BẢN ĐẾN (incoming_documents)
+// ==========================================
 app.post('/api/incoming-docs', async (req, res) => {
   try {
     const doc = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.incomingDocs.findIndex((d) => d.id === doc.id);
+    if (idx >= 0) store.incomingDocs[idx] = { ...store.incomingDocs[idx], ...doc };
+    else store.incomingDocs.unshift(doc);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `INSERT INTO incoming_documents 
         (id, document_number, official_number, received_date, issue_date, issuing_authority, summary, doc_type, urgency, security_level, assignee_id, co_assignee_ids, due_date, status, result_summary, dossier_id, linked_task_ids, created_by_id) 
@@ -152,9 +408,9 @@ app.post('/api/incoming-docs', async (req, res) => {
         [
           doc.id,
           doc.documentNumber,
-          doc.officialNumber || '',
-          doc.receivedDate,
-          doc.issueDate || null,
+          doc.officialNumber || null,
+          sanitizeDate(doc.receivedDate) || new Date().toISOString().substring(0, 10),
+          sanitizeDate(doc.issueDate),
           doc.issuingAuthority,
           doc.summary,
           doc.docType || 'Công văn',
@@ -162,16 +418,16 @@ app.post('/api/incoming-docs', async (req, res) => {
           doc.securityLevel || 'THUONG',
           doc.assigneeId || null,
           JSON.stringify(doc.coAssigneeIds || []),
-          doc.dueDate,
+          sanitizeDate(doc.dueDate),
           doc.status || 'PROCESSING',
-          doc.resultSummary || '',
+          doc.resultSummary || null,
           doc.dossierId || null,
           JSON.stringify(doc.linkedTaskIds || []),
           doc.createdById || null,
         ]
       );
     });
-    res.json({ success: true, doc });
+    res.json({ success: true, doc, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, doc: req.body });
   }
@@ -181,33 +437,39 @@ app.put('/api/incoming-docs/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const doc = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.incomingDocs.findIndex((d) => d.id === id);
+    if (idx >= 0) store.incomingDocs[idx] = { ...store.incomingDocs[idx], ...doc };
+    else store.incomingDocs.unshift(doc);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `UPDATE incoming_documents SET 
         document_number=?, official_number=?, received_date=?, issue_date=?, issuing_authority=?, summary=?, doc_type=?, urgency=?, security_level=?, assignee_id=?, co_assignee_ids=?, due_date=?, status=?, result_summary=?, dossier_id=?, linked_task_ids=?
         WHERE id=?`,
         [
           doc.documentNumber,
-          doc.officialNumber || '',
-          doc.receivedDate,
-          doc.issueDate || null,
+          doc.officialNumber || null,
+          sanitizeDate(doc.receivedDate) || new Date().toISOString().substring(0, 10),
+          sanitizeDate(doc.issueDate),
           doc.issuingAuthority,
           doc.summary,
-          doc.docType,
-          doc.urgency,
-          doc.securityLevel,
+          doc.docType || 'Công văn',
+          doc.urgency || 'THUONG',
+          doc.securityLevel || 'THUONG',
           doc.assigneeId || null,
           JSON.stringify(doc.coAssigneeIds || []),
-          doc.dueDate,
-          doc.status,
-          doc.resultSummary || '',
+          sanitizeDate(doc.dueDate),
+          doc.status || 'PROCESSING',
+          doc.resultSummary || null,
           doc.dossierId || null,
           JSON.stringify(doc.linkedTaskIds || []),
           id,
         ]
       );
     });
-    res.json({ success: true, doc });
+    res.json({ success: true, doc, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, doc: req.body });
   }
@@ -216,33 +478,46 @@ app.put('/api/incoming-docs/:id', async (req, res) => {
 app.delete('/api/incoming-docs/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    store.incomingDocs = store.incomingDocs.filter((d) => d.id !== id);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query('DELETE FROM incoming_documents WHERE id=?', [id]);
     });
-    res.json({ success: true, id });
+    res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
     res.json({ success: true, id: req.params.id });
   }
 });
 
-// --- CRUD: VĂN BẢN ĐI (outgoing_documents) ---
+// ==========================================
+// 4. CRUD: VĂN BẢN ĐI (outgoing_documents)
+// ==========================================
 app.post('/api/outgoing-docs', async (req, res) => {
   try {
     const doc = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.outgoingDocs.findIndex((d) => d.id === doc.id);
+    if (idx >= 0) store.outgoingDocs[idx] = { ...store.outgoingDocs[idx], ...doc };
+    else store.outgoingDocs.unshift(doc);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `INSERT INTO outgoing_documents 
-        (id, document_number, release_date, doc_type, recipient, summary, drafter_id, signer_id, status, dossier_id, reply_to_doc_id, created_by_id) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, document_number, release_date, doc_type, recipient, summary, content, drafter_id, signer_id, status, dossier_id, reply_to_doc_id, created_by_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
-        document_number=VALUES(document_number), release_date=VALUES(release_date), doc_type=VALUES(doc_type), recipient=VALUES(recipient), summary=VALUES(summary), drafter_id=VALUES(drafter_id), signer_id=VALUES(signer_id), status=VALUES(status), dossier_id=VALUES(dossier_id), reply_to_doc_id=VALUES(reply_to_doc_id)`,
+        document_number=VALUES(document_number), release_date=VALUES(release_date), doc_type=VALUES(doc_type), recipient=VALUES(recipient), summary=VALUES(summary), content=VALUES(content), drafter_id=VALUES(drafter_id), signer_id=VALUES(signer_id), status=VALUES(status), dossier_id=VALUES(dossier_id), reply_to_doc_id=VALUES(reply_to_doc_id)`,
         [
           doc.id,
           doc.documentNumber,
-          doc.releaseDate,
+          sanitizeDate(doc.releaseDate) || new Date().toISOString().substring(0, 10),
           doc.docType || 'Công văn',
           doc.recipient,
           doc.summary,
+          doc.content || null,
           doc.drafterId || null,
           doc.signerId || null,
           doc.status || 'DRAFT',
@@ -252,7 +527,7 @@ app.post('/api/outgoing-docs', async (req, res) => {
         ]
       );
     });
-    res.json({ success: true, doc });
+    res.json({ success: true, doc, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, doc: req.body });
   }
@@ -262,27 +537,34 @@ app.put('/api/outgoing-docs/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const doc = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.outgoingDocs.findIndex((d) => d.id === id);
+    if (idx >= 0) store.outgoingDocs[idx] = { ...store.outgoingDocs[idx], ...doc };
+    else store.outgoingDocs.unshift(doc);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `UPDATE outgoing_documents SET 
-        document_number=?, release_date=?, doc_type=?, recipient=?, summary=?, drafter_id=?, signer_id=?, status=?, dossier_id=?, reply_to_doc_id=?
+        document_number=?, release_date=?, doc_type=?, recipient=?, summary=?, content=?, drafter_id=?, signer_id=?, status=?, dossier_id=?, reply_to_doc_id=?
         WHERE id=?`,
         [
           doc.documentNumber,
-          doc.releaseDate,
-          doc.docType,
+          sanitizeDate(doc.releaseDate) || new Date().toISOString().substring(0, 10),
+          doc.docType || 'Công văn',
           doc.recipient,
           doc.summary,
+          doc.content || null,
           doc.drafterId || null,
           doc.signerId || null,
-          doc.status,
+          doc.status || 'DRAFT',
           doc.dossierId || null,
           doc.replyToDocId || null,
           id,
         ]
       );
     });
-    res.json({ success: true, doc });
+    res.json({ success: true, doc, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, doc: req.body });
   }
@@ -291,20 +573,32 @@ app.put('/api/outgoing-docs/:id', async (req, res) => {
 app.delete('/api/outgoing-docs/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    store.outgoingDocs = store.outgoingDocs.filter((d) => d.id !== id);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query('DELETE FROM outgoing_documents WHERE id=?', [id]);
     });
-    res.json({ success: true, id });
+    res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
     res.json({ success: true, id: req.params.id });
   }
 });
 
-// --- CRUD: CÔNG VIỆC / NHIỆM VỤ (tasks) ---
+// ==========================================
+// 5. CRUD: CÔNG VIỆC / NHIỆM VỤ (tasks)
+// ==========================================
 app.post('/api/tasks', async (req, res) => {
   try {
     const t = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.tasks.findIndex((x) => x.id === t.id);
+    if (idx >= 0) store.tasks[idx] = { ...store.tasks[idx], ...t };
+    else store.tasks.unshift(t);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `INSERT INTO tasks 
         (id, code, title, description, dossier_id, incoming_doc_id, linked_doc_id, doc_type_relation, creator_id, created_by_id, assignee_id, co_assignee_ids, priority, start_date, due_date, progress, status, completed_date, result_notes, sub_tasks, comments, remind_days_before) 
@@ -315,7 +609,7 @@ app.post('/api/tasks', async (req, res) => {
           t.id,
           t.code,
           t.title,
-          t.description,
+          t.description || null,
           t.dossierId || null,
           t.incomingDocId || null,
           t.linkedDocId || null,
@@ -325,19 +619,19 @@ app.post('/api/tasks', async (req, res) => {
           t.assigneeId,
           JSON.stringify(t.coAssigneeIds || []),
           t.priority || 'MEDIUM',
-          t.startDate,
-          t.dueDate,
+          sanitizeDate(t.startDate) || new Date().toISOString().substring(0, 10),
+          sanitizeDate(t.dueDate) || new Date().toISOString().substring(0, 10),
           t.progress || 0,
           t.status || 'IN_PROGRESS',
-          t.completedDate || null,
-          t.resultNotes || '',
+          sanitizeDate(t.completedDate),
+          t.resultNotes || null,
           JSON.stringify(t.subTasks || []),
           JSON.stringify(t.comments || []),
           t.remindDaysBefore || 1,
         ]
       );
     });
-    res.json({ success: true, task: t });
+    res.json({ success: true, task: t, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, task: req.body });
   }
@@ -347,29 +641,34 @@ app.put('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const t = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.tasks.findIndex((x) => x.id === id);
+    if (idx >= 0) store.tasks[idx] = { ...store.tasks[idx], ...t };
+    else store.tasks.unshift(t);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `UPDATE tasks SET 
-        code=?, title=?, description=?, dossier_id=?, incoming_doc_id=?, linked_doc_id=?, doc_type_relation=?, creator_id=?, assignee_id=?, co_assignee_ids=?, priority=?, start_date=?, due_date=?, progress=?, status=?, completed_date=?, result_notes=?, sub_tasks=?, comments=?, remind_days_before=?
+        code=?, title=?, description=?, dossier_id=?, incoming_doc_id=?, linked_doc_id=?, doc_type_relation=?, assignee_id=?, co_assignee_ids=?, priority=?, start_date=?, due_date=?, progress=?, status=?, completed_date=?, result_notes=?, sub_tasks=?, comments=?, remind_days_before=?
         WHERE id=?`,
         [
           t.code,
           t.title,
-          t.description,
+          t.description || null,
           t.dossierId || null,
           t.incomingDocId || null,
           t.linkedDocId || null,
           t.docTypeRelation || null,
-          t.creatorId || null,
           t.assigneeId,
           JSON.stringify(t.coAssigneeIds || []),
-          t.priority,
-          t.startDate,
-          t.dueDate,
-          t.progress,
-          t.status,
-          t.completedDate || null,
-          t.resultNotes || '',
+          t.priority || 'MEDIUM',
+          sanitizeDate(t.startDate) || new Date().toISOString().substring(0, 10),
+          sanitizeDate(t.dueDate) || new Date().toISOString().substring(0, 10),
+          t.progress || 0,
+          t.status || 'IN_PROGRESS',
+          sanitizeDate(t.completedDate),
+          t.resultNotes || null,
           JSON.stringify(t.subTasks || []),
           JSON.stringify(t.comments || []),
           t.remindDaysBefore || 1,
@@ -377,7 +676,7 @@ app.put('/api/tasks/:id', async (req, res) => {
         ]
       );
     });
-    res.json({ success: true, task: t });
+    res.json({ success: true, task: t, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, task: req.body });
   }
@@ -386,20 +685,32 @@ app.put('/api/tasks/:id', async (req, res) => {
 app.delete('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    store.tasks = store.tasks.filter((t) => t.id !== id);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query('DELETE FROM tasks WHERE id=?', [id]);
     });
-    res.json({ success: true, id });
+    res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
     res.json({ success: true, id: req.params.id });
   }
 });
 
-// --- CRUD: HỒ SƠ VỤ VIỆC (dossiers) ---
+// ==========================================
+// 6. CRUD: HỒ SƠ VỤ VIỆC (dossiers)
+// ==========================================
 app.post('/api/dossiers', async (req, res) => {
   try {
     const d = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.dossiers.findIndex((x) => x.id === d.id);
+    if (idx >= 0) store.dossiers[idx] = { ...store.dossiers[idx], ...d };
+    else store.dossiers.unshift(d);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `INSERT INTO dossiers 
         (id, code, title, department, department_id, leader_id, manager_id, status, start_date, end_date, description) 
@@ -410,18 +721,18 @@ app.post('/api/dossiers', async (req, res) => {
           d.id,
           d.code,
           d.title,
-          d.department || '',
+          d.department || null,
           d.departmentId || null,
           d.leaderId || null,
           d.managerId || null,
           d.status || 'IN_PROGRESS',
-          d.startDate,
-          d.endDate || null,
-          d.description || '',
+          sanitizeDate(d.startDate) || new Date().toISOString().substring(0, 10),
+          sanitizeDate(d.endDate),
+          d.description || null,
         ]
       );
     });
-    res.json({ success: true, dossier: d });
+    res.json({ success: true, dossier: d, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, dossier: req.body });
   }
@@ -431,7 +742,13 @@ app.put('/api/dossiers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const d = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.dossiers.findIndex((x) => x.id === id);
+    if (idx >= 0) store.dossiers[idx] = { ...store.dossiers[idx], ...d };
+    else store.dossiers.unshift(d);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `UPDATE dossiers SET 
         code=?, title=?, department=?, department_id=?, leader_id=?, manager_id=?, status=?, start_date=?, end_date=?, description=?
@@ -439,19 +756,19 @@ app.put('/api/dossiers/:id', async (req, res) => {
         [
           d.code,
           d.title,
-          d.department || '',
+          d.department || null,
           d.departmentId || null,
           d.leaderId || null,
           d.managerId || null,
-          d.status,
-          d.startDate,
-          d.endDate || null,
-          d.description || '',
+          d.status || 'IN_PROGRESS',
+          sanitizeDate(d.startDate) || new Date().toISOString().substring(0, 10),
+          sanitizeDate(d.endDate),
+          d.description || null,
           id,
         ]
       );
     });
-    res.json({ success: true, dossier: d });
+    res.json({ success: true, dossier: d, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, dossier: req.body });
   }
@@ -460,16 +777,22 @@ app.put('/api/dossiers/:id', async (req, res) => {
 app.delete('/api/dossiers/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    store.dossiers = store.dossiers.filter((d) => d.id !== id);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query('DELETE FROM dossiers WHERE id=?', [id]);
     });
-    res.json({ success: true, id });
+    res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
     res.json({ success: true, id: req.params.id });
   }
 });
 
-// --- AUTHENTICATION & LOGIN API ---
+// ==========================================
+// 7. AUTHENTICATION & LOGIN API
+// ==========================================
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -497,16 +820,16 @@ app.post('/api/login', async (req, res) => {
               username: u.username || u.email.split('@')[0],
               fullName: u.full_name,
               email: u.email,
-              phone: u.phone,
-              avatar: u.avatar,
-              department: u.department,
-              departmentId: u.department_id,
-              position: u.position,
-              positionId: u.position_id,
-              role: u.role,
-              status: u.status,
-              joinDate: u.join_date,
-              bio: u.bio,
+              phone: u.phone || '',
+              avatar: u.avatar || '',
+              department: u.department || '',
+              departmentId: u.department_id || '',
+              position: u.position || '',
+              positionId: u.position_id || '',
+              role: u.role || 'STAFF',
+              status: u.status || 'ACTIVE',
+              joinDate: u.join_date ? String(u.join_date).substring(0, 10) : '',
+              bio: u.bio || '',
               lastLogin: new Date().toISOString(),
             };
 
@@ -514,7 +837,7 @@ app.post('/api/login', async (req, res) => {
               success: true,
               user: userObj,
               token: `token_${u.id}_${Date.now()}`,
-              message: 'Đăng nhập thành công!',
+              message: 'Đăng nhập thành công từ CSDL!',
             });
           } else {
             return res.status(401).json({ success: false, message: 'Mật khẩu không chính xác. Mặc định là: 123' });
@@ -522,11 +845,12 @@ app.post('/api/login', async (req, res) => {
         }
       }
     } catch {
-      // MySQL connection unavailable, proceed to fallback
+      // MySQL connection unavailable, proceed to store check
     }
 
-    // 2. Seamless Fallback to INITIAL_USERS
-    const match = INITIAL_USERS.find(
+    // 2. Check from persistent store
+    const store = loadStore();
+    const match = store.users.find(
       (u) =>
         (u.username && u.username.toLowerCase() === cleanInput) ||
         u.email.toLowerCase() === cleanInput ||
@@ -550,7 +874,7 @@ app.post('/api/login', async (req, res) => {
       }
     }
 
-    res.status(404).json({ success: false, message: 'Tài khoản không tồn tại trên hệ thống.' });
+    res.status(404).json({ success: false, message: 'Tài khoản không tồn tại trên hệ thống CSDL.' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || 'Lỗi đăng nhập' });
   }
@@ -559,11 +883,18 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/change-password', async (req, res) => {
   try {
     const { userId, oldPassword, newPassword } = req.body;
+    const store = loadStore();
+    const u = store.users.find((x) => x.id === userId);
+    if (u && (u.password || '123') === oldPassword) {
+      u.password = newPassword;
+      saveStore(store);
+    }
+
     await safeDbRun(async (pool) => {
       const [rows] = (await pool.query('SELECT * FROM users WHERE id = ? LIMIT 1', [userId])) as any[];
       if (rows && rows.length > 0) {
-        const u = rows[0];
-        const currentPass = u.password || '123';
+        const row = rows[0];
+        const currentPass = row.password || '123';
         if (oldPassword === currentPass) {
           await pool.query('UPDATE users SET password = ? WHERE id = ?', [newPassword, userId]);
         }
@@ -575,63 +906,25 @@ app.post('/api/change-password', async (req, res) => {
   }
 });
 
-// --- CRUD: NGƯỜI DÙNG (users) ---
-app.post('/api/users', async (req, res) => {
-  try {
-    const u = req.body;
-    await safeDbRun(async (pool) => {
-      await pool.query(
-        `INSERT INTO users 
-        (id, username, password, full_name, email, phone, avatar, department, department_id, position, position_id, role, status, join_date, bio) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-        username=VALUES(username), password=VALUES(password), full_name=VALUES(full_name), email=VALUES(email), phone=VALUES(phone), avatar=VALUES(avatar), department=VALUES(department), department_id=VALUES(department_id), position=VALUES(position), position_id=VALUES(position_id), role=VALUES(role), status=VALUES(status), join_date=VALUES(join_date), bio=VALUES(bio)`,
-        [
-          u.id,
-          u.username || u.email?.split('@')[0] || u.id,
-          u.password || '123',
-          u.fullName,
-          u.email,
-          u.phone || '',
-          u.avatar || '',
-          u.department || '',
-          u.departmentId || null,
-          u.position || '',
-          u.positionId || null,
-          u.role || 'STAFF',
-          u.status || 'ACTIVE',
-          u.joinDate || null,
-          u.bio || '',
-        ]
-      );
-    });
-    res.json({ success: true, user: u });
-  } catch (error: any) {
-    res.json({ success: true, user: req.body });
-  }
-});
-
-app.delete('/api/users/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    await safeDbRun(async (pool) => {
-      await pool.query('DELETE FROM users WHERE id=?', [id]);
-    });
-    res.json({ success: true, id });
-  } catch (error: any) {
-    res.json({ success: true, id: req.params.id });
-  }
-});
-
-// --- TỆP ĐÍNH KÈM & AUDIT LOGS ---
+// ==========================================
+// 8. TỆP ĐÍNH KÈM & AUDIT LOGS
+// ==========================================
 app.post('/api/attachments', async (req, res) => {
   try {
     const a = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    const idx = store.attachments.findIndex((x) => x.id === a.id);
+    if (idx >= 0) store.attachments[idx] = { ...store.attachments[idx], ...a };
+    else store.attachments.unshift(a);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `INSERT INTO attachments 
         (id, file_name, file_size, file_type, file_url, category, related_id, dossier_code, dossier_id, uploaded_by_id, uploaded_by_name, tags) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+        file_name=VALUES(file_name), file_size=VALUES(file_size), file_type=VALUES(file_type), file_url=VALUES(file_url), category=VALUES(category), related_id=VALUES(related_id), dossier_code=VALUES(dossier_code), dossier_id=VALUES(dossier_id), tags=VALUES(tags)`,
         [
           a.id,
           a.fileName,
@@ -640,7 +933,7 @@ app.post('/api/attachments', async (req, res) => {
           a.fileUrl || '',
           a.category,
           a.relatedId || null,
-          a.dossierCode || '',
+          a.dossierCode || null,
           a.dossierId || null,
           a.uploadedById || '',
           a.uploadedByName || '',
@@ -648,7 +941,7 @@ app.post('/api/attachments', async (req, res) => {
         ]
       );
     });
-    res.json({ success: true, attachment: a });
+    res.json({ success: true, attachment: a, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, attachment: req.body });
   }
@@ -657,10 +950,14 @@ app.post('/api/attachments', async (req, res) => {
 app.delete('/api/attachments/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    store.attachments = store.attachments.filter((a) => a.id !== id);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query('DELETE FROM attachments WHERE id=?', [id]);
     });
-    res.json({ success: true, id });
+    res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
     res.json({ success: true, id: req.params.id });
   }
@@ -669,7 +966,12 @@ app.delete('/api/attachments/:id', async (req, res) => {
 app.post('/api/audit-logs', async (req, res) => {
   try {
     const l = req.body;
-    await safeDbRun(async (pool) => {
+    const store = loadStore();
+    store.auditLogs.unshift(l);
+    if (store.auditLogs.length > 200) store.auditLogs = store.auditLogs.slice(0, 200);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `INSERT INTO audit_logs (id, user_id, user_name, user_avatar, action, entity_type, entity_id, entity_title, details) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -677,16 +979,16 @@ app.post('/api/audit-logs', async (req, res) => {
           l.id,
           l.userId || '',
           l.userName,
-          l.userAvatar || '',
+          l.userAvatar || null,
           l.action,
           l.entityType,
           l.entityId,
           l.entityTitle,
-          l.details,
+          l.details || null,
         ]
       );
     });
-    res.json({ success: true, log: l });
+    res.json({ success: true, log: l, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, log: req.body });
   }
@@ -728,7 +1030,7 @@ Hãy trả về định dạng JSON chính xác:
   }
 });
 
-// 2. AI API: Draft Outgoing Document (Soạn thảo văn bản đi chuẩn thể thức)
+// 2. AI API: Draft Outgoing Document
 app.post('/api/ai/draft-outgoing-doc', async (req, res) => {
   try {
     const { docType, recipient, goal, basisDocTitle, keyPoints } = req.body;
@@ -757,7 +1059,7 @@ Yêu cầu trả về JSON:
   }
 });
 
-// 3. AI API: Suggest Task Breakdown (Phân rã công việc & Gợi ý phân công)
+// 3. AI API: Suggest Task Breakdown
 app.post('/api/ai/suggest-task-breakdown', async (req, res) => {
   try {
     const { taskTitle, description, dueDate, availableStaff } = req.body;
@@ -786,7 +1088,7 @@ Hãy trả về JSON với cấu trúc:
   }
 });
 
-// 4. AI API: Chat Assistant (Trợ lý Quản lý Văn bản & Điều hành)
+// 4. AI API: Chat Assistant
 app.post('/api/ai/ask-assistant', async (req, res) => {
   try {
     const { question, systemContext } = req.body;
@@ -809,23 +1111,28 @@ Hãy trả lời một cách chuyên nghiệp, chính xác, thân thiện và đ
 });
 
 // Serve frontend in production or development
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
-} else {
-  // In development, Vite handles frontend assets via middleware
-  import('vite').then(({ createServer }) => {
-    createServer({
+async function startServer() {
+  if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, 'dist')));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    });
+  } else {
+    // In development, Vite handles frontend assets via middleware
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
-    }).then((vite) => {
-      app.use(vite.middlewares);
     });
+    app.use(vite.middlewares);
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running at http://0.0.0.0:${PORT}`);
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running at http://0.0.0.0:${PORT}`);
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
 });
+

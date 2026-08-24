@@ -50,8 +50,8 @@ class DatabaseService {
     this.checkAndSyncMySql();
   }
 
-  public async checkAndSyncMySql() {
-    if (typeof window === 'undefined') return;
+  public async checkAndSyncMySql(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
     try {
       const statusRes = await fetch('/api/db-status');
       if (statusRes.ok) {
@@ -60,27 +60,47 @@ class DatabaseService {
         this.mySqlInfo = status;
       }
 
-      if (this.mySqlConnected) {
-        const syncRes = await fetch('/api/sync-all');
-        if (syncRes.ok) {
-          const syncData = await syncRes.json();
-          if (syncData.connected && syncData.data) {
-            const d = syncData.data;
-            if (d.users && d.users.length > 0) localStorage.setItem(DB_STORAGE_KEYS.USERS, JSON.stringify(d.users));
-            if (d.dossiers && d.dossiers.length > 0) localStorage.setItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(d.dossiers));
-            if (d.incomingDocs && d.incomingDocs.length > 0) localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(d.incomingDocs));
-            if (d.outgoingDocs && d.outgoingDocs.length > 0) localStorage.setItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(d.outgoingDocs));
-            if (d.tasks && d.tasks.length > 0) localStorage.setItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(d.tasks));
-            if (d.attachments && d.attachments.length > 0) localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(d.attachments));
-            if (d.auditLogs && d.auditLogs.length > 0) localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(d.auditLogs));
-            if (d.notifications && d.notifications.length > 0) localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(d.notifications));
-            this.notify();
+      const syncRes = await fetch('/api/sync-all');
+      if (syncRes.ok) {
+        const syncData = await syncRes.json();
+        if (syncData && syncData.data) {
+          const d = syncData.data;
+          if (Array.isArray(d.users)) localStorage.setItem(DB_STORAGE_KEYS.USERS, JSON.stringify(d.users));
+          if (Array.isArray(d.dossiers)) localStorage.setItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(d.dossiers));
+          if (Array.isArray(d.incomingDocs)) localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(d.incomingDocs));
+          if (Array.isArray(d.outgoingDocs)) localStorage.setItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(d.outgoingDocs));
+          if (Array.isArray(d.tasks)) localStorage.setItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(d.tasks));
+          if (Array.isArray(d.attachments)) localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(d.attachments));
+          if (Array.isArray(d.auditLogs)) localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(d.auditLogs));
+          if (Array.isArray(d.notifications)) localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(d.notifications));
+          if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
+            const currentMaster = this.getMasterData();
+            const newMaster = {
+              ...currentMaster,
+              departments: Array.isArray(d.departments) && d.departments.length > 0 ? d.departments : currentMaster.departments,
+              positions: Array.isArray(d.positions) && d.positions.length > 0 ? d.positions : currentMaster.positions,
+            };
+            localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(newMaster));
           }
+          this.notify();
+          return true;
         }
       }
     } catch (err) {
-      console.warn('MySQL auto-sync notice:', err);
+      console.warn('Database auto-sync notice:', err);
     }
+    return false;
+  }
+
+  public async reloadFromDatabase(): Promise<{ success: boolean; connected: boolean; message: string }> {
+    const success = await this.checkAndSyncMySql();
+    return {
+      success,
+      connected: this.mySqlConnected,
+      message: this.mySqlConnected
+        ? 'Đã tải toàn bộ dữ liệu trực tiếp từ CSDL MySQL!'
+        : 'Đã làm mới dữ liệu từ CSDL máy chủ!',
+    };
   }
 
   public getMySqlStatus() {
@@ -478,6 +498,30 @@ class DatabaseService {
     }
     this.setList(DB_STORAGE_KEYS.INCOMING_DOCS, updated);
     this.apiCall('/api/incoming-docs', 'POST', doc);
+
+    // Save attachments to central attachments storage and MySQL
+    if (doc.attachments && doc.attachments.length > 0) {
+      const existingAttachments = this.getAttachments();
+      const updatedAttachments = [...existingAttachments];
+
+      for (const att of doc.attachments) {
+        const existingIdx = updatedAttachments.findIndex((a) => a.id === att.id);
+        const attachmentToSave: AttachmentFile = {
+          ...att,
+          relatedId: doc.id,
+          category: 'VAN_BAN_DEN',
+          dossierId: doc.dossierId || att.dossierId,
+        };
+
+        if (existingIdx >= 0) {
+          updatedAttachments[existingIdx] = attachmentToSave;
+        } else {
+          updatedAttachments.unshift(attachmentToSave);
+        }
+        this.apiCall('/api/attachments', 'POST', attachmentToSave);
+      }
+      this.setList(DB_STORAGE_KEYS.ATTACHMENTS, updatedAttachments);
+    }
   }
 
   public deleteIncomingDoc(id: string, actor?: User) {
@@ -528,6 +572,29 @@ class DatabaseService {
     }
     this.setList(DB_STORAGE_KEYS.OUTGOING_DOCS, updated);
     this.apiCall('/api/outgoing-docs', 'POST', doc);
+
+    if (doc.attachments && doc.attachments.length > 0) {
+      const existingAttachments = this.getAttachments();
+      const updatedAttachments = [...existingAttachments];
+
+      for (const att of doc.attachments) {
+        const existingIdx = updatedAttachments.findIndex((a) => a.id === att.id);
+        const attachmentToSave: AttachmentFile = {
+          ...att,
+          relatedId: doc.id,
+          category: 'VAN_BAN_DI',
+          dossierId: doc.dossierId || att.dossierId,
+        };
+
+        if (existingIdx >= 0) {
+          updatedAttachments[existingIdx] = attachmentToSave;
+        } else {
+          updatedAttachments.unshift(attachmentToSave);
+        }
+        this.apiCall('/api/attachments', 'POST', attachmentToSave);
+      }
+      this.setList(DB_STORAGE_KEYS.ATTACHMENTS, updatedAttachments);
+    }
   }
 
   public deleteOutgoingDoc(id: string, actor?: User) {
@@ -608,6 +675,29 @@ class DatabaseService {
     }
     this.setList(DB_STORAGE_KEYS.TASKS, updated);
     this.apiCall('/api/tasks', 'POST', task);
+
+    if (task.attachments && task.attachments.length > 0) {
+      const existingAttachments = this.getAttachments();
+      const updatedAttachments = [...existingAttachments];
+
+      for (const att of task.attachments) {
+        const existingIdx = updatedAttachments.findIndex((a) => a.id === att.id);
+        const attachmentToSave: AttachmentFile = {
+          ...att,
+          relatedId: task.id,
+          category: 'HO_SO',
+          dossierId: task.dossierId || att.dossierId,
+        };
+
+        if (existingIdx >= 0) {
+          updatedAttachments[existingIdx] = attachmentToSave;
+        } else {
+          updatedAttachments.unshift(attachmentToSave);
+        }
+        this.apiCall('/api/attachments', 'POST', attachmentToSave);
+      }
+      this.setList(DB_STORAGE_KEYS.ATTACHMENTS, updatedAttachments);
+    }
   }
 
   public deleteTask(id: string, actor?: User) {
