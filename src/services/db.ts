@@ -154,6 +154,18 @@ class DatabaseService {
 
     if (!localStorage.getItem(DB_STORAGE_KEYS.USERS)) {
       this.resetToDefaults();
+    } else {
+      // Ensure all initial incoming documents are present if stored array has fewer
+      const existing = this.getList<IncomingDocument>(DB_STORAGE_KEYS.INCOMING_DOCS, []);
+      if (existing.length < INITIAL_INCOMING_DOCS.length) {
+        const existingIds = new Set(existing.map((d) => d.id));
+        const missing = INITIAL_INCOMING_DOCS.filter((d) => !existingIds.has(d.id));
+        if (missing.length > 0) {
+          const merged = [...existing, ...missing];
+          localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(merged));
+          this.notify();
+        }
+      }
     }
   }
 
@@ -542,11 +554,37 @@ class DatabaseService {
   public deleteIncomingDoc(id: string, actor?: User) {
     const docs = this.getIncomingDocs();
     const target = docs.find((d) => d.id === id);
+    const updatedDocs = docs.filter((d) => d.id !== id);
+    this.setList(DB_STORAGE_KEYS.INCOMING_DOCS, updatedDocs);
+
+    // Also remove related attachments
+    const attachments = this.getAttachments();
+    this.setList(
+      DB_STORAGE_KEYS.ATTACHMENTS,
+      attachments.filter((a) => a.relatedId !== id)
+    );
+
+    // Also unlink from tasks
+    const tasks = this.getTasks();
+    const updatedTasks = tasks.map((t) => {
+      if (t.incomingDocId === id || t.linkedDocId === id) {
+        return { ...t, incomingDocId: undefined, linkedDocId: undefined };
+      }
+      return t;
+    });
+    this.setList(DB_STORAGE_KEYS.TASKS, updatedTasks);
+
     if (target) {
-      this.setList(DB_STORAGE_KEYS.INCOMING_DOCS, docs.filter((d) => d.id !== id));
-      this.logAction('DELETE', 'INCOMING_DOC', id, target.documentNumber, `Xóa văn bản đến số ${target.documentNumber}`, actor);
-      this.apiCall(`/api/incoming-docs/${id}`, 'DELETE');
+      this.logAction(
+        'DELETE',
+        'INCOMING_DOC',
+        id,
+        target.documentNumber,
+        `Xóa văn bản đến số ${target.documentNumber}`,
+        actor
+      );
     }
+    this.apiCall(`/api/incoming-docs/${id}`, 'DELETE');
   }
 
   // --- Outgoing Documents (Văn bản đi) ---
@@ -615,11 +653,27 @@ class DatabaseService {
   public deleteOutgoingDoc(id: string, actor?: User) {
     const docs = this.getOutgoingDocs();
     const target = docs.find((d) => d.id === id);
+    const updatedDocs = docs.filter((d) => d.id !== id);
+    this.setList(DB_STORAGE_KEYS.OUTGOING_DOCS, updatedDocs);
+
+    // Also remove related attachments
+    const attachments = this.getAttachments();
+    this.setList(
+      DB_STORAGE_KEYS.ATTACHMENTS,
+      attachments.filter((a) => a.relatedId !== id)
+    );
+
     if (target) {
-      this.setList(DB_STORAGE_KEYS.OUTGOING_DOCS, docs.filter((d) => d.id !== id));
-      this.logAction('DELETE', 'OUTGOING_DOC', id, target.documentNumber, `Xóa văn bản đi số ${target.documentNumber}`, actor);
-      this.apiCall(`/api/outgoing-docs/${id}`, 'DELETE');
+      this.logAction(
+        'DELETE',
+        'OUTGOING_DOC',
+        id,
+        target.documentNumber,
+        `Xóa văn bản đi số ${target.documentNumber}`,
+        actor
+      );
     }
+    this.apiCall(`/api/outgoing-docs/${id}`, 'DELETE');
   }
 
   // --- Tasks (Công việc) ---

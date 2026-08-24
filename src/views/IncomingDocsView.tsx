@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   IncomingDocument,
   User,
@@ -25,7 +25,10 @@ import {
   Edit,
   X,
   ExternalLink,
+  ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   FolderKanban,
   CheckSquare,
   Upload,
@@ -52,6 +55,7 @@ interface IncomingDocsViewProps {
   onCreateTaskFromDoc: (doc: IncomingDocument) => void;
   currentUser: User;
   onOpenDossier: (dossierId: string) => void;
+  initialSelectedDocId?: string;
 }
 
 export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
@@ -63,6 +67,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   onCreateTaskFromDoc,
   currentUser,
   onOpenDossier,
+  initialSelectedDocId,
 }) => {
   const [search, setSearch] = useState('');
   const [filterUrgency, setFilterUrgency] = useState<string>('ALL');
@@ -70,6 +75,22 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [filterDossier, setFilterDossier] = useState<string>('ALL');
 
   const [selectedDoc, setSelectedDoc] = useState<IncomingDocument | null>(null);
+
+  // Auto open document if navigated from notification
+  useEffect(() => {
+    if (initialSelectedDocId) {
+      const target = docs.find(
+        (d) => d.id === initialSelectedDocId || d.documentNumber === initialSelectedDocId
+      );
+      if (target) {
+        setSelectedDoc(target);
+        setSearch('');
+        setFilterUrgency('ALL');
+        setFilterStatus('ALL');
+        setFilterDossier('ALL');
+      }
+    }
+  }, [initialSelectedDocId, docs]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<Partial<IncomingDocument> | null>(null);
 
@@ -90,6 +111,10 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [rawTextToAnalyze, setRawTextToAnalyze] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
   const [isSamplePdfModalOpen, setIsSamplePdfModalOpen] = useState(false);
+
+  // In-App Deletion Confirmation & Toast
+  const [deleteTargetDoc, setDeleteTargetDoc] = useState<IncomingDocument | null>(null);
+  const [deleteToastMessage, setDeleteToastMessage] = useState<string | null>(null);
 
   const handleSelectSamplePdfForModal = async (file: File) => {
     setIsExtractingFile(true);
@@ -138,6 +163,24 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
     return matchSearch && matchUrgency && matchStatus && matchDossier;
   });
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number | 'ALL'>(10);
+
+  // Reset page to 1 whenever filters or pageSize change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterUrgency, filterStatus, filterDossier, pageSize]);
+
+  const totalItems = filteredDocs.length;
+  const effectivePageSize = pageSize === 'ALL' ? (totalItems > 0 ? totalItems : 1) : pageSize;
+  const totalPages = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(totalItems / effectivePageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const paginatedDocs = pageSize === 'ALL'
+    ? filteredDocs
+    : filteredDocs.slice((safeCurrentPage - 1) * effectivePageSize, safeCurrentPage * effectivePageSize);
 
   const handleOpenAddModal = () => {
     const newDocId = 'vbd-' + Date.now();
@@ -242,13 +285,13 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   };
 
   const handleRemoveDetailAttachment = (id?: string) => {
-    if (!selectedDoc) return;
-    if (confirm('Bạn có chắc muốn xóa tệp đính kèm này khỏi văn bản?')) {
-      const updatedAttachments = (selectedDoc.attachments || []).filter((a) => a.id !== id);
-      const updatedDoc = { ...selectedDoc, attachments: updatedAttachments };
-      setSelectedDoc(updatedDoc);
-      onSaveDoc(updatedDoc);
-    }
+    if (!selectedDoc || !id) return;
+    const updatedAttachments = (selectedDoc.attachments || []).filter((a) => a.id !== id);
+    const updatedDoc = { ...selectedDoc, attachments: updatedAttachments };
+    setSelectedDoc(updatedDoc);
+    onSaveDoc(updatedDoc);
+    setDeleteToastMessage('Đã xóa tệp đính kèm khỏi văn bản.');
+    setTimeout(() => setDeleteToastMessage(null), 3000);
   };
 
   const handleOpenPreview = (file: AttachmentFile) => {
@@ -380,7 +423,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
+    <div className="w-full p-6 md:p-8 flex flex-col gap-6 flex-1">
       {/* File Preview Modal */}
       <FilePreviewModal
         file={previewFile}
@@ -476,22 +519,22 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
       {/* Main Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full min-w-[1000px] text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 px-4">Số Đến / Loại VB</th>
-                <th className="py-3.5 px-4">Số Ký Hiệu & Cơ Quan Gửi</th>
-                <th className="py-3.5 px-4">Trích Yếu Nội Dung</th>
-                <th className="py-3.5 px-4">Ngày Đến / Hạn Xử Lý</th>
-                <th className="py-3.5 px-4">Cán Bộ Phụ Trách</th>
-                <th className="py-3.5 px-4">Bản Scan / Tệp</th>
-                <th className="py-3.5 px-4">Trạng Thái</th>
-                <th className="py-3.5 px-4 text-right">Thao Tác</th>
+                <th className="py-3.5 px-4 whitespace-nowrap">Số Đến / Loại VB</th>
+                <th className="py-3.5 px-4 whitespace-nowrap">Số Ký Hiệu & Cơ Quan Gửi</th>
+                <th className="py-3.5 px-4 min-w-[260px]">Trích Yếu Nội Dung</th>
+                <th className="py-3.5 px-4 whitespace-nowrap">Ngày Đến / Hạn Xử Lý</th>
+                <th className="py-3.5 px-4 whitespace-nowrap">Cán Bộ Phụ Trách</th>
+                <th className="py-3.5 px-4 whitespace-nowrap">Bản Scan / Tệp</th>
+                <th className="py-3.5 px-4 whitespace-nowrap">Trạng Thái</th>
+                <th className="py-3.5 px-4 text-right whitespace-nowrap">Thao Tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredDocs.length === 0 ? (
+              {paginatedDocs.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-12 text-slate-400">
                     <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
@@ -499,7 +542,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredDocs.map((doc) => {
+                paginatedDocs.map((doc) => {
                   const assignee = getUser(doc.assigneeId);
                   const attCount = doc.attachments?.length || 0;
 
@@ -617,10 +660,10 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`Bạn có chắc chắn muốn xóa văn bản đến ${doc.documentNumber}?`)) {
-                                onDeleteDoc(doc.id);
-                              }
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTargetDoc(doc);
                             }}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Xóa văn bản"
@@ -635,6 +678,96 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination & Count Control Bar */}
+        <div className="p-4 bg-slate-50/70 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span>
+              Hiển thị{' '}
+              <strong className="text-slate-800">
+                {totalItems === 0 ? 0 : (safeCurrentPage - 1) * (pageSize === 'ALL' ? totalItems : pageSize) + 1}
+              </strong>{' '}
+              -{' '}
+              <strong className="text-slate-800">
+                {pageSize === 'ALL' ? totalItems : Math.min(safeCurrentPage * pageSize, totalItems)}
+              </strong>{' '}
+              trong tổng số <strong className="text-indigo-700 font-bold">{totalItems}</strong> văn bản đến
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500">Số dòng / trang:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 outline-none cursor-pointer hover:border-indigo-400"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value="ALL">Tất cả ({totalItems})</option>
+              </select>
+            </div>
+          </div>
+
+          {pageSize !== 'ALL' && totalPages > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                disabled={safeCurrentPage === 1}
+                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                title="Trang đầu"
+              >
+                <ChevronsLeft className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={safeCurrentPage === 1}
+                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                title="Trang trước"
+              >
+                <ChevronLeft className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      safeCurrentPage === pageNum
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safeCurrentPage === totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                title="Trang tiếp theo"
+              >
+                <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={safeCurrentPage === totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                title="Trang cuối"
+              >
+                <ChevronsRight className="w-3.5 h-3.5 text-slate-600" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -843,6 +976,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
             {/* Bottom Actions */}
             <div className="pt-6 border-t border-slate-100 flex items-center gap-3 mt-6">
               <button
+                type="button"
                 onClick={() => {
                   const doc = selectedDoc;
                   setSelectedDoc(null);
@@ -855,6 +989,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   const doc = selectedDoc;
                   setSelectedDoc(null);
@@ -863,6 +998,18 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
               >
                 Sửa thông tin
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteTargetDoc(selectedDoc);
+                }}
+                className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors border border-rose-200"
+                title="Xóa văn bản này"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xóa VB</span>
               </button>
             </div>
           </div>
@@ -1328,6 +1475,82 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
         onClose={() => setIsSamplePdfModalOpen(false)}
         onSelectSampleFile={handleSelectSamplePdfForModal}
       />
+
+      {/* In-App Delete Confirmation Modal (100% Reliable in iFrames) */}
+      {deleteTargetDoc && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">Xác nhận xóa văn bản đến</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Đồng chí có chắc chắn muốn xóa văn bản này khỏi Sổ Văn bản Đến? Hành động này sẽ gỡ bỏ toàn bộ tệp scan liên quan.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5 font-medium">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Số đến nội bộ:</span>
+                <span className="font-bold text-indigo-700 font-mono">{deleteTargetDoc.documentNumber}</span>
+              </div>
+              {deleteTargetDoc.officialNumber && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Số hiệu gốc:</span>
+                  <span className="font-bold text-slate-700 font-mono">{deleteTargetDoc.officialNumber}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Cơ quan gửi:</span>
+                <span className="font-bold text-slate-800">{deleteTargetDoc.issuingAuthority}</span>
+              </div>
+              <div className="pt-1 border-t border-slate-200/80">
+                <span className="text-slate-400 block text-[11px] mb-0.5">Trích yếu:</span>
+                <p className="text-slate-800 line-clamp-2 text-[11px]">{deleteTargetDoc.summary}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetDoc(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetId = deleteTargetDoc.id;
+                  const targetNum = deleteTargetDoc.documentNumber;
+                  onDeleteDoc(targetId);
+                  if (selectedDoc?.id === targetId) {
+                    setSelectedDoc(null);
+                  }
+                  setDeleteTargetDoc(null);
+                  setDeleteToastMessage(`Đã xóa thành công văn bản đến số [${targetNum}].`);
+                  setTimeout(() => setDeleteToastMessage(null), 3500);
+                }}
+                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xác nhận xóa</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Toast Notification */}
+      {deleteToastMessage && (
+        <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl z-50 flex items-center gap-2.5 text-xs font-bold animate-in slide-in-from-bottom-4">
+          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{deleteToastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };

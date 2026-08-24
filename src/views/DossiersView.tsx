@@ -37,6 +37,7 @@ interface DossiersViewProps {
   currentUser: User;
   onOpenTaskDetail: (id: string) => void;
   onOpenIncomingDocDetail: (id: string) => void;
+  initialDossierId?: string;
 }
 
 export const DossiersView: React.FC<DossiersViewProps> = ({
@@ -50,11 +51,26 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   currentUser,
   onOpenTaskDetail,
   onOpenIncomingDocDetail,
+  initialDossierId,
 }) => {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
   const [selectedDossier, setSelectedDossier] = useState<Dossier | null>(null);
+
+  // Auto open dossier if navigated from notification
+  React.useEffect(() => {
+    if (initialDossierId) {
+      const target = dossiers.find(
+        (d) => d.id === initialDossierId || d.code === initialDossierId
+      );
+      if (target) {
+        setSelectedDossier(target);
+        setSearch('');
+        setFilterStatus('ALL');
+      }
+    }
+  }, [initialDossierId, dossiers]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Partial<Dossier> | null>(null);
 
@@ -115,7 +131,7 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   };
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
+    <div className="w-full p-6 md:p-8 flex flex-col gap-6 flex-1">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

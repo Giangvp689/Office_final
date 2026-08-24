@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   OutgoingDocument,
   User,
@@ -46,6 +46,7 @@ interface OutgoingDocsViewProps {
   onDeleteDoc: (id: string) => void;
   currentUser: User;
   onOpenDossier: (dossierId: string) => void;
+  initialSelectedDocId?: string;
 }
 
 export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
@@ -57,12 +58,28 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   onDeleteDoc,
   currentUser,
   onOpenDossier,
+  initialSelectedDocId,
 }) => {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
 
   const [selectedDoc, setSelectedDoc] = useState<OutgoingDocument | null>(null);
+
+  // Auto open document if navigated from notification
+  useEffect(() => {
+    if (initialSelectedDocId) {
+      const target = docs.find(
+        (d) => d.id === initialSelectedDocId || d.documentNumber === initialSelectedDocId
+      );
+      if (target) {
+        setSelectedDoc(target);
+        setSearch('');
+        setFilterStatus('ALL');
+        setFilterType('ALL');
+      }
+    }
+  }, [initialSelectedDocId, docs]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<Partial<OutgoingDocument> | null>(null);
 
@@ -85,6 +102,10 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   const [aiDraftError, setAiDraftError] = useState<string | null>(null);
   const [generatedDraft, setGeneratedDraft] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // In-App Delete Confirmation State
+  const [deleteTargetDoc, setDeleteTargetDoc] = useState<OutgoingDocument | null>(null);
+  const [deleteToastMessage, setDeleteToastMessage] = useState<string | null>(null);
 
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id);
@@ -366,7 +387,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
+    <div className="w-full p-6 md:p-8 flex flex-col gap-6 flex-1">
       {/* File Preview Modal */}
       <FilePreviewModal
         file={previewFile}
@@ -576,10 +597,10 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`Bạn có chắc muốn xóa văn bản đi ${doc.documentNumber}?`)) {
-                                onDeleteDoc(doc.id);
-                              }
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTargetDoc(doc);
                             }}
                             title="Xóa văn bản"
                             className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
@@ -753,11 +774,9 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
             {/* Bottom Actions */}
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3 mt-6">
               <button
+                type="button"
                 onClick={() => {
-                  if (confirm(`Bạn có chắc muốn xóa văn bản đi ${selectedDoc.documentNumber}?`)) {
-                    onDeleteDoc(selectedDoc.id);
-                    setSelectedDoc(null);
-                  }
+                  setDeleteTargetDoc(selectedDoc);
                 }}
                 className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
               >
@@ -766,6 +785,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   const doc = selectedDoc;
                   setSelectedDoc(null);
@@ -1169,6 +1189,76 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Modal (100% Reliable in iFrames) */}
+      {deleteTargetDoc && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">Xác nhận xóa văn bản đi</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Đồng chí có chắc chắn muốn xóa văn bản này khỏi Sổ Văn bản Đi? Toàn bộ tệp đính kèm cũng sẽ bị gỡ bỏ.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5 font-medium">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Số văn bản đi:</span>
+                <span className="font-bold text-emerald-700 font-mono">{deleteTargetDoc.documentNumber}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Nơi nhận:</span>
+                <span className="font-bold text-slate-800">{deleteTargetDoc.recipient}</span>
+              </div>
+              <div className="pt-1 border-t border-slate-200/80">
+                <span className="text-slate-400 block text-[11px] mb-0.5">Trích yếu:</span>
+                <p className="text-slate-800 line-clamp-2 text-[11px]">{deleteTargetDoc.summary}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetDoc(null)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetId = deleteTargetDoc.id;
+                  const targetNum = deleteTargetDoc.documentNumber;
+                  onDeleteDoc(targetId);
+                  if (selectedDoc?.id === targetId) {
+                    setSelectedDoc(null);
+                  }
+                  setDeleteTargetDoc(null);
+                  setDeleteToastMessage(`Đã xóa thành công văn bản đi số [${targetNum}].`);
+                  setTimeout(() => setDeleteToastMessage(null), 3500);
+                }}
+                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xác nhận xóa</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Toast Notification */}
+      {deleteToastMessage && (
+        <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl z-50 flex items-center gap-2.5 text-xs font-bold animate-in slide-in-from-bottom-4">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{deleteToastMessage}</span>
         </div>
       )}
     </div>

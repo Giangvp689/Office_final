@@ -11,6 +11,7 @@ import {
   getDbConfig,
   setDbConfig,
   ensureAllTableSchemas,
+  isConnectionError,
 } from './server/mysql';
 import {
   loadStore,
@@ -40,7 +41,11 @@ async function safeDbRun(fn: (pool: any) => Promise<any>): Promise<{ success: bo
     await fn(pool);
     return { success: true, fromDb: true };
   } catch (err: any) {
-    console.warn('[MySQL Execution Initial Warning]:', err?.message || err);
+    // If it is a connection error (e.g. database server not reachable), return gracefully without triggering schema migrations
+    if (isConnectionError(err)) {
+      return { success: false, error: err?.message || 'Không thể kết nối CSDL MySQL', fromDb: false };
+    }
+
     try {
       const pool = getPool();
       if (pool) {
@@ -51,7 +56,9 @@ async function safeDbRun(fn: (pool: any) => Promise<any>): Promise<{ success: bo
         return { success: true, fromDb: true };
       }
     } catch (retryErr: any) {
-      console.error('[MySQL Execution Fatal Error after Retry]:', retryErr?.message || retryErr);
+      if (!isConnectionError(retryErr)) {
+        console.error('[MySQL Execution Error after Retry]:', retryErr?.message || retryErr);
+      }
       return { success: false, error: retryErr?.message || 'Lỗi truy vấn CSDL', fromDb: false };
     }
     return { success: false, error: err?.message || 'Lỗi truy vấn CSDL', fromDb: false };
@@ -518,9 +525,18 @@ app.delete('/api/incoming-docs/:id', async (req, res) => {
     const { id } = req.params;
     const store = loadStore();
     store.incomingDocs = store.incomingDocs.filter((d) => d.id !== id);
+    store.attachments = store.attachments.filter((a) => a.relatedId !== id);
+    store.tasks = store.tasks.map((t) => {
+      if (t.incomingDocId === id || t.linkedDocId === id) {
+        return { ...t, incomingDocId: undefined, linkedDocId: undefined };
+      }
+      return t;
+    });
     saveStore(store);
 
     const dbResult = await safeDbRun(async (pool) => {
+      await pool.query('DELETE FROM attachments WHERE related_id=?', [id]);
+      await pool.query('UPDATE tasks SET incoming_doc_id=NULL, linked_doc_id=NULL WHERE incoming_doc_id=? OR linked_doc_id=?', [id, id]);
       await pool.query('DELETE FROM incoming_documents WHERE id=?', [id]);
     });
     res.json({ success: true, id, fromDb: dbResult.fromDb });

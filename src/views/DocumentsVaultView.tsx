@@ -165,7 +165,7 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
   };
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
+    <div className="w-full p-6 md:p-8 flex flex-col gap-6 flex-1">
       {/* File Preview Modal */}
       <FilePreviewModal
         file={previewFile}

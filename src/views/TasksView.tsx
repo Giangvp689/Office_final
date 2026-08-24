@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Task,
   User,
@@ -64,6 +64,7 @@ interface TasksViewProps {
   currentUser: User;
   filterMode?: 'ALL' | 'ASSIGNED_TO_ME' | 'DELEGATED_BY_ME';
   onOpenDossier: (dossierId: string) => void;
+  initialSelectedTaskId?: string;
 }
 
 export const TasksView: React.FC<TasksViewProps> = ({
@@ -76,6 +77,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   currentUser,
   filterMode = 'ALL',
   onOpenDossier,
+  initialSelectedTaskId,
 }) => {
   // Tabs for sub-filtering
   const [activeTab, setActiveTab] = useState<'ALL' | 'ASSIGNED_TO_ME' | 'DELEGATED_BY_ME'>(filterMode);
@@ -91,6 +93,30 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [viewMode, setViewMode] = useState<'LIST' | 'KANBAN'>('LIST');
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const discussionSectionRef = useRef<HTMLDivElement>(null);
+
+  // Auto open task and scroll to discussion if navigated from notification
+  useEffect(() => {
+    if (initialSelectedTaskId) {
+      const target = tasks.find(
+        (t) => t.id === initialSelectedTaskId || t.code === initialSelectedTaskId
+      );
+      if (target) {
+        setSelectedTask(target);
+        setSearch('');
+        setFilterPriority('ALL');
+        setFilterStatus('ALL');
+        setActiveTab('ALL');
+
+        // Scroll to discussion chat section smoothly
+        setTimeout(() => {
+          if (discussionSectionRef.current) {
+            discussionSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 250);
+      }
+    }
+  }, [initialSelectedTaskId, tasks]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Partial<Task> | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -445,7 +471,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const selectedAssignee = selectedTask ? getUser(selectedTask.assigneeId) : null;
 
   return (
-    <div className="flex-1 p-5 md:p-7 overflow-y-auto flex flex-col gap-5 bg-slate-50 custom-scrollbar">
+    <div className="w-full p-5 md:p-7 flex flex-col gap-5 flex-1">
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -1175,7 +1201,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </div>
 
               {/* 2-WAY INTERACTIVE CHAT & DIRECTIVES SECTION */}
-              <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden flex flex-col">
+              <div ref={discussionSectionRef} className="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden flex flex-col scroll-mt-6">
                 {/* Chat Header */}
                 <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-slate-50 to-white border-b border-indigo-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">

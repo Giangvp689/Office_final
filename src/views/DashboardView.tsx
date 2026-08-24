@@ -111,7 +111,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
+    <div className="w-full p-6 md:p-8 flex flex-col gap-6 flex-1">
       {/* Flagship Academic Banner: AI Document Classifier */}
       <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 rounded-2xl p-5 text-white shadow-md border border-indigo-700/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-start gap-4">

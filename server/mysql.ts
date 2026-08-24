@@ -26,6 +26,26 @@ let isConnected = false;
 let connectionError: string | null = null;
 let schemaEnsured = false;
 
+export function isConnectionError(err: any): boolean {
+  if (!err) return false;
+  const code = err.code || '';
+  const msg = err.message || '';
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ENOTFOUND' ||
+    code === 'EHOSTUNREACH' ||
+    code === 'PROTOCOL_CONNECTION_LOST' ||
+    code === 'ER_ACCESS_DENIED_ERROR' ||
+    code === 'ER_DBACCESS_DENIED_ERROR' ||
+    code === 'ER_BAD_DB_ERROR' ||
+    msg.includes('ECONNREFUSED') ||
+    msg.includes('connect ECONNREFUSED') ||
+    msg.includes('ETIMEDOUT') ||
+    msg.includes('ENOTFOUND')
+  );
+}
+
 export function getDbConfig(): DbConfig {
   if (currentConfig) return currentConfig;
 
@@ -92,6 +112,14 @@ export function getPool(): mysql.Pool | null {
  */
 export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
   const config = getDbConfig();
+
+  // Test connectivity first before attempting schema updates
+  try {
+    await p.query('SELECT 1');
+  } catch {
+    // If not connected, exit immediately without warning spam
+    return;
+  }
 
   // Table definitions with required columns
   const tableSchemas: Record<string, { createSql: string; columns: { name: string; type: string }[] }> = {
@@ -406,6 +434,9 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
     try {
       await p.query(schema.createSql);
     } catch (createErr: any) {
+      if (isConnectionError(createErr)) {
+        return;
+      }
       console.warn(`[Schema Create Table Error on ${tableName}]:`, createErr.message);
     }
 
@@ -431,7 +462,9 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
             await p.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${col.name}\` ${cleanType}`);
             console.log(`[MySQL Migration]: Added missing column \`${col.name}\` to table \`${tableName}\``);
           } catch (addErr: any) {
-            console.warn(`[MySQL Migration Add Column Warning on ${tableName}.${col.name}]:`, addErr.message);
+            if (!isConnectionError(addErr)) {
+              console.warn(`[MySQL Migration Add Column Warning on ${tableName}.${col.name}]:`, addErr.message);
+            }
           }
         } else {
           // Column exists -> check if it's an enum or needs LONGTEXT
@@ -443,7 +476,9 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
                 await p.query(`ALTER TABLE \`${tableName}\` MODIFY COLUMN \`${col.name}\` VARCHAR(100) DEFAULT NULL`);
                 console.log(`[MySQL Migration]: Converted enum column \`${col.name}\` on \`${tableName}\` to VARCHAR(100)`);
               } catch (modErr: any) {
-                console.warn(`[MySQL Migration Enum Mod Warning on ${tableName}.${col.name}]:`, modErr.message);
+                if (!isConnectionError(modErr)) {
+                  console.warn(`[MySQL Migration Enum Mod Warning on ${tableName}.${col.name}]:`, modErr.message);
+                }
               }
             } else if (col.type.includes('LONGTEXT') && current.DATA_TYPE !== 'longtext') {
               try {
@@ -454,6 +489,9 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
         }
       }
     } catch (colCheckErr: any) {
+      if (isConnectionError(colCheckErr)) {
+        return;
+      }
       console.warn(`[Schema Columns Check Warning on ${tableName}]:`, colCheckErr.message);
     }
   }
@@ -482,6 +520,7 @@ export async function checkMySqlConnection(): Promise<{
   try {
     const p = getPool();
     if (!p) throw new Error('Không thể khởi tạo kết nối MySQL Pool');
+    await p.query('SELECT 1');
     const [rows] = (await p.query('SHOW TABLES')) as any;
     isConnected = true;
     connectionError = null;

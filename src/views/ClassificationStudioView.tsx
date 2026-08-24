@@ -250,6 +250,7 @@ const BENCHMARK_DATASET = [
 export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> = ({
   users,
   dossiers,
+  incomingDocs,
   currentUser,
   onSaveIncomingDoc,
   onSaveDossier,
@@ -269,10 +270,29 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
   const [successActionMsg, setSuccessActionMsg] = useState<string | null>(null);
   const [isSamplePdfModalOpen, setIsSamplePdfModalOpen] = useState(false);
 
+  // Duplication prevention & feedback states
+  const [savedIncomingDoc, setSavedIncomingDoc] = useState<IncomingDocument | null>(null);
+  const [savedDossierTask, setSavedDossierTask] = useState<{
+    dossierCode: string;
+    taskCode: string;
+    assigneeName: string;
+  } | null>(null);
+  const [successModal, setSuccessModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    docNumber?: string;
+    dossierCode?: string;
+    targetSection: 'INCOMING_DOCS' | 'ALL_TASKS' | 'DOSSIERS';
+    actionType: 'DOC' | 'TASK';
+  } | null>(null);
+
   // Handle selected sample PDF directly
   const handleSelectSamplePdfFile = async (file: File) => {
     setIsReadingFile(true);
     setErrorMessage(null);
+    setSavedIncomingDoc(null);
+    setSavedDossierTask(null);
     try {
       const res = await extractTextFromFile(file);
       setFileName(file.name);
@@ -298,6 +318,8 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     setClassificationResult(null);
     setErrorMessage(null);
     setSuccessActionMsg(null);
+    setSavedIncomingDoc(null);
+    setSavedDossierTask(null);
   };
 
   // Run AI classification
@@ -311,6 +333,8 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     setIsClassifying(true);
     setErrorMessage(null);
     setSuccessActionMsg(null);
+    setSavedIncomingDoc(null);
+    setSavedDossierTask(null);
 
     const departments = [
       'Phòng Kế hoạch - Tài chính',
@@ -375,9 +399,22 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     }
   };
 
-  // Quick Action 1: Create Incoming Doc from classification result
+  // Quick Action 1: Create Incoming Doc from classification result (Protected against duplicate submissions)
   const handleCreateIncomingDoc = () => {
     if (!classificationResult) return;
+
+    // If already saved in this session, provide options to view without duplicating
+    if (savedIncomingDoc) {
+      setSuccessModal({
+        isOpen: true,
+        title: 'Văn Bản Này Đã Được Lưu Trong Hệ Thống',
+        message: `Văn bản đến số [${savedIncomingDoc.documentNumber}] đã được nạp vào Sổ Văn bản Đến. Hệ thống đã ngăn chặn lưu trùng lặp. Đồng chí có thể bấm xem ngay!`,
+        docNumber: savedIncomingDoc.documentNumber,
+        targetSection: 'INCOMING_DOCS',
+        actionType: 'DOC',
+      });
+      return;
+    }
 
     const matchedAssignee = users.find(
       (u) =>
@@ -391,9 +428,14 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         d.title.toLowerCase().includes(classificationResult.primaryDomain.toLowerCase())
     ) || dossiers[0];
 
+    // Check if doc number already exists in DB
+    const baseDocNumber = classificationResult.extractedEntities.documentNumber || `${Math.floor(Math.random() * 900 + 100)}/UBND-VP`;
+    const docExists = incomingDocs.some((d) => d.documentNumber === baseDocNumber);
+    const finalDocNumber = docExists ? `${baseDocNumber}-${Math.floor(Math.random() * 90 + 10)}` : baseDocNumber;
+
     const newDoc: IncomingDocument = {
-      id: 'doc-in-' + Date.now(),
-      documentNumber: classificationResult.extractedEntities.documentNumber || `${Math.floor(Math.random() * 900 + 100)}/UBND-VP`,
+      id: 'doc-in-ai-' + Date.now(),
+      documentNumber: finalDocNumber,
       officialNumber: classificationResult.extractedEntities.officialNumber || `${Math.floor(Math.random() * 90 + 10)}/QĐ-STC`,
       receivedDate: new Date().toISOString().split('T')[0],
       issueDate: classificationResult.extractedEntities.issueDate || new Date().toISOString().split('T')[0],
@@ -420,14 +462,38 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     };
 
     onSaveIncomingDoc(newDoc);
+    setSavedIncomingDoc(newDoc);
     setSuccessActionMsg(`Đã tạo thành công Văn bản đến [${newDoc.documentNumber}] và nạp vào Sổ Văn bản Đến!`);
+
+    // Display modal notification with clear exit / navigation options
+    setSuccessModal({
+      isOpen: true,
+      title: 'Đã Lưu Vào Sổ Văn Bản Đến Thành Công!',
+      message: `Đã nạp văn bản đến số [${newDoc.documentNumber}] vào hệ thống. Cán bộ thụ lý dự kiến: ${matchedAssignee?.fullName || 'Chưa giao'}. Hạn xử lý: ${newDoc.dueDate}.`,
+      docNumber: newDoc.documentNumber,
+      targetSection: 'INCOMING_DOCS',
+      actionType: 'DOC',
+    });
   };
 
-  // Quick Action 2: Create Dossier & Task
+  // Quick Action 2: Create Dossier & Task (Protected against duplicate submissions)
   const handleCreateDossierAndTask = () => {
     if (!classificationResult) return;
 
-    const newDosId = 'dos-' + Date.now();
+    // If already saved in this session, provide options to view without duplicating
+    if (savedDossierTask) {
+      setSuccessModal({
+        isOpen: true,
+        title: 'Hồ Sơ & Nhiệm Vụ Đã Được Mở Trước Đó',
+        message: `Hồ sơ [${savedDossierTask.dossierCode}] và nhiệm vụ [${savedDossierTask.taskCode}] đã được giao cho cán bộ ${savedDossierTask.assigneeName}. Đồng chí có thể bấm xem ngay!`,
+        dossierCode: savedDossierTask.dossierCode,
+        targetSection: 'ALL_TASKS',
+        actionType: 'TASK',
+      });
+      return;
+    }
+
+    const newDosId = 'dos-ai-' + Date.now();
     const newDosCode = classificationResult.dispatchRecommendation.suggestedDossierCode || `HS-2025-AI-${Math.floor(Math.random() * 900 + 100)}`;
     const newDos: Dossier = {
       id: newDosId,
@@ -449,7 +515,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     ) || users[0];
 
     const newTask = {
-      id: 'task-' + Date.now(),
+      id: 'task-ai-' + Date.now(),
       code: `CV-2025-${Math.floor(Math.random() * 900 + 100)}`,
       title: `[${classificationResult.primaryDomain}] Xử lý ${classificationResult.docType}: ${(inputTitle || classificationResult.extractedEntities.summary).slice(0, 50)}...`,
       description: `Nhiệm vụ điều phối tự động: ${classificationResult.dispatchRecommendation.routingReason}`,
@@ -470,7 +536,22 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     };
     onSaveTask(newTask);
 
+    setSavedDossierTask({
+      dossierCode: newDosCode,
+      taskCode: newTask.code,
+      assigneeName: matchedAssignee.fullName,
+    });
     setSuccessActionMsg(`Đã tạo mới Hồ sơ [${newDosCode}] và phân công nhiệm vụ cho [${matchedAssignee.fullName}]!`);
+
+    // Display modal notification with clear exit / navigation options
+    setSuccessModal({
+      isOpen: true,
+      title: 'Đã Mở Hồ Sơ & Giao Việc Thành Công!',
+      message: `Đã mở Hồ sơ [${newDosCode}] và giao nhiệm vụ [${newTask.code}] cho đồng chí ${matchedAssignee.fullName}. Hạn hoàn thành: ${classificationResult.dispatchRecommendation.suggestedDueDate}.`,
+      dossierCode: newDosCode,
+      targetSection: 'ALL_TASKS',
+      actionType: 'TASK',
+    });
   };
 
   // Copy helper
@@ -492,7 +573,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50/60 p-4 md:p-6 custom-scrollbar space-y-5">
+    <div className="w-full p-4 md:p-6 space-y-5 flex-1">
       {/* Top Academic Banner */}
       <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-slate-800 rounded-3xl p-6 text-white shadow-md border border-slate-700/50 relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-indigo-500/10 to-transparent pointer-events-none" />
@@ -1103,20 +1184,48 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                   <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row gap-2.5">
                     <button
                       id="btn-auto-ingest-in-doc"
+                      type="button"
                       onClick={handleCreateIncomingDoc}
-                      className="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                        savedIncomingDoc
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      }`}
                     >
-                      <FileCheck className="w-4 h-4" />
-                      <span>1-Click Lưu Vào Sổ Văn Bản Đến</span>
+                      {savedIncomingDoc ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                          <span>Đã Lưu [{savedIncomingDoc.documentNumber}] (Xem Sổ VB Đến)</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileCheck className="w-4 h-4" />
+                          <span>1-Click Lưu Vào Sổ Văn Bản Đến</span>
+                        </>
+                      )}
                     </button>
 
                     <button
                       id="btn-auto-open-dossier"
+                      type="button"
                       onClick={handleCreateDossierAndTask}
-                      className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                        savedDossierTask
+                          ? 'bg-teal-600 hover:bg-teal-700 text-white ring-2 ring-teal-300'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
                     >
-                      <FolderArchive className="w-4 h-4" />
-                      <span>Mở Hồ Sơ & Giao Việc Tự Động</span>
+                      {savedDossierTask ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-teal-200" />
+                          <span>Đã Giao Việc [{savedDossierTask.assigneeName}] (Xem Nhiệm Vụ)</span>
+                        </>
+                      ) : (
+                        <>
+                          <FolderArchive className="w-4 h-4" />
+                          <span>Mở Hồ Sơ & Giao Việc Tự Động</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1297,6 +1406,77 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         onClose={() => setIsSamplePdfModalOpen(false)}
         onSelectSampleFile={handleSelectSamplePdfFile}
       />
+
+      {/* Action Success & Navigation Modal */}
+      {successModal && successModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl p-6 border border-slate-200 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <div className="space-y-1 flex-1">
+                <h3 className="text-base font-bold text-slate-900">{successModal.title}</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">{successModal.message}</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Lựa chọn bước tiếp theo của bạn:
+              </span>
+              <p className="text-slate-600 text-xs">
+                Bạn có thể chuyển ngay đến màn hình tương ứng để xem và quản lý bản ghi, hoặc tiếp tục phân loại các tài liệu khác.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSuccessModal(null);
+                  setInputText('');
+                  setInputTitle('');
+                  setFileName('');
+                  setClassificationResult(null);
+                  setSavedIncomingDoc(null);
+                  setSavedDossierTask(null);
+                }}
+                className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer text-center"
+              >
+                Phân tích văn bản mới
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSuccessModal(null)}
+                className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer text-center"
+              >
+                Ở lại trang này
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const target = successModal.targetSection;
+                  setSuccessModal(null);
+                  onNavigateSection(target);
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>
+                  {successModal.targetSection === 'INCOMING_DOCS'
+                    ? 'Chuyển đến Sổ Văn Bản Đến'
+                    : successModal.targetSection === 'ALL_TASKS'
+                    ? 'Xem Danh Sách Nhiệm Vụ'
+                    : 'Xem Hồ Sơ'}
+                </span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

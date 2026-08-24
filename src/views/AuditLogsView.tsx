@@ -35,7 +35,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
   };
 
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
+    <div className="w-full p-6 md:p-8 flex flex-col gap-6 flex-1">
       <div>
         <h1 className="text-xl font-bold text-slate-800">Lịch Sử Thao Tác & Nhật Ký Hệ Thống</h1>
         <p className="text-xs text-slate-500 mt-0.5">

@@ -31,6 +31,7 @@ import { ClassificationStudioView } from './views/ClassificationStudioView';
 import { VsCodeGuideView } from './views/VsCodeGuideView';
 import { LoginView } from './views/LoginView';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { FacebookNotificationToast } from './components/FacebookNotificationToast';
 
 export const App: React.FC = () => {
   // Authentication State
@@ -40,6 +41,13 @@ export const App: React.FC = () => {
   // Navigation State
   const [currentSection, setCurrentSection] = useState<NavSection>('DASHBOARD');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Active target for notification deep-linking (Facebook-style navigation)
+  const [activeTarget, setActiveTarget] = useState<{
+    type: 'TASK' | 'INCOMING_DOC' | 'OUTGOING_DOC' | 'DOSSIER';
+    id: string;
+    timestamp: number;
+  } | null>(null);
 
   // Core Data from db
   const [users, setUsers] = useState<User[]>(() => db.getUsers());
@@ -106,18 +114,22 @@ export const App: React.FC = () => {
     );
   }
 
-  // Notification target click
+  // Notification target click (Facebook-style deep linking)
   const handleSelectNotificationTarget = (type?: string, id?: string) => {
-    if (!id) return;
-    if (type === 'TASK') {
+    if (!id || !type) return;
+    const normalizedType = type.toUpperCase() as 'TASK' | 'INCOMING_DOC' | 'OUTGOING_DOC' | 'DOSSIER';
+    
+    if (normalizedType === 'TASK') {
       setCurrentSection('ALL_TASKS');
-    } else if (type === 'INCOMING_DOC') {
+    } else if (normalizedType === 'INCOMING_DOC') {
       setCurrentSection('INCOMING_DOCS');
-    } else if (type === 'OUTGOING_DOC') {
+    } else if (normalizedType === 'OUTGOING_DOC') {
       setCurrentSection('OUTGOING_DOCS');
-    } else if (type === 'DOSSIER') {
+    } else if (normalizedType === 'DOSSIER') {
       setCurrentSection('DOSSIERS');
     }
+    
+    setActiveTarget({ type: normalizedType, id, timestamp: Date.now() });
   };
 
   return (
@@ -157,7 +169,7 @@ export const App: React.FC = () => {
         />
 
         {/* Active View Router */}
-        <main className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+        <main className="flex-1 min-h-0 overflow-y-auto bg-slate-50 relative custom-scrollbar flex flex-col">
           {currentSection === 'DASHBOARD' && (
             <DashboardView
               incomingDocs={incomingDocs}
@@ -224,6 +236,7 @@ export const App: React.FC = () => {
               }}
               currentUser={currentUser}
               onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              initialSelectedDocId={activeTarget?.type === 'INCOMING_DOC' ? activeTarget.id : undefined}
             />
           )}
 
@@ -237,6 +250,7 @@ export const App: React.FC = () => {
               onDeleteDoc={(id) => db.deleteOutgoingDoc(id, currentUser)}
               currentUser={currentUser}
               onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              initialSelectedDocId={activeTarget?.type === 'OUTGOING_DOC' ? activeTarget.id : undefined}
             />
           )}
 
@@ -251,6 +265,7 @@ export const App: React.FC = () => {
               currentUser={currentUser}
               filterMode="ALL"
               onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
             />
           )}
 
@@ -265,6 +280,7 @@ export const App: React.FC = () => {
               currentUser={currentUser}
               filterMode="ASSIGNED_TO_ME"
               onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
             />
           )}
 
@@ -279,6 +295,7 @@ export const App: React.FC = () => {
               currentUser={currentUser}
               filterMode="DELEGATED_BY_ME"
               onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
             />
           )}
 
@@ -294,6 +311,7 @@ export const App: React.FC = () => {
               currentUser={currentUser}
               onOpenTaskDetail={() => setCurrentSection('ALL_TASKS')}
               onOpenIncomingDocDetail={() => setCurrentSection('INCOMING_DOCS')}
+              initialDossierId={activeTarget?.type === 'DOSSIER' ? activeTarget.id : undefined}
             />
           )}
 
@@ -377,6 +395,13 @@ export const App: React.FC = () => {
         isOpen={showChangePasswordModal}
         onClose={() => setShowChangePasswordModal(false)}
         currentUser={currentUser}
+      />
+
+      {/* Facebook-style Live Interactive Notification Toast */}
+      <FacebookNotificationToast
+        notifications={notifications}
+        onMarkAsRead={(id) => db.markNotificationAsRead(id)}
+        onNavigate={handleSelectNotificationTarget}
       />
     </div>
   );
