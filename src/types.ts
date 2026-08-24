@@ -239,3 +239,58 @@ export interface MasterData {
   issuingAuthorities?: string[];
   [key: string]: any;
 }
+
+export interface DomainProbability {
+  domain: string;
+  score: number; // 0 to 100
+  color?: string;
+  explanation: string;
+}
+
+export interface DocumentClassificationResult {
+  id?: string;
+  classifiedAt?: string;
+  primaryDomain: string; // Lĩnh vực chính (e.g. Tài chính - Kế toán, Tổ chức Cán bộ, ...)
+  confidenceScore: number; // 0 - 100
+  docType: string; // Quyết định, Tờ trình, Công văn, Chỉ thị, Báo cáo...
+  urgency: UrgencyLevel;
+  urgencyRationale: string;
+  securityLevel: SecurityLevel;
+  domainProbabilities: DomainProbability[];
+  extractedEntities: {
+    documentNumber?: string;
+    officialNumber?: string;
+    issuingAuthority?: string;
+    recipient?: string;
+    issueDate?: string;
+    effectiveDate?: string;
+    signer?: string;
+    signerPosition?: string;
+    summary: string;
+    keyTopics: string[];
+    legalBases?: string[];
+  };
+  dispatchRecommendation: {
+    primaryDepartment: string;
+    cooperatingDepartments: string[];
+    suggestedAssigneeName?: string;
+    suggestedDueDate: string;
+    suggestedDossierCode: string;
+    suggestedDossierTitle: string;
+    actionChecklist: string[];
+    routingReason: string;
+  };
+  classificationRationale: string;
+  rawTextPreview?: string;
+}
+
+export interface ClassificationBenchmarkItem {
+  id: string;
+  title: string;
+  sourceDocType: string;
+  issuingAuthority: string;
+  rawSampleText: string;
+  groundTruthDomain: string;
+  groundTruthUrgency: UrgencyLevel;
+  groundTruthDocType: string;
+}

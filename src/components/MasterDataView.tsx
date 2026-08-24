@@ -7,6 +7,37 @@ interface MasterDataViewProps {
   onUpdateMasterData: (newData: MasterData) => void;
 }
 
+interface NormalizedItem {
+  id: string;
+  code: string;
+  name: string;
+}
+
+const normalizeList = (list: any[] | undefined, defaultPrefix: string): NormalizedItem[] => {
+  if (!Array.isArray(list)) return [];
+  return list.map((item, index) => {
+    if (typeof item === 'string') {
+      return {
+        id: `${defaultPrefix}_${index}_${item}`,
+        code: item.substring(0, 3).toUpperCase(),
+        name: item,
+      };
+    }
+    if (item && typeof item === 'object') {
+      return {
+        id: item.id || `${defaultPrefix}_${index}`,
+        code: item.code || (item.name ? item.name.substring(0, 3).toUpperCase() : `C${index}`),
+        name: item.name || item.title || item.code || `Mục ${index + 1}`,
+      };
+    }
+    return {
+      id: `${defaultPrefix}_${index}`,
+      code: `C${index}`,
+      name: String(item ?? ''),
+    };
+  });
+};
+
 export const MasterDataView: React.FC<MasterDataViewProps> = ({
   masterData,
   onUpdateMasterData,
@@ -15,36 +46,42 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
   const [newItemName, setNewItemName] = useState('');
   const [newItemCode, setNewItemCode] = useState('');
 
+  const docTypesList = normalizeList(masterData.documentTypes || masterData.docTypes, 'dt');
+  const authoritiesList = normalizeList(masterData.authorities, 'auth');
+  const deptsList = normalizeList(masterData.departments, 'dept');
+
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim()) return;
+    const code = newItemCode.trim() || newItemName.substring(0, 3).toUpperCase();
 
     if (activeTab === 'DOC_TYPES') {
-      const code = newItemCode.trim() || newItemName.substring(0, 3).toUpperCase();
       const updated = {
         ...masterData,
         documentTypes: [
-          ...masterData.documentTypes,
+          ...docTypesList,
           { id: `dt_${Date.now()}`, code, name: newItemName },
+        ],
+        docTypes: [
+          ...(masterData.docTypes || []),
+          newItemName,
         ],
       };
       onUpdateMasterData(updated);
     } else if (activeTab === 'AUTHORITIES') {
-      const code = newItemCode.trim() || newItemName.substring(0, 3).toUpperCase();
       const updated = {
         ...masterData,
         authorities: [
-          ...masterData.authorities,
+          ...authoritiesList,
           { id: `auth_${Date.now()}`, code, name: newItemName, level: 'Tỉnh/Thành' },
         ],
       };
       onUpdateMasterData(updated);
     } else if (activeTab === 'DEPTS') {
-      const code = newItemCode.trim() || newItemName.substring(0, 3).toUpperCase();
       const updated = {
         ...masterData,
         departments: [
-          ...masterData.departments,
+          ...deptsList,
           { id: `dept_${Date.now()}`, code, name: newItemName },
         ],
       };
@@ -57,19 +94,21 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
 
   const handleDeleteItem = (id: string) => {
     if (activeTab === 'DOC_TYPES') {
+      const filtered = docTypesList.filter((x) => x.id !== id);
       onUpdateMasterData({
         ...masterData,
-        documentTypes: masterData.documentTypes.filter((x) => x.id !== id),
+        documentTypes: filtered,
+        docTypes: filtered.map((x) => x.name),
       });
     } else if (activeTab === 'AUTHORITIES') {
       onUpdateMasterData({
         ...masterData,
-        authorities: masterData.authorities.filter((x) => x.id !== id),
+        authorities: authoritiesList.filter((x) => x.id !== id),
       });
     } else if (activeTab === 'DEPTS') {
       onUpdateMasterData({
         ...masterData,
-        departments: masterData.departments.filter((x) => x.id !== id),
+        departments: deptsList.filter((x) => x.id !== id),
       });
     }
   };
@@ -96,8 +135,9 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
           }`}
         >
           <Tag className="w-4 h-4" />
-          <span>Loại Văn Bản ({masterData.documentTypes.length})</span>
+          <span>Loại Văn Bản ({docTypesList.length})</span>
         </button>
+
         <button
           onClick={() => setActiveTab('AUTHORITIES')}
           className={`pb-3 px-3 border-b-2 flex items-center gap-2 transition-colors ${
@@ -105,8 +145,9 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>Cơ Quan Ban Hành ({masterData.authorities.length})</span>
+          <span>Cơ Quan Ban Hành ({authoritiesList.length})</span>
         </button>
+
         <button
           onClick={() => setActiveTab('DEPTS')}
           className={`pb-3 px-3 border-b-2 flex items-center gap-2 transition-colors ${
@@ -114,7 +155,7 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>Phòng Ban Cơ Quan ({masterData.departments.length})</span>
+          <span>Phòng Ban Cơ Quan ({deptsList.length})</span>
         </button>
       </div>
 
@@ -137,7 +178,7 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
         />
         <button
           type="submit"
-          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           <span>Thêm Mục</span>
@@ -156,14 +197,14 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {activeTab === 'DOC_TYPES' &&
-              masterData.documentTypes.map((item) => (
+              docTypesList.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50">
                   <td className="p-3.5 font-mono font-bold text-slate-700">{item.code}</td>
                   <td className="p-3.5 font-medium text-slate-800">{item.name}</td>
                   <td className="p-3.5 text-right">
                     <button
                       onClick={() => handleDeleteItem(item.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -172,14 +213,14 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
               ))}
 
             {activeTab === 'AUTHORITIES' &&
-              masterData.authorities.map((item) => (
+              authoritiesList.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50">
                   <td className="p-3.5 font-mono font-bold text-slate-700">{item.code}</td>
                   <td className="p-3.5 font-medium text-slate-800">{item.name}</td>
                   <td className="p-3.5 text-right">
                     <button
                       onClick={() => handleDeleteItem(item.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -188,14 +229,14 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
               ))}
 
             {activeTab === 'DEPTS' &&
-              masterData.departments.map((item) => (
+              deptsList.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50">
                   <td className="p-3.5 font-mono font-bold text-slate-700">{item.code}</td>
                   <td className="p-3.5 font-medium text-slate-800">{item.name}</td>
                   <td className="p-3.5 text-right">
                     <button
                       onClick={() => handleDeleteItem(item.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

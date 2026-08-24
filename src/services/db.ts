@@ -75,10 +75,17 @@ class DatabaseService {
           if (Array.isArray(d.notifications)) localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(d.notifications));
           if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
             const currentMaster = this.getMasterData();
+            const normalizedDepts = Array.isArray(d.departments) && d.departments.length > 0
+              ? d.departments.map((x: any) => typeof x === 'string' ? x : x.name || x.code || String(x))
+              : currentMaster.departments;
+            const normalizedPositions = Array.isArray(d.positions) && d.positions.length > 0
+              ? d.positions.map((x: any) => typeof x === 'string' ? x : x.name || x.code || String(x))
+              : currentMaster.positions;
+
             const newMaster = {
               ...currentMaster,
-              departments: Array.isArray(d.departments) && d.departments.length > 0 ? d.departments : currentMaster.departments,
-              positions: Array.isArray(d.positions) && d.positions.length > 0 ? d.positions : currentMaster.positions,
+              departments: normalizedDepts,
+              positions: normalizedPositions,
             };
             localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(newMaster));
           }
@@ -794,7 +801,42 @@ class DatabaseService {
     const raw = localStorage.getItem(DB_STORAGE_KEYS.MASTER_DATA);
     if (!raw) return INITIAL_MASTER_DATA;
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      const toStringArray = (list: any, fallback: any[] = []): string[] => {
+        const source = Array.isArray(list) ? list : fallback;
+        if (!Array.isArray(source)) return [];
+        return source.map((item: any) => {
+          if (typeof item === 'string') return item;
+          if (item && typeof item === 'object') return item.name || item.title || item.code || String(item.id || '');
+          return String(item ?? '');
+        }).filter(Boolean);
+      };
+
+      const docTypes = toStringArray(parsed.docTypes, INITIAL_MASTER_DATA.docTypes);
+      const authorities = toStringArray(parsed.authorities, INITIAL_MASTER_DATA.authorities);
+      const departments = toStringArray(parsed.departments, INITIAL_MASTER_DATA.departments);
+      const positions = toStringArray(parsed.positions, INITIAL_MASTER_DATA.positions);
+
+      const documentTypes = Array.isArray(parsed.documentTypes) && parsed.documentTypes.length > 0
+        ? parsed.documentTypes.map((dt: any, idx: number) => {
+            if (typeof dt === 'string') return { id: `dt-${idx}`, name: dt, code: dt.substring(0, 3).toUpperCase() };
+            return {
+              id: dt.id || `dt-${idx}`,
+              name: dt.name || dt.title || `Loại ${idx + 1}`,
+              code: dt.code || (dt.name ? dt.name.substring(0, 3).toUpperCase() : `CV${idx}`),
+            };
+          })
+        : (INITIAL_MASTER_DATA.documentTypes || docTypes.map((dt, idx) => ({ id: `dt-${idx}`, name: dt, code: dt.substring(0, 3).toUpperCase() })));
+
+      return {
+        ...INITIAL_MASTER_DATA,
+        ...parsed,
+        docTypes,
+        authorities,
+        departments,
+        positions,
+        documentTypes,
+      };
     } catch {
       return INITIAL_MASTER_DATA;
     }

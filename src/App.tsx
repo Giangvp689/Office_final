@@ -27,6 +27,7 @@ import { DocumentsVaultView } from './views/DocumentsVaultView';
 import { MasterDataView } from './views/MasterDataView';
 import { AuditLogsView } from './views/AuditLogsView';
 import { AIAssistantView } from './views/AIAssistantView';
+import { ClassificationStudioView } from './views/ClassificationStudioView';
 import { VsCodeGuideView } from './views/VsCodeGuideView';
 import { LoginView } from './views/LoginView';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
@@ -169,6 +170,19 @@ export const App: React.FC = () => {
               onOpenTaskDetail={() => setCurrentSection('ALL_TASKS')}
               onOpenIncomingDocDetail={() => setCurrentSection('INCOMING_DOCS')}
               onOpenDossierDetail={() => setCurrentSection('DOSSIERS')}
+            />
+          )}
+
+          {currentSection === 'CLASSIFIER_STUDIO' && (
+            <ClassificationStudioView
+              users={users}
+              dossiers={dossiers}
+              incomingDocs={incomingDocs}
+              currentUser={currentUser}
+              onSaveIncomingDoc={(doc) => db.saveIncomingDoc(doc, currentUser)}
+              onSaveDossier={(dos) => db.saveDossier(dos, currentUser)}
+              onSaveTask={(task) => db.saveTask(task, currentUser)}
+              onNavigateSection={(sec) => setCurrentSection(sec)}
             />
           )}
 

@@ -53,7 +53,13 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Get distinct departments from existing users
-  const departments = Array.from(new Set(users.map((u) => u.department).filter(Boolean)));
+  const departments = Array.from(
+    new Set(
+      users
+        .map((u) => (typeof u.department === 'string' ? u.department : (u.department as any)?.name || ''))
+        .filter(Boolean)
+    )
+  );
 
   const filteredUsers = users.filter((u) => {
     const matchSearch =
@@ -326,7 +332,11 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                   <div className="space-y-1.5 text-xs text-slate-600 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
                     <div className="flex items-center gap-2">
                       <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{u.department || 'Chưa phân phòng ban'}</span>
+                      <span className="truncate">
+                        {typeof u.department === 'string'
+                          ? u.department
+                          : (u.department as any)?.name || 'Chưa phân phòng ban'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -416,7 +426,10 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                     {getRoleLabel(selectedUser.role)}
                   </div>
                   <p className="text-xs text-slate-600 mt-0.5 font-medium">
-                    {selectedUser.position} &bull; {selectedUser.department}
+                    {selectedUser.position} &bull;{' '}
+                    {typeof selectedUser.department === 'string'
+                      ? selectedUser.department
+                      : (selectedUser.department as any)?.name || 'Chưa phân phòng ban'}
                   </p>
                   <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 mt-2 font-mono">
                     <span>Tài khoản: <strong>{selectedUser.username || selectedUser.email.split('@')[0]}</strong></span>

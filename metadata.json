@@ -1,6 +1,6 @@
 {
-  "name": "Quản Lý Văn Bản & Công Việc",
-  "description": "Hệ thống quản lý văn bản đến/đi, theo dõi tiến độ công việc, quản lý nhân sự, lưu trữ tài liệu theo mã hồ sơ và nhắc việc thông minh.",
+  "name": "Quản Lý & Phân Loại Văn Bản",
+  "description": "Hệ thống phân loại nội dung văn bản hành chính thông minh, quản lý văn bản đến/đi, tự động trích xuất thực thể, phân luồng điều phối theo mã hồ sơ và theo dõi tiến độ công việc.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

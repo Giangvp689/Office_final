@@ -40,9 +40,19 @@ import {
   Flame,
   CheckCircle2,
   Sparkle,
+  Inbox,
+  Info,
+  ExternalLink,
 } from 'lucide-react';
 import { suggestTaskBreakdownWithAI } from '../services/aiService';
 import { dbService } from '../services/db';
+
+const getDeptString = (dept: any): string => {
+  if (!dept) return '';
+  if (typeof dept === 'string') return dept;
+  if (typeof dept === 'object') return dept.name || dept.code || '';
+  return String(dept);
+};
 
 interface TasksViewProps {
   tasks: Task[];
@@ -97,7 +107,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   const getUser = (id?: string) => users.find((u) => u.id === id);
-  const getDossier = (id?: string) => dossiers.find((d) => d.id === id);
+  const getDossier = (id?: string) => dossiers.find((d) => d.id === id || d.code === id);
+  const getIncomingDoc = (id?: string) => incomingDocs.find((d) => d.id === id);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -170,6 +181,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       comments: [],
       attachments: [],
       dossierId: dossiers[0]?.id || '',
+      incomingDocId: '',
     });
     setAiError(null);
     setFormError(null);
@@ -218,6 +230,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       comments: editingTask.comments || [],
       attachments: editingTask.attachments || [],
       dossierId: editingTask.dossierId || '',
+      incomingDocId: editingTask.incomingDocId || '',
     };
 
     onSaveTask(taskToSave);
@@ -954,7 +967,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           {selectedLeader.fullName}
                         </span>
                         <span className="text-[10px] text-slate-500">
-                          {selectedLeader.position || selectedLeader.department}
+                          {selectedLeader.position || getDeptString(selectedLeader.department)}
                         </span>
                       </div>
                     </div>
@@ -983,7 +996,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                           {selectedAssignee.fullName}
                         </span>
                         <span className="text-[10px] text-slate-500">
-                          {selectedAssignee.position || selectedAssignee.department}
+                          {selectedAssignee.position || getDeptString(selectedAssignee.department)}
                         </span>
                       </div>
                     </div>
@@ -1014,6 +1027,51 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       );
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* Linked Incoming Document & Dossier Info */}
+              {(selectedTask.incomingDocId || selectedTask.dossierId) && (
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
+                  {selectedTask.incomingDocId && getIncomingDoc(selectedTask.incomingDocId) && (
+                    <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-200/80">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Căn cứ Văn bản đến
+                        </span>
+                        <span className="text-xs font-bold text-slate-800">
+                          [{getIncomingDoc(selectedTask.incomingDocId)?.documentNumber}]{' '}
+                          {getIncomingDoc(selectedTask.incomingDocId)?.summary}
+                        </span>
+                        <span className="text-[10px] text-slate-500 block">
+                          Đơn vị gửi: {getIncomingDoc(selectedTask.incomingDocId)?.issuingAuthority}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedTask.dossierId && (
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Hồ sơ vụ việc liên kết
+                        </span>
+                        <span className="text-xs font-bold text-indigo-700">
+                          {getDossier(selectedTask.dossierId)?.code} - {getDossier(selectedTask.dossierId)?.title}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const dId = selectedTask.dossierId;
+                          setSelectedTask(null);
+                          if (dId) onOpenDossier(dId);
+                        }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-bold px-2 py-1 bg-indigo-50 hover:bg-indigo-100 rounded-lg cursor-pointer transition-colors"
+                      >
+                        Mở hồ sơ &rarr;
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1333,6 +1391,48 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
               {/* Title & Code Prominent Top Section */}
               <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-3">
+                {/* Linked Incoming Document (Căn cứ giao việc) */}
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Inbox className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Căn cứ Văn bản đến liên kết (Nếu có)</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-normal">
+                      Tự động gán Mã hồ sơ & Trích yếu
+                    </span>
+                  </label>
+                  <select
+                    value={editingTask.incomingDocId || ''}
+                    onChange={(e) => {
+                      const selectedDocId = e.target.value;
+                      const matchedDoc = incomingDocs.find((d) => d.id === selectedDocId);
+                      if (matchedDoc) {
+                        setEditingTask({
+                          ...editingTask,
+                          incomingDocId: selectedDocId,
+                          dossierId: matchedDoc.dossierId || editingTask.dossierId,
+                          title: editingTask.title ? editingTask.title : `Xử lý VB đến [${matchedDoc.documentNumber}]: ${matchedDoc.summary.slice(0, 70)}`,
+                          assigneeId: matchedDoc.assigneeId || editingTask.assigneeId,
+                        });
+                      } else {
+                        setEditingTask({
+                          ...editingTask,
+                          incomingDocId: '',
+                        });
+                      }
+                    }}
+                    className="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs font-semibold text-slate-800"
+                  >
+                    <option value="">-- Giao việc theo Kế hoạch nội bộ / Độc lập (Không theo VB đến) --</option>
+                    {incomingDocs.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        [{doc.documentNumber}] {doc.issuingAuthority} - {doc.summary.slice(0, 60)}...
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div className="sm:col-span-1">
                     <label className="block font-bold text-slate-700 mb-1">Mã công việc</label>
@@ -1399,11 +1499,38 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     }
                     className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800"
                   >
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.fullName} - {u.position || u.role} ({u.department})
-                      </option>
-                    ))}
+                    <optgroup label="--- Ban Giám Đốc & Lãnh Đạo Đơn Vị ---">
+                      {users
+                        .filter(
+                          (u) =>
+                            u.role === 'LEADER' ||
+                            u.role === 'ADMIN' ||
+                            u.position?.includes('Giám Đốc') ||
+                            u.position?.includes('Trưởng Phòng') ||
+                            u.position?.includes('Chánh Văn Phòng')
+                        )
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            👑 {u.fullName} - {u.position || u.role} ({getDeptString(u.department)})
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="--- Chuyên Viên & Cán Bộ Khác ---">
+                      {users
+                        .filter(
+                          (u) =>
+                            u.role !== 'LEADER' &&
+                            u.role !== 'ADMIN' &&
+                            !u.position?.includes('Giám Đốc') &&
+                            !u.position?.includes('Trưởng Phòng') &&
+                            !u.position?.includes('Chánh Văn Phòng')
+                        )
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.fullName} - {u.position || u.role} ({getDeptString(u.department)})
+                          </option>
+                        ))}
+                    </optgroup>
                   </select>
                 </div>
 
@@ -1418,7 +1545,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   >
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.role}) - {u.department}
+                        {u.fullName} ({u.position || u.role}) - {getDeptString(u.department)}
                       </option>
                     ))}
                   </select>
@@ -1539,19 +1666,32 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Gắn vào Mã Hồ Sơ</label>
+                  <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Gắn vào Mã Hồ Sơ vụ việc</span>
+                    <span className="text-[10px] text-indigo-600 font-semibold">Theo NĐ 30/2020</span>
+                  </label>
                   <select
                     value={editingTask.dossierId || ''}
                     onChange={(e) => setEditingTask({ ...editingTask, dossierId: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                    className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-900"
                   >
-                    <option value="">-- Chưa gắn hồ sơ --</option>
+                    <option value="">-- Chưa gắn hồ sơ vụ việc --</option>
                     {dossiers.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.code} - {d.title.slice(0, 35)}...
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Dossier Principle Explanation Box */}
+              <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200/80 flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-amber-900 leading-relaxed">
+                  <span className="font-bold">Nguyên lý Hồ sơ công việc:</span> Gắn Mã Hồ Sơ giúp tập hợp toàn bộ{' '}
+                  <strong>Văn bản đến + Nhiệm vụ xử lý + Dự thảo / Văn bản đi + File scan</strong> về một đầu mối.
+                  Lãnh đạo và cán bộ có thể tra cứu toàn bộ tiến trình vụ việc và nộp lưu trữ cơ quan chỉ với 1 click.
                 </div>
               </div>
 

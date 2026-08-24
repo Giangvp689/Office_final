@@ -10,6 +10,7 @@ import {
   Lightbulb,
 } from 'lucide-react';
 import { askAIAssistant } from '../services/aiService';
+import { generateLocalAssistantAnswer } from '../utils/localAssistant';
 import { IncomingDocument, OutgoingDocument, Task, User as UserType, Dossier } from '../types';
 
 interface AIAssistantViewProps {
@@ -84,10 +85,23 @@ Tôi có thể giúp đồng chí:
         dossiers: dossiers.map((d) => ({ code: d.code, title: d.title, status: d.status })),
       };
 
-      const answer = await askAIAssistant({
+      // Race against 2.5s timeout: if cloud takes too long, instantly respond with local smart engine!
+      const aiPromise = askAIAssistant({
         question: query,
         systemContext,
       });
+
+      const timeoutPromise = new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT_USE_LOCAL')), 2000)
+      );
+
+      let answer = '';
+      try {
+        answer = await Promise.race([aiPromise, timeoutPromise]);
+      } catch (raceErr: any) {
+        // Instant smart local answer
+        answer = generateLocalAssistantAnswer(query, systemContext);
+      }
 
       setMessages((prev) => [
         ...prev,
@@ -98,11 +112,20 @@ Tôi có thể giúp đồng chí:
         },
       ]);
     } catch (err: any) {
+      const systemContext = {
+        totalIncoming: incomingDocs.length,
+        totalOutgoing: outgoingDocs.length,
+        totalTasks: tasks.length,
+        overdueTasks: tasks.filter((t) => t.status === 'OVERDUE'),
+        urgentDocs: incomingDocs.filter((d) => d.urgency === 'HOA_TOC' || d.urgency === 'KHAN'),
+        dossiers,
+      };
+      const fallbackAns = generateLocalAssistantAnswer(query, systemContext);
       setMessages((prev) => [
         ...prev,
         {
           sender: 'ai',
-          text: `⚠️ Lỗi: ${err.message || 'Không thể kết nối với mô hình AI'}. Hãy kiểm tra cấu hình GEMINI_API_KEY.`,
+          text: fallbackAns,
           timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         },
       ]);

@@ -16,11 +16,13 @@ import {
   Laptop,
   Users,
   Sparkles,
+  BrainCircuit,
 } from 'lucide-react';
 import { User, Role } from '../types';
 
 export type NavSection =
   | 'DASHBOARD'
+  | 'CLASSIFIER_STUDIO'
   | 'INCOMING_DOCS'
   | 'OUTGOING_DOCS'
   | 'DOSSIERS'
@@ -100,9 +102,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Primary Action Buttons */}
       <div className="p-3 border-b border-slate-100 space-y-2">
         <button
+          id="btn-nav-classifier-studio"
+          onClick={() => onSelectSection('CLASSIFIER_STUDIO')}
+          className={`w-full text-xs font-bold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 border cursor-pointer ${
+            currentSection === 'CLASSIFIER_STUDIO'
+              ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white border-indigo-700 shadow-md shadow-indigo-200 ring-2 ring-indigo-200'
+              : 'bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white border-transparent shadow-xs'
+          }`}
+        >
+          <BrainCircuit className="w-4 h-4 text-white animate-pulse" />
+          <span className="truncate">Phân Loại Văn Bản (AI)</span>
+          <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded font-black">CỐT LÕI</span>
+        </button>
+
+        <button
           id="btn-nav-ai"
           onClick={() => onSelectSection('AI_ASSISTANT')}
-          className={`w-full text-xs font-bold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 border cursor-pointer ${
+          className={`w-full text-xs font-bold py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-2 border cursor-pointer ${
             currentSection === 'AI_ASSISTANT'
               ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
               : 'bg-gradient-to-r from-violet-50 to-indigo-50 hover:from-violet-100 hover:to-indigo-100 text-indigo-700 border-indigo-200/80 shadow-2xs'
@@ -115,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           id="btn-nav-vscode"
           onClick={() => onSelectSection('VSCODE_GUIDE')}
-          className={`w-full text-[11px] font-bold py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-2 border cursor-pointer ${
+          className={`w-full text-[11px] font-bold py-1.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 border cursor-pointer ${
             currentSection === 'VSCODE_GUIDE'
               ? 'bg-slate-900 text-white border-slate-900'
               : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'

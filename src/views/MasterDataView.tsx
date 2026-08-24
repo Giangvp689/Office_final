@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { MasterData } from '../types';
-import { Database, Plus, Trash2, Check, Edit2 } from 'lucide-react';
 
 interface MasterDataViewProps {
   masterData: MasterData;
@@ -8,6 +7,24 @@ interface MasterDataViewProps {
 }
 
 type StringArrayField = 'docTypes' | 'authorities' | 'departments' | 'positions';
+
+const getItemText = (item: any): string => {
+  if (!item) return '';
+  if (typeof item === 'string') return item;
+  if (typeof item === 'object') {
+    return item.name || item.title || item.code || item.id || '';
+  }
+  return String(item);
+};
+
+const getItemKey = (field: string, item: any, index: number): string => {
+  if (!item) return `${field}-empty-${index}`;
+  if (typeof item === 'string') return `${field}-${item}-${index}`;
+  if (typeof item === 'object') {
+    return `${field}-${item.id || item.code || item.name || index}`;
+  }
+  return `${field}-${index}`;
+};
 
 export const MasterDataView: React.FC<MasterDataViewProps> = ({
   masterData,
@@ -19,22 +36,30 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
   const [posInput, setPosInput] = useState('');
 
   const handleAdd = (field: StringArrayField, value: string, setter: (s: string) => void) => {
-    if (!value.trim()) return;
+    const val = value.trim();
+    if (!val) return;
     const currentList = masterData[field] || [];
-    if (currentList.includes(value.trim())) return;
+    const exists = currentList.some((it: any) => getItemText(it).toLowerCase() === val.toLowerCase());
+    if (exists) return;
 
     onUpdateMasterData({
       ...masterData,
-      [field]: [...currentList, value.trim()],
+      [field]: [...currentList, val],
     });
     setter('');
   };
 
-  const handleRemove = (field: StringArrayField, item: string) => {
+  const handleRemove = (field: StringArrayField, targetItem: any) => {
     const currentList = masterData[field] || [];
+    const targetText = getItemText(targetItem);
+    const targetId = typeof targetItem === 'object' && targetItem ? targetItem.id : null;
+
     onUpdateMasterData({
       ...masterData,
-      [field]: currentList.filter((i) => i !== item),
+      [field]: currentList.filter((i: any) => {
+        if (targetId && typeof i === 'object' && i && i.id === targetId) return false;
+        return getItemText(i) !== targetText;
+      }),
     });
   };
 
@@ -68,20 +93,24 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
             </button>
           </div>
           <div className="flex flex-wrap gap-2 flex-1">
-            {(masterData.docTypes || []).map((item) => (
-              <span
-                key={item}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
-              >
-                {item}
-                <button
-                  onClick={() => handleRemove('docTypes', item)}
-                  className="text-slate-400 hover:text-rose-600"
+            {(masterData.docTypes || []).map((item, idx) => {
+              const text = getItemText(item);
+              if (!text) return null;
+              return (
+                <span
+                  key={getItemKey('docTypes', item, idx)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
                 >
-                  &times;
-                </button>
-              </span>
-            ))}
+                  {text}
+                  <button
+                    onClick={() => handleRemove('docTypes', item)}
+                    className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                  >
+                    &times;
+                  </button>
+                </span>
+              );
+            })}
           </div>
         </div>
 
@@ -105,20 +134,24 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
             </button>
           </div>
           <div className="flex flex-wrap gap-2 flex-1">
-            {(masterData.authorities || []).map((item) => (
-              <span
-                key={item}
-                className="bg-indigo-50 text-indigo-800 px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
-              >
-                {item}
-                <button
-                  onClick={() => handleRemove('authorities', item)}
-                  className="text-indigo-400 hover:text-rose-600"
+            {(masterData.authorities || []).map((item, idx) => {
+              const text = getItemText(item);
+              if (!text) return null;
+              return (
+                <span
+                  key={getItemKey('authorities', item, idx)}
+                  className="bg-indigo-50 text-indigo-800 px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
                 >
-                  &times;
-                </button>
-              </span>
-            ))}
+                  {text}
+                  <button
+                    onClick={() => handleRemove('authorities', item)}
+                    className="text-indigo-400 hover:text-rose-600 cursor-pointer"
+                  >
+                    &times;
+                  </button>
+                </span>
+              );
+            })}
           </div>
         </div>
 
@@ -142,20 +175,24 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
             </button>
           </div>
           <div className="flex flex-wrap gap-2 flex-1">
-            {(masterData.departments || []).map((item) => (
-              <span
-                key={item}
-                className="bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
-              >
-                {item}
-                <button
-                  onClick={() => handleRemove('departments', item)}
-                  className="text-emerald-400 hover:text-rose-600"
+            {(masterData.departments || []).map((item, idx) => {
+              const text = getItemText(item);
+              if (!text) return null;
+              return (
+                <span
+                  key={getItemKey('departments', item, idx)}
+                  className="bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
                 >
-                  &times;
-                </button>
-              </span>
-            ))}
+                  {text}
+                  <button
+                    onClick={() => handleRemove('departments', item)}
+                    className="text-emerald-400 hover:text-rose-600 cursor-pointer"
+                  >
+                    &times;
+                  </button>
+                </span>
+              );
+            })}
           </div>
         </div>
 
@@ -179,23 +216,28 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
             </button>
           </div>
           <div className="flex flex-wrap gap-2 flex-1">
-            {(masterData.positions || []).map((item) => (
-              <span
-                key={item}
-                className="bg-purple-50 text-purple-800 px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
-              >
-                {item}
-                <button
-                  onClick={() => handleRemove('positions', item)}
-                  className="text-purple-400 hover:text-rose-600"
+            {(masterData.positions || []).map((item, idx) => {
+              const text = getItemText(item);
+              if (!text) return null;
+              return (
+                <span
+                  key={getItemKey('positions', item, idx)}
+                  className="bg-purple-50 text-purple-800 px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
                 >
-                  &times;
-                </button>
-              </span>
-            ))}
+                  {text}
+                  <button
+                    onClick={() => handleRemove('positions', item)}
+                    className="text-purple-400 hover:text-rose-600 cursor-pointer"
+                  >
+                    &times;
+                  </button>
+                </span>
+              );
+            })}
           </div>
         </div>
       </div>
     </div>
   );
 };
+

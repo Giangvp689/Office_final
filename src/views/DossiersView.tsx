@@ -162,9 +162,9 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
       {/* Dossier Grid Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredDossiers.map((d) => {
-          const linkedIn = incomingDocs.filter((doc) => doc.dossierId === d.id);
-          const linkedOut = outgoingDocs.filter((doc) => doc.dossierId === d.id);
-          const linkedTasks = tasks.filter((t) => t.dossierId === d.id);
+          const linkedIn = incomingDocs.filter((doc) => doc.dossierId === d.id || doc.dossierId === d.code);
+          const linkedOut = outgoingDocs.filter((doc) => doc.dossierId === d.id || doc.dossierId === d.code);
+          const linkedTasks = tasks.filter((t) => t.dossierId === d.id || t.dossierId === d.code);
           const manager = getUser(d.managerId);
 
           return (
@@ -216,7 +216,9 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
                         className="w-4 h-4 rounded-full object-cover"
                       />
                     )}
-                    <span className="truncate">{manager?.fullName || d.department}</span>
+                    <span className="truncate">
+                      {manager?.fullName || (typeof d.department === 'string' ? d.department : (d.department as any)?.name || '')}
+                    </span>
                   </div>
                   <span className="font-medium text-slate-400 shrink-0">
                     {new Date(d.startDate).toLocaleDateString('vi-VN')}
@@ -242,7 +244,7 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
               </div>
               <button
                 onClick={() => setSelectedDossier(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -257,7 +259,11 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
                   </span>
                   {getStatusBadge(selectedDossier.status)}
                 </div>
-                <span className="text-slate-500 font-medium">{selectedDossier.department}</span>
+                <span className="text-slate-500 font-medium">
+                  {typeof selectedDossier.department === 'string'
+                    ? selectedDossier.department
+                    : (selectedDossier.department as any)?.name || ''}
+                </span>
               </div>
 
               <div>
@@ -275,13 +281,13 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
                   <span className="font-bold text-slate-800 flex items-center gap-1.5">
                     <FileText className="w-4 h-4 text-blue-600" />
                     Văn bản đến liên kết (
-                    {incomingDocs.filter((d) => d.dossierId === selectedDossier.id).length})
+                    {incomingDocs.filter((d) => d.dossierId === selectedDossier.id || d.dossierId === selectedDossier.code).length})
                   </span>
                 </div>
 
                 <div className="space-y-2">
                   {incomingDocs
-                    .filter((d) => d.dossierId === selectedDossier.id)
+                    .filter((d) => d.dossierId === selectedDossier.id || d.dossierId === selectedDossier.code)
                     .map((doc) => (
                       <div
                         key={doc.id}
@@ -312,13 +318,13 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
                 <div className="flex items-center justify-between mb-3">
                   <span className="font-bold text-slate-800 flex items-center gap-1.5">
                     <CheckSquare className="w-4 h-4 text-indigo-600" />
-                    Công việc thuộc hồ sơ ({tasks.filter((t) => t.dossierId === selectedDossier.id).length})
+                    Công việc thuộc hồ sơ ({tasks.filter((t) => t.dossierId === selectedDossier.id || t.dossierId === selectedDossier.code).length})
                   </span>
                 </div>
 
                 <div className="space-y-2">
                   {tasks
-                    .filter((t) => t.dossierId === selectedDossier.id)
+                    .filter((t) => t.dossierId === selectedDossier.id || t.dossierId === selectedDossier.code)
                     .map((t) => (
                       <div
                         key={t.id}
@@ -349,13 +355,13 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
                 <div className="flex items-center justify-between mb-3">
                   <span className="font-bold text-slate-800 flex items-center gap-1.5">
                     <Send className="w-4 h-4 text-emerald-600" />
-                    Văn bản đi phát hành ({outgoingDocs.filter((d) => d.dossierId === selectedDossier.id).length})
+                    Văn bản đi phát hành ({outgoingDocs.filter((d) => d.dossierId === selectedDossier.id || d.dossierId === selectedDossier.code).length})
                   </span>
                 </div>
 
                 <div className="space-y-2">
                   {outgoingDocs
-                    .filter((d) => d.dossierId === selectedDossier.id)
+                    .filter((d) => d.dossierId === selectedDossier.id || d.dossierId === selectedDossier.code)
                     .map((doc) => (
                       <div
                         key={doc.id}

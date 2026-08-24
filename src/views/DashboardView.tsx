@@ -18,6 +18,8 @@ import {
   FolderKanban,
   Sparkles,
   User as UserIcon,
+  BrainCircuit,
+  Zap,
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -110,6 +112,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col gap-6 bg-slate-50 custom-scrollbar">
+      {/* Flagship Academic Banner: AI Document Classifier */}
+      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 rounded-2xl p-5 text-white shadow-md border border-indigo-700/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-500/30 border border-indigo-400/40 flex items-center justify-center text-white shrink-0 shadow-inner">
+            <BrainCircuit className="w-6 h-6 text-indigo-200 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-400/30 text-indigo-200 px-2 py-0.5 rounded-full border border-indigo-300/30">
+                Chức Năng Cốt Lõi Đề Tài
+              </span>
+              <span className="text-[10px] text-emerald-300 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full">
+                NLP Classification Engine
+              </span>
+            </div>
+            <h2 className="text-base md:text-lg font-black tracking-tight text-white">
+              Studio Phân Loại Nội Dung Văn Bản & Trích Xuất Thực Thể Tự Động
+            </h2>
+            <p className="text-xs text-indigo-100/80 max-w-2xl leading-relaxed">
+              Tự động phân loại đa nhãn (Tài chính, Tổ chức Cán bộ, Pháp chế...), nhận diện thể loại theo NĐ 30/2020, đo lường độ tin cậy và tự động điều phối cho chuyên viên phụ trách.
+            </p>
+          </div>
+        </div>
+
+        <button
+          id="btn-dash-open-classifier"
+          onClick={() => onSelectSection('CLASSIFIER_STUDIO')}
+          className="self-start md:self-center py-2.5 px-4 bg-white text-indigo-950 hover:bg-indigo-50 rounded-xl font-bold text-xs shadow-md flex items-center gap-2 shrink-0 transition-all cursor-pointer group"
+        >
+          <Zap className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+          <span>Mở Phân Loại Văn Bản</span>
+          <ArrowRight className="w-4 h-4 text-indigo-600 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+      </div>
+
       {/* 4 Stat Cards - Sleek Interface Style */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Card 1: Văn bản đến */}

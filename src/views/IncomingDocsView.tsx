@@ -38,7 +38,8 @@ import {
   FileCheck,
   Scan,
 } from 'lucide-react';
-import { summarizeDocumentWithAI } from '../services/aiService';
+import { summarizeDocumentWithAI, classifyDocumentWithAI } from '../services/aiService';
+import { extractTextFromFile } from '../utils/fileExtractor';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 
 interface IncomingDocsViewProps {
@@ -83,6 +84,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
   // AI Summarizer State inside modal
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isExtractingFile, setIsExtractingFile] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [rawTextToAnalyze, setRawTextToAnalyze] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
@@ -259,19 +261,40 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
     setAiError(null);
 
     try {
-      const result = await summarizeDocumentWithAI({
+      const departments = ['Phòng Kế hoạch - Tài chính', 'Phòng Tổ chức Cán bộ', 'Văn phòng Cơ quan', 'Phòng Kỹ thuật - Công nghệ', 'Phòng Pháp chế - Thanh tra'];
+      const staffList = users.map((u) => ({ id: u.id, fullName: u.fullName, position: u.position || u.role, department: u.department }));
+
+      const classResult = await classifyDocumentWithAI({
         title: editingDoc?.summary || '',
-        content: rawTextToAnalyze || editingDoc?.summary || '',
-        docType: editingDoc?.docType,
-        issuingAuthority: editingDoc?.issuingAuthority,
+        text: rawTextToAnalyze || editingDoc?.summary || '',
+        departments,
+        availableStaff: staffList,
       });
+
+      const matchedAssignee = users.find(
+        (u) => u.fullName.toLowerCase().includes(classResult.dispatchRecommendation?.suggestedAssigneeName?.toLowerCase() || '')
+      );
+
+      const matchedDossier = dossiers.find(
+        (d) => d.code === classResult.dispatchRecommendation?.suggestedDossierCode || d.title.toLowerCase().includes(classResult.primaryDomain.toLowerCase())
+      );
 
       setEditingDoc((prev) => ({
         ...prev,
-        summary: result.summary || prev?.summary || '',
-        urgency: (result.suggestedUrgency as UrgencyLevel) || prev?.urgency || 'THUONG',
-        dueDate: result.suggestedDueDate || prev?.dueDate || '',
-        resultSummary: result.actionPlan ? `Kế hoạch hành động đề xuất: ${result.actionPlan}` : prev?.resultSummary,
+        documentNumber: classResult.extractedEntities.documentNumber || prev?.documentNumber || '',
+        officialNumber: classResult.extractedEntities.officialNumber || prev?.officialNumber || '',
+        issuingAuthority: classResult.extractedEntities.issuingAuthority || prev?.issuingAuthority || '',
+        issueDate: classResult.extractedEntities.issueDate || prev?.issueDate || '',
+        summary: classResult.extractedEntities.summary || prev?.summary || '',
+        docType: classResult.docType || prev?.docType,
+        urgency: classResult.urgency || prev?.urgency || 'THUONG',
+        securityLevel: classResult.securityLevel || prev?.securityLevel || 'THUONG',
+        dueDate: classResult.dispatchRecommendation?.suggestedDueDate || prev?.dueDate || '',
+        assigneeId: matchedAssignee?.id || prev?.assigneeId,
+        dossierId: matchedDossier?.id || prev?.dossierId,
+        resultSummary: classResult.dispatchRecommendation?.actionChecklist
+          ? `[Phân loại: ${classResult.primaryDomain} (Độ tin cậy: ${classResult.confidenceScore.toFixed(1)}%)] Gợi ý xử lý: ${classResult.dispatchRecommendation.actionChecklist.join('; ')}`
+          : prev?.resultSummary,
       }));
       setShowAiInput(false);
     } catch (err: any) {
@@ -854,22 +877,69 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
                 {showAiInput && (
                   <div className="space-y-2 pt-2 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-600">Nội dung văn bản:</span>
+                      <label className="text-[11px] text-indigo-600 font-bold hover:underline cursor-pointer flex items-center gap-1">
+                        <Upload className="w-3 h-3" />
+                        <span>{isExtractingFile ? 'Đang quét OCR tệp...' : 'Tải tệp (.docx, PDF scan, Ảnh)'}</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          disabled={isExtractingFile}
+                          accept=".docx,.doc,.txt,.pdf,.rtf,.md,.png,.jpg,.jpeg"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setIsExtractingFile(true);
+                              setAiError(null);
+                              try {
+                                const res = await extractTextFromFile(file);
+                                if (res.text) {
+                                  setRawTextToAnalyze(res.text);
+                                }
+                                // Auto fill extracted entities if available from OCR
+                                if (res.documentNumber || res.issuingAuthority || res.summary) {
+                                  setEditingDoc((prev) => {
+                                    if (!prev) return prev;
+                                    return {
+                                      ...prev,
+                                      officialNumber: res.documentNumber || prev.officialNumber,
+                                      issuingAuthority: res.issuingAuthority || prev.issuingAuthority,
+                                      issueDate: res.issueDate || prev.issueDate,
+                                      summary: res.summary || res.title || prev.summary,
+                                    };
+                                  });
+                                }
+                                if (!res.success && res.error) {
+                                  setAiError(res.error);
+                                }
+                              } catch (err: any) {
+                                setAiError(`Lỗi đọc tệp: ${err.message || 'Không thể trích xuất'}`);
+                              } finally {
+                                setIsExtractingFile(false);
+                                e.target.value = '';
+                              }
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
                     <textarea
                       value={rawTextToAnalyze}
                       onChange={(e) => setRawTextToAnalyze(e.target.value)}
-                      placeholder="Dán toàn văn hoặc đoạn trích yếu văn bản đến tại đây..."
+                      placeholder="Dán toàn văn hoặc bấm 'Tải tệp (.docx, PDF scan, Ảnh)' để AI OCR & trích xuất tự động..."
                       rows={3}
-                      className="w-full p-2.5 bg-white border border-indigo-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700"
+                      className="w-full p-2.5 bg-white border border-indigo-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-mono"
                     />
-                    {aiError && <p className="text-[11px] text-rose-600">{aiError}</p>}
+                    {aiError && <p className="text-[11px] text-rose-600 font-medium">{aiError}</p>}
                     <button
                       type="button"
                       onClick={handleRunAiAnalysis}
-                      disabled={isAiLoading}
+                      disabled={isAiLoading || isExtractingFile || !rawTextToAnalyze.trim()}
                       className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>{isAiLoading ? 'AI đang phân tích...' : 'Phân tích & Điền tự động'}</span>
+                      <span>{isAiLoading ? 'AI đang phân tích...' : isExtractingFile ? 'Đang OCR quét tệp...' : 'Phân tích & Điền tự động'}</span>
                     </button>
                   </div>
                 )}

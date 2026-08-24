@@ -10,8 +10,10 @@ import {
   Check,
   Send,
   Loader2,
+  Upload,
 } from 'lucide-react';
 import { Task, User, Dossier } from '../types';
+import { extractTextFromFile } from '../utils/fileExtractor';
 
 interface AiAssistantModalProps {
   isOpen: boolean;
@@ -37,6 +39,7 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
     'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc\n\nỦY BAN NHÂN DÂN TỈNH\nSố: 1540/UBND-VP\nV/v khẩn trương rà soát an toàn thông tin và triển khai chuyển đổi số năm 2025\n\nKính gửi: Các Sở, Ban, ngành thuộc tỉnh; UBND các huyện, thành phố.\n\nNhằm đảm bảo an toàn tuyệt đối hạ tầng số và hoàn thành các chỉ tiêu dịch vụ công trực tuyến năm 2025, Chủ tịch UBND tỉnh chỉ đạo:\n1. Sở Thông tin và Truyền thông chủ trì tổ chức diễn tập ứng cứu sự cố an ninh mạng trước ngày 15/09/2025.\n2. Các đơn vị báo cáo kết quả rà soát dữ liệu định danh trước ngày 10/09/2025.'
   );
   const [analyzing, setAnalyzing] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
 
   // Draft State
@@ -209,15 +212,44 @@ export const AiAssistantModal: React.FC<AiAssistantModalProps> = ({
           {activeTab === 'ANALYZE' && (
             <div className="space-y-4">
               <div>
-                <label className="font-bold text-slate-700 block mb-1.5">
-                  Dán nội dung hoặc bản scan văn bản cần bóc tách:
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-bold text-slate-700 block">
+                    Nội dung văn bản cần bóc tách:
+                  </label>
+                  <label className="text-[11px] text-indigo-600 font-bold hover:underline cursor-pointer flex items-center gap-1">
+                    <Upload className="w-3 h-3" />
+                    <span>{isExtracting ? 'Đang quét OCR tệp...' : 'Tải tệp (.docx, PDF scan, Ảnh)'}</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      disabled={isExtracting}
+                      accept=".docx,.doc,.txt,.pdf,.rtf,.md,.png,.jpg,.jpeg"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setIsExtracting(true);
+                          try {
+                            const res = await extractTextFromFile(file);
+                            if (res.text) {
+                              setDocContentInput(res.text);
+                            }
+                          } catch (err) {
+                            // ignore
+                          } finally {
+                            setIsExtracting(false);
+                            e.target.value = '';
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
                 <textarea
                   rows={5}
                   value={docContentInput}
                   onChange={(e) => setDocContentInput(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none focus:border-indigo-500 font-mono"
-                  placeholder="Dán nội dung công văn, chỉ thị, quyết định..."
+                  placeholder="Dán nội dung hoặc bấm 'Tải tệp (.docx, PDF scan, Ảnh)' để AI OCR & trích xuất tự động..."
                 ></textarea>
               </div>
 

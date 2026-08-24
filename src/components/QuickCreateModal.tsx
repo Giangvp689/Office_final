@@ -48,7 +48,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
   const [incUrgency, setIncUrgency] = useState<UrgencyLevel>('THUONG');
   const [incAssigneeId, setIncAssigneeId] = useState(users[0]?.id || '');
   const [incDueDate, setIncDueDate] = useState(new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]);
-  const [incDossierId, setIncDossierId] = useState(dossiers[0]?.code || '');
+  const [incDossierId, setIncDossierId] = useState(dossiers[0]?.id || dossiers[0]?.code || '');
 
   // Form states - Outgoing Doc
   const [outDocNum, setOutDocNum] = useState('');
@@ -57,7 +57,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
   const [outSummary, setOutSummary] = useState('');
   const [outDrafterId, setOutDrafterId] = useState(currentUser.id);
   const [outSignerId, setOutSignerId] = useState(users.find((u) => u.role === 'LEADER')?.id || users[0]?.id || '');
-  const [outDossierId, setOutDossierId] = useState(dossiers[0]?.code || '');
+  const [outDossierId, setOutDossierId] = useState(dossiers[0]?.id || dossiers[0]?.code || '');
 
   // Form states - Task
   const [taskTitle, setTaskTitle] = useState('');
@@ -65,7 +65,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
   const [taskAssigneeId, setTaskAssigneeId] = useState(users[0]?.id || '');
   const [taskPriority, setTaskPriority] = useState<TaskPriority>('MEDIUM');
   const [taskDueDate, setTaskDueDate] = useState(new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0]);
-  const [taskDossierId, setTaskDossierId] = useState(dossiers[0]?.code || '');
+  const [taskDossierId, setTaskDossierId] = useState(dossiers[0]?.id || dossiers[0]?.code || '');
 
   // Form states - Dossier
   const [dosCode, setDosCode] = useState(`HS-2025-${Math.floor(Math.random() * 900 + 100)}`);
@@ -333,7 +333,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-indigo-500 font-mono text-indigo-700 font-bold"
                 >
                   {dossiers.map((d) => (
-                    <option key={d.id} value={d.code}>
+                    <option key={d.id} value={d.id}>
                       {d.code} - {d.title}
                     </option>
                   ))}
@@ -421,7 +421,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-indigo-500 font-mono text-indigo-700 font-bold"
                 >
                   {dossiers.map((d) => (
-                    <option key={d.id} value={d.code}>
+                    <option key={d.id} value={d.id}>
                       {d.code} - {d.title}
                     </option>
                   ))}
@@ -506,7 +506,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-indigo-500 font-mono text-indigo-700 font-bold"
                 >
                   {dossiers.map((d) => (
-                    <option key={d.id} value={d.code}>
+                    <option key={d.id} value={d.id}>
                       {d.code} - {d.title}
                     </option>
                   ))}
