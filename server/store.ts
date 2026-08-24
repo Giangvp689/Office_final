@@ -14,7 +14,6 @@ import {
   INITIAL_NOTIFICATIONS,
 } from '../src/data/mockData';
 import {
-  getPool,
   checkMySqlConnection,
   fetchAllDataFromMySql,
   initTablesAndSeed,
@@ -22,7 +21,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const STORE_FILE = path.join(__dirname, 'data_store.json');
+const STORE_FILE = path.join(__dirname, '.db_store_cache.json');
 
 export interface FullDbState {
   departments: any[];
@@ -65,33 +64,34 @@ export function loadStore(): FullDbState {
       inMemoryState = JSON.parse(content);
       return inMemoryState!;
     } catch (e) {
-      console.warn('Failed to parse data_store.json, creating initial store:', e);
+      console.warn('Failed to parse cache store, creating initial store:', e);
     }
   }
 
   inMemoryState = getInitialState();
-  saveStore(inMemoryState);
   return inMemoryState;
 }
 
 export function saveStore(state: FullDbState) {
   inMemoryState = state;
   try {
-    fs.writeFileSync(STORE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+    fs.writeFileSync(STORE_FILE, JSON.stringify(state), 'utf-8');
   } catch (e) {
-    console.error('Error saving data_store.json:', e);
+    console.error('Error saving cache store:', e);
   }
 }
 
 /**
- * Syncs memory and disk store with MySQL. If MySQL is connected, fetches everything from MySQL.
+ * Syncs memory store with MySQL. If MySQL is connected, fetches everything directly from MySQL.
  */
 export async function syncStoreWithMySql(): Promise<{ connected: boolean; data: FullDbState }> {
   try {
     const status = await checkMySqlConnection();
     if (status.connected) {
-      if ((status.tablesCount || 0) < 5) {
+      try {
         await initTablesAndSeed();
+      } catch (seedErr) {
+        console.warn('Init tables warning:', seedErr);
       }
       const mySqlData = await fetchAllDataFromMySql();
       if (mySqlData) {
@@ -108,12 +108,12 @@ export async function syncStoreWithMySql(): Promise<{ connected: boolean; data: 
           notifications: mySqlData.notifications || [],
           lastSyncedAt: new Date().toISOString(),
         };
-        saveStore(full);
+        inMemoryState = full;
         return { connected: true, data: full };
       }
     }
   } catch (err) {
-    console.warn('Sync with MySQL failed, serving persistent store:', err);
+    console.warn('Sync with MySQL notice:', err);
   }
 
   const current = loadStore();

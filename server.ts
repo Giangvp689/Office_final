@@ -10,6 +10,7 @@ import {
   getPool,
   getDbConfig,
   setDbConfig,
+  ensureAllTableSchemas,
 } from './server/mysql';
 import {
   loadStore,
@@ -29,7 +30,7 @@ const PORT = 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Helper to safely run DB queries with detailed logging
+// Helper to safely run DB queries with auto-retry & auto-schema migration
 async function safeDbRun(fn: (pool: any) => Promise<any>): Promise<{ success: boolean; error?: string; fromDb: boolean }> {
   try {
     const pool = getPool();
@@ -39,7 +40,20 @@ async function safeDbRun(fn: (pool: any) => Promise<any>): Promise<{ success: bo
     await fn(pool);
     return { success: true, fromDb: true };
   } catch (err: any) {
-    console.error('[MySQL Execution Error]:', err?.message || err);
+    console.warn('[MySQL Execution Initial Warning]:', err?.message || err);
+    try {
+      const pool = getPool();
+      if (pool) {
+        // Automatically check and migrate missing columns / tables
+        await ensureAllTableSchemas(pool);
+        await fn(pool);
+        console.log('[MySQL Execution Success after auto-schema migration]');
+        return { success: true, fromDb: true };
+      }
+    } catch (retryErr: any) {
+      console.error('[MySQL Execution Fatal Error after Retry]:', retryErr?.message || retryErr);
+      return { success: false, error: retryErr?.message || 'Lỗi truy vấn CSDL', fromDb: false };
+    }
     return { success: false, error: err?.message || 'Lỗi truy vấn CSDL', fromDb: false };
   }
 }
@@ -171,12 +185,18 @@ app.get('/api/sync-all', async (_req, res) => {
   }
 });
 
-// Helper to sanitize dates for MySQL (empty string -> null)
+// Helper to sanitize dates for MySQL (empty string -> null, valid format YYYY-MM-DD)
 function sanitizeDate(dateStr: any): string | null {
-  if (!dateStr || String(dateStr).trim() === '') return null;
+  if (!dateStr || String(dateStr).trim() === '' || String(dateStr) === 'undefined' || String(dateStr) === 'null') return null;
   const s = String(dateStr).trim();
-  if (s.length >= 10) return s.substring(0, 10);
-  return s;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    return s.substring(0, 10);
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().substring(0, 10);
+  }
+  return null;
 }
 
 // ==========================================
@@ -282,13 +302,16 @@ app.post('/api/users', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Thiếu thông tin người dùng bắt buộc' });
     }
 
+    const username = (u.username?.trim() || u.email.split('@')[0].replace(/[^a-zA-Z0-9_.]/g, '') || u.id).trim();
+
     // Update persistent store
     const store = loadStore();
     const existingIdx = store.users.findIndex((x) => x.id === u.id);
+    const userObj = { ...u, username };
     if (existingIdx >= 0) {
-      store.users[existingIdx] = { ...store.users[existingIdx], ...u };
+      store.users[existingIdx] = { ...store.users[existingIdx], ...userObj };
     } else {
-      store.users.unshift(u);
+      store.users.unshift(userObj);
     }
     saveStore(store);
 
@@ -301,10 +324,10 @@ app.post('/api/users', async (req, res) => {
         username=VALUES(username), password=VALUES(password), full_name=VALUES(full_name), email=VALUES(email), phone=VALUES(phone), avatar=VALUES(avatar), department=VALUES(department), department_id=VALUES(department_id), position=VALUES(position), position_id=VALUES(position_id), role=VALUES(role), status=VALUES(status), join_date=VALUES(join_date), bio=VALUES(bio)`,
         [
           u.id,
-          u.username || u.email.split('@')[0] || u.id,
+          username,
           u.password || '123',
-          u.fullName,
-          u.email,
+          u.fullName.trim(),
+          u.email.trim(),
           u.phone || null,
           u.avatar || null,
           u.department || null,
@@ -319,7 +342,13 @@ app.post('/api/users', async (req, res) => {
       );
     });
 
-    res.json({ success: true, user: u, fromDb: dbResult.fromDb, error: dbResult.error });
+    if (dbResult.fromDb) {
+      console.log(`[MySQL DB]: Successfully saved user "${u.fullName}" (${u.id}) to MySQL database.`);
+    } else {
+      console.warn(`[MySQL DB Warning]: User "${u.fullName}" saved to cache, but MySQL returned:`, dbResult.error);
+    }
+
+    res.json({ success: true, user: userObj, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     console.error('Error saving user:', error);
     res.status(500).json({ success: false, error: error.message, user: req.body });
@@ -604,7 +633,7 @@ app.post('/api/tasks', async (req, res) => {
         (id, code, title, description, dossier_id, incoming_doc_id, linked_doc_id, doc_type_relation, creator_id, created_by_id, assignee_id, co_assignee_ids, priority, start_date, due_date, progress, status, completed_date, result_notes, sub_tasks, comments, remind_days_before) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
-        code=VALUES(code), title=VALUES(title), description=VALUES(description), dossier_id=VALUES(dossier_id), incoming_doc_id=VALUES(incoming_doc_id), linked_doc_id=VALUES(linked_doc_id), doc_type_relation=VALUES(doc_type_relation), creator_id=VALUES(creator_id), assignee_id=VALUES(assignee_id), co_assignee_ids=VALUES(co_assignee_ids), priority=VALUES(priority), start_date=VALUES(start_date), due_date=VALUES(due_date), progress=VALUES(progress), status=VALUES(status), completed_date=VALUES(completed_date), result_notes=VALUES(result_notes), sub_tasks=VALUES(sub_tasks), comments=VALUES(comments), remind_days_before=VALUES(remind_days_before)`,
+        code=VALUES(code), title=VALUES(title), description=VALUES(description), dossier_id=VALUES(dossier_id), incoming_doc_id=VALUES(incoming_doc_id), linked_doc_id=VALUES(linked_doc_id), doc_type_relation=VALUES(doc_type_relation), creator_id=VALUES(creator_id), created_by_id=VALUES(created_by_id), assignee_id=VALUES(assignee_id), co_assignee_ids=VALUES(co_assignee_ids), priority=VALUES(priority), start_date=VALUES(start_date), due_date=VALUES(due_date), progress=VALUES(progress), status=VALUES(status), completed_date=VALUES(completed_date), result_notes=VALUES(result_notes), sub_tasks=VALUES(sub_tasks), comments=VALUES(comments), remind_days_before=VALUES(remind_days_before)`,
         [
           t.id,
           t.code,
@@ -614,8 +643,8 @@ app.post('/api/tasks', async (req, res) => {
           t.incomingDocId || null,
           t.linkedDocId || null,
           t.docTypeRelation || null,
-          t.creatorId || null,
-          t.createdById || null,
+          t.creatorId || t.createdById || null,
+          t.createdById || t.creatorId || null,
           t.assigneeId,
           JSON.stringify(t.coAssigneeIds || []),
           t.priority || 'MEDIUM',
@@ -650,7 +679,7 @@ app.put('/api/tasks/:id', async (req, res) => {
     const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `UPDATE tasks SET 
-        code=?, title=?, description=?, dossier_id=?, incoming_doc_id=?, linked_doc_id=?, doc_type_relation=?, assignee_id=?, co_assignee_ids=?, priority=?, start_date=?, due_date=?, progress=?, status=?, completed_date=?, result_notes=?, sub_tasks=?, comments=?, remind_days_before=?
+        code=?, title=?, description=?, dossier_id=?, incoming_doc_id=?, linked_doc_id=?, doc_type_relation=?, creator_id=?, created_by_id=?, assignee_id=?, co_assignee_ids=?, priority=?, start_date=?, due_date=?, progress=?, status=?, completed_date=?, result_notes=?, sub_tasks=?, comments=?, remind_days_before=?
         WHERE id=?`,
         [
           t.code,
@@ -660,6 +689,8 @@ app.put('/api/tasks/:id', async (req, res) => {
           t.incomingDocId || null,
           t.linkedDocId || null,
           t.docTypeRelation || null,
+          t.creatorId || t.createdById || null,
+          t.createdById || t.creatorId || null,
           t.assigneeId,
           JSON.stringify(t.coAssigneeIds || []),
           t.priority || 'MEDIUM',
@@ -679,6 +710,47 @@ app.put('/api/tasks/:id', async (req, res) => {
     res.json({ success: true, task: t, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, task: req.body });
+  }
+});
+
+// Endpoint riêng để thêm tin nhắn trao đổi vào nhiệm vụ
+app.post('/api/tasks/:id/comments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const comment = req.body;
+    const store = loadStore();
+    const task = store.tasks.find((x) => x.id === id);
+
+    let updatedComments: any[] = [];
+    if (task) {
+      task.comments = task.comments || [];
+      if (!task.comments.some((c: any) => c.id === comment.id)) {
+        task.comments.push(comment);
+      }
+      updatedComments = task.comments;
+      saveStore(store);
+    }
+
+    const dbResult = await safeDbRun(async (pool) => {
+      // Lấy comments hiện tại từ DB
+      const [rows] = await pool.query('SELECT comments FROM tasks WHERE id = ?', [id]) as any;
+      let currentComments = [];
+      if (rows && rows[0] && rows[0].comments) {
+        try {
+          currentComments = typeof rows[0].comments === 'string' ? JSON.parse(rows[0].comments) : rows[0].comments;
+        } catch {
+          currentComments = [];
+        }
+      }
+      if (!currentComments.some((c: any) => c.id === comment.id)) {
+        currentComments.push(comment);
+      }
+      await pool.query('UPDATE tasks SET comments = ? WHERE id = ?', [JSON.stringify(currentComments), id]);
+    });
+
+    res.json({ success: true, comment, comments: updatedComments, fromDb: dbResult.fromDb });
+  } catch (error: any) {
+    res.json({ success: true, comment: req.body });
   }
 });
 
@@ -1121,7 +1193,12 @@ async function startServer() {
     // In development, Vite handles frontend assets via middleware
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        watch: {
+          ignored: ['**/server/**', '**/.db_store_cache.json', '**/data_store.json', '**/*.json', '**/.env*'],
+        },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

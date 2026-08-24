@@ -121,16 +121,24 @@ class DatabaseService {
     }
   }
 
-  private apiCall(url: string, method: string, body?: any) {
+  private async apiCall(url: string, method: string, body?: any) {
     if (typeof window === 'undefined') return;
     try {
-      fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: body ? JSON.stringify(body) : undefined,
-      }).catch((err) => console.warn('API sync background notice:', err));
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.fromDb !== undefined) {
+          this.mySqlConnected = Boolean(data.fromDb);
+        }
+      } else {
+        console.warn(`[API ${method} ${url} responded with status ${res.status}]`);
+      }
     } catch (e) {
-      // ignore
+      console.warn(`[API ${method} ${url} network error]:`, e);
     }
   }
 
@@ -710,6 +718,50 @@ class DatabaseService {
     }
   }
 
+  public addTaskComment(taskId: string, comment: TaskComment, actor?: User): Task | undefined {
+    const tasks = this.getTasks();
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return undefined;
+
+    const existingComments = task.comments || [];
+    // Ensure no duplicate by id
+    const isDuplicate = existingComments.some((c) => c.id === comment.id);
+    const updatedComments = isDuplicate ? existingComments : [...existingComments, comment];
+
+    const updatedTask: Task = {
+      ...task,
+      comments: updatedComments,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const taskIdx = tasks.findIndex((t) => t.id === taskId);
+    if (taskIdx >= 0) {
+      tasks[taskIdx] = updatedTask;
+      this.setList(DB_STORAGE_KEYS.TASKS, tasks);
+    }
+
+    this.logAction('COMMENT', 'TASK', taskId, task.title, `${comment.userName} đã gửi ý kiến trao đổi trong công việc ${task.code}: "${comment.content.slice(0, 50)}..."`, actor);
+
+    this.apiCall(`/api/tasks/${taskId}/comments`, 'POST', comment);
+
+    // Notify recipient (Lãnh đạo hoặc Người thực hiện)
+    const senderId = comment.userId;
+    const recipientId = senderId === task.assigneeId ? (task.creatorId || task.createdById) : task.assigneeId;
+
+    if (recipientId && recipientId !== senderId) {
+      this.addNotification({
+        userId: recipientId,
+        title: `Ý kiến trao đổi mới [${task.code}]`,
+        message: `${comment.userName}: "${comment.content.slice(0, 90)}${comment.content.length > 90 ? '...' : ''}"`,
+        type: 'STATUS_UPDATED',
+        linkType: 'TASK',
+        targetId: task.id,
+      });
+    }
+
+    return updatedTask;
+  }
+
   // --- Attachments & Document Vault ---
   public getAttachments(): AttachmentFile[] {
     return this.getList<AttachmentFile>(DB_STORAGE_KEYS.ATTACHMENTS, INITIAL_ATTACHMENTS);
@@ -1262,3 +1314,4 @@ CREATE TABLE \`notifications\` (
 }
 
 export const db = new DatabaseService();
+export const dbService = db;
