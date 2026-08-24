@@ -41,6 +41,7 @@ import {
 import { summarizeDocumentWithAI, classifyDocumentWithAI } from '../services/aiService';
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { FilePreviewModal } from '../components/FilePreviewModal';
+import { SamplePdfModal } from '../components/SamplePdfModal';
 
 interface IncomingDocsViewProps {
   docs: IncomingDocument[];
@@ -88,6 +89,38 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [aiError, setAiError] = useState<string | null>(null);
   const [rawTextToAnalyze, setRawTextToAnalyze] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
+  const [isSamplePdfModalOpen, setIsSamplePdfModalOpen] = useState(false);
+
+  const handleSelectSamplePdfForModal = async (file: File) => {
+    setIsExtractingFile(true);
+    setAiError(null);
+    setShowAiInput(true);
+    try {
+      const res = await extractTextFromFile(file);
+      if (res.text) {
+        setRawTextToAnalyze(res.text);
+      }
+      if (res.documentNumber || res.issuingAuthority || res.summary) {
+        setEditingDoc((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            officialNumber: res.documentNumber || prev.officialNumber,
+            issuingAuthority: res.issuingAuthority || prev.issuingAuthority,
+            issueDate: res.issueDate || prev.issueDate,
+            summary: res.summary || res.title || prev.summary,
+          };
+        });
+      }
+      if (!res.success && res.error) {
+        setAiError(res.error);
+      }
+    } catch (err: any) {
+      setAiError(`Lỗi đọc tệp: ${err.message || 'Không thể trích xuất'}`);
+    } finally {
+      setIsExtractingFile(false);
+    }
+  };
 
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id);
@@ -369,13 +402,23 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAddModal}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Tiếp Nhận Văn Bản Đến Mới</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsSamplePdfModalOpen(true)}
+            className="flex items-center gap-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-2xs transition-all cursor-pointer"
+          >
+            <Download className="w-4 h-4 text-amber-700" />
+            <span>Kho Tệp PDF Mẫu (Tải/Thử)</span>
+          </button>
+          <button
+            onClick={handleOpenAddModal}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tiếp Nhận Văn Bản Đến Mới</span>
+          </button>
+        </div>
       </div>
 
       {/* Search and Filters Bar */}
@@ -1278,6 +1321,13 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Sample PDF Modal */}
+      <SamplePdfModal
+        isOpen={isSamplePdfModalOpen}
+        onClose={() => setIsSamplePdfModalOpen(false)}
+        onSelectSampleFile={handleSelectSamplePdfForModal}
+      />
     </div>
   );
 };

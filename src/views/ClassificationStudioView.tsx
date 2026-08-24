@@ -40,6 +40,8 @@ import {
 import { classifyDocumentWithAI } from '../services/aiService';
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { classifyDocumentLocally } from '../utils/localClassifier';
+import { SamplePdfModal } from '../components/SamplePdfModal';
+import { Download } from 'lucide-react';
 
 interface ClassificationStudioViewProps {
   users: User[];
@@ -265,6 +267,28 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [successActionMsg, setSuccessActionMsg] = useState<string | null>(null);
+  const [isSamplePdfModalOpen, setIsSamplePdfModalOpen] = useState(false);
+
+  // Handle selected sample PDF directly
+  const handleSelectSamplePdfFile = async (file: File) => {
+    setIsReadingFile(true);
+    setErrorMessage(null);
+    try {
+      const res = await extractTextFromFile(file);
+      setFileName(file.name);
+      if (res.title) setInputTitle(res.title);
+      if (res.text) {
+        setInputText(res.text);
+      }
+      if (!res.success && res.error) {
+        setErrorMessage(res.error);
+      }
+    } catch (err: any) {
+      setErrorMessage(`Không thể xử lý tệp: ${err.message || 'Lỗi trích xuất'}`);
+    } finally {
+      setIsReadingFile(false);
+    }
+  };
 
   // Auto-fill preset sample
   const handleSelectSample = (sample: typeof PRESET_SAMPLES[0]) => {
@@ -594,44 +618,54 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
 
             {/* Input Form */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-indigo-600" />
                   <span>Dữ liệu đầu vào văn bản</span>
                 </h3>
-                <label className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer flex items-center gap-1">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{isReadingFile ? 'Đang quét OCR tệp...' : 'Tải tệp (.docx, PDF scan, Ảnh)'}</span>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".txt,.pdf,.docx,.doc,.rtf,.md,.png,.jpg,.jpeg"
-                    disabled={isReadingFile}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setIsReadingFile(true);
-                        setErrorMessage(null);
-                        try {
-                          const res = await extractTextFromFile(file);
-                          setFileName(file.name);
-                          if (res.title) setInputTitle(res.title);
-                          if (res.text) {
-                            setInputText(res.text);
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsSamplePdfModalOpen(true)}
+                    className="text-xs bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Kho PDF Mẫu Thử Nghiệm</span>
+                  </button>
+                  <label className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer flex items-center gap-1">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isReadingFile ? 'Đang quét OCR tệp...' : 'Tải tệp (.docx, PDF scan, Ảnh)'}</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".txt,.pdf,.docx,.doc,.rtf,.md,.png,.jpg,.jpeg"
+                      disabled={isReadingFile}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setIsReadingFile(true);
+                          setErrorMessage(null);
+                          try {
+                            const res = await extractTextFromFile(file);
+                            setFileName(file.name);
+                            if (res.title) setInputTitle(res.title);
+                            if (res.text) {
+                              setInputText(res.text);
+                            }
+                            if (!res.success && res.error) {
+                              setErrorMessage(res.error);
+                            }
+                          } catch (err: any) {
+                            setErrorMessage(`Không thể đọc tệp: ${err.message || 'Lỗi xử lý tệp'}`);
+                          } finally {
+                            setIsReadingFile(false);
+                            e.target.value = '';
                           }
-                          if (!res.success && res.error) {
-                            setErrorMessage(res.error);
-                          }
-                        } catch (err: any) {
-                          setErrorMessage(`Không thể đọc tệp: ${err.message || 'Lỗi xử lý tệp'}`);
-                        } finally {
-                          setIsReadingFile(false);
-                          e.target.value = '';
                         }
-                      }
-                    }}
-                  />
-                </label>
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
 
               {/* Title input */}
@@ -1256,6 +1290,13 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
           </div>
         </div>
       )}
+
+      {/* Sample PDF modal for testing */}
+      <SamplePdfModal
+        isOpen={isSamplePdfModalOpen}
+        onClose={() => setIsSamplePdfModalOpen(false)}
+        onSelectSampleFile={handleSelectSamplePdfFile}
+      />
     </div>
   );
 };
