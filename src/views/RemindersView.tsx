@@ -116,7 +116,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
                         {t.title}
                       </h4>
                       <div className="text-[10px] text-slate-500 mt-1">
-                        Phụ trách: <strong>{assignee?.fullName || 'Chưa giao'}</strong> ({assignee?.role})
+                        Phụ trách: <strong>{assignee?.fullName || 'Chưa giao'}</strong> ({assignee?.role || 'Chuyên viên'})
                       </div>
                     </div>
 

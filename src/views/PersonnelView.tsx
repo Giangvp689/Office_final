@@ -70,7 +70,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
       (u.position && u.position.toLowerCase().includes(search.toLowerCase())) ||
       (u.username && u.username.toLowerCase().includes(search.toLowerCase()));
 
-    const matchRole = filterRole === 'ALL' || u.role === filterRole;
+    const matchRole = filterRole === 'ALL' || (u?.role || 'STAFF') === filterRole;
     const matchDept = filterDept === 'ALL' || u.department === filterDept;
 
     return matchSearch && matchRole && matchDept;
@@ -326,7 +326,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                         </div>
                       </div>
                     </div>
-                    {getRoleLabel(u.role)}
+                    {getRoleLabel(u?.role || 'STAFF')}
                   </div>
 
                   <div className="space-y-1.5 text-xs text-slate-600 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -423,7 +423,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="font-bold text-base text-slate-800 truncate">{selectedUser.fullName}</h3>
-                    {getRoleLabel(selectedUser.role)}
+                    {getRoleLabel(selectedUser?.role || 'STAFF')}
                   </div>
                   <p className="text-xs text-slate-600 mt-0.5 font-medium">
                     {selectedUser.position} &bull;{' '}

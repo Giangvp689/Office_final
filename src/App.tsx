@@ -370,6 +370,7 @@ export const App: React.FC = () => {
             <MasterDataView
               masterData={masterData}
               onUpdateMasterData={(newData) => db.saveMasterData(newData, currentUser)}
+              currentUser={currentUser}
             />
           )}
 

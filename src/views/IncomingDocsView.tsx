@@ -338,7 +338,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
     try {
       const departments = ['Phòng Kế hoạch - Tài chính', 'Phòng Tổ chức Cán bộ', 'Văn phòng Cơ quan', 'Phòng Kỹ thuật - Công nghệ', 'Phòng Pháp chế - Thanh tra'];
-      const staffList = users.map((u) => ({ id: u.id, fullName: u.fullName, position: u.position || u.role, department: u.department }));
+      const staffList = users.map((u) => ({ id: u.id, fullName: u.fullName, position: u.position || u.role || 'Chuyên viên', department: u.department }));
 
       const classResult = await classifyDocumentWithAI({
         title: editingDoc?.summary || '',
@@ -1408,7 +1408,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     <option value="">-- Chọn cán bộ phụ trách --</option>
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.role})
+                        {u.fullName} ({u.role || 'STAFF'})
                       </option>
                     ))}
                   </select>

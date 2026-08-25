@@ -132,12 +132,12 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
       recipient: 'Ủy Ban Nhân Dân Tỉnh',
       summary: '',
       content: '',
-      drafterId: currentUser.id,
-      signerId: users.find((u) => u.role === 'LEADER')?.id || currentUser.id,
+      drafterId: currentUser?.id || users[0]?.id || '',
+      signerId: users.find((u) => u?.role === 'LEADER')?.id || currentUser?.id || users[0]?.id || '',
       status: 'DRAFT',
       dossierId: dossiers[0]?.id || '',
       attachments: [],
-      createdById: currentUser.id,
+      createdById: currentUser?.id || users[0]?.id || '',
     });
     setIsModalOpen(true);
   };
@@ -1099,7 +1099,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                   >
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.position || u.role})
+                        {u.fullName} ({u.position || u.role || 'Chuyên viên'})
                       </option>
                     ))}
                   </select>
@@ -1114,7 +1114,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                   >
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.role})
+                        {u.fullName} ({u.role || 'LEADER'})
                       </option>
                     ))}
                   </select>

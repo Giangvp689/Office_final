@@ -55,8 +55,8 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
   const [outRecipient, setOutRecipient] = useState('');
   const [outDocType, setOutDocType] = useState(masterData.documentTypes[0]?.name || 'Công văn');
   const [outSummary, setOutSummary] = useState('');
-  const [outDrafterId, setOutDrafterId] = useState(currentUser.id);
-  const [outSignerId, setOutSignerId] = useState(users.find((u) => u.role === 'LEADER')?.id || users[0]?.id || '');
+  const [outDrafterId, setOutDrafterId] = useState(currentUser?.id || users[0]?.id || '');
+  const [outSignerId, setOutSignerId] = useState(users.find((u) => u?.role === 'LEADER')?.id || users[0]?.id || '');
   const [outDossierId, setOutDossierId] = useState(dossiers[0]?.id || dossiers[0]?.code || '');
 
   // Form states - Task

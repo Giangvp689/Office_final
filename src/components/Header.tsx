@@ -226,13 +226,13 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer shadow-xs"
           >
             <img
-              src={currentUser.avatar}
-              alt={currentUser.fullName}
+              src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+              alt={currentUser?.fullName || 'User'}
               className="w-8 h-8 rounded-full object-cover border border-slate-200"
             />
             <div className="flex flex-col text-left hidden md:block">
-              <span className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[140px]">{currentUser.fullName}</span>
-              <span className="text-[10px] text-indigo-600 font-semibold">{currentUser.username || currentUser.email.split('@')[0]}</span>
+              <span className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[140px]">{currentUser?.fullName || 'User'}</span>
+              <span className="text-[10px] text-indigo-600 font-semibold">{currentUser?.username || currentUser?.email?.split('@')[0] || 'account'}</span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </button>
@@ -242,20 +242,20 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Account Info Header */}
               <div className="p-4 bg-slate-900 text-white">
                 <div className="flex items-center gap-3">
-                  <img src={currentUser.avatar} alt={currentUser.fullName} className="w-11 h-11 rounded-full object-cover border-2 border-indigo-400/40" />
+                  <img src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'} alt={currentUser?.fullName || 'User'} className="w-11 h-11 rounded-full object-cover border-2 border-indigo-400/40" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-white truncate">{currentUser.fullName}</p>
-                    <p className="text-xs text-slate-300 truncate">@{currentUser.username || currentUser.email.split('@')[0]}</p>
+                    <p className="text-sm font-bold text-white truncate">{currentUser?.fullName || 'User'}</p>
+                    <p className="text-xs text-slate-300 truncate">@{currentUser?.username || currentUser?.email?.split('@')[0] || 'account'}</p>
                     <div className="mt-1 flex items-center gap-1">
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 uppercase">
-                        {currentUser.role}
+                        {currentUser?.role || 'STAFF'}
                       </span>
                     </div>
                   </div>
                 </div>
                 <div className="mt-3 pt-2.5 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
                   <span>Phòng ban:</span>
-                  <span className="text-slate-200 font-medium truncate max-w-[170px]">{currentUser.department || 'Chưa cập nhật'}</span>
+                  <span className="text-slate-200 font-medium truncate max-w-[170px]">{currentUser?.department || 'Chưa cập nhật'}</span>
                 </div>
               </div>
 

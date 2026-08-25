@@ -180,7 +180,7 @@ export const DelegatedTasksView: React.FC<DelegatedTasksViewProps> = ({
                             <span className="font-bold text-slate-800 block text-xs truncate max-w-[120px]">
                               {assignee?.fullName || 'Chưa giao'}
                             </span>
-                            <span className="text-[10px] text-slate-400">{assignee?.role}</span>
+                            <span className="text-[10px] text-slate-400">{assignee?.role || 'STAFF'}</span>
                           </div>
                         </div>
                       </td>

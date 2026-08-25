@@ -348,7 +348,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     const staffList = users.map((u) => ({
       id: u.id,
       fullName: u.fullName,
-      position: u.position || u.role,
+      position: u.position || u.role || 'Chuyên viên',
       department: u.department,
     }));
 

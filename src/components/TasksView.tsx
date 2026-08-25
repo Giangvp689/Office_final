@@ -198,7 +198,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <option value="ALL">Tất cả cán bộ phụ trách</option>
             {users.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.fullName} ({u.role})
+                {u.fullName} ({u.role || 'STAFF'})
               </option>
             ))}
           </select>

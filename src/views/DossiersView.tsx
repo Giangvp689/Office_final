@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Dossier,
   IncomingDocument,
@@ -58,10 +58,61 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
 
   const [selectedDossier, setSelectedDossier] = useState<Dossier | null>(null);
 
+  const isLeaderOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
+  const [dossierScope, setDossierScope] = useState<'MY' | 'ALL'>(isLeaderOrAdmin ? 'ALL' : 'MY');
+
+  // Check if current user is a participant in the dossier
+  const isParticipant = (d: Dossier) => {
+    if (!currentUser) return true;
+    if (d.managerId === currentUser.id || d.leaderId === currentUser.id || d.createdById === currentUser.id || d.creatorId === currentUser.id) {
+      return true;
+    }
+    // Check if user is involved in linked tasks
+    const hasLinkedTask = tasks.some(
+      (t) =>
+        (t.dossierId === d.id || t.dossierId === d.code) &&
+        (t.assigneeId === currentUser.id ||
+          t.coAssigneeIds?.includes(currentUser.id) ||
+          t.creatorId === currentUser.id ||
+          t.createdById === currentUser.id)
+    );
+    if (hasLinkedTask) return true;
+
+    // Check if user is involved in linked incoming docs
+    const hasLinkedIncoming = incomingDocs.some(
+      (doc) =>
+        (doc.dossierId === d.id || doc.dossierId === d.code) &&
+        (doc.assigneeId === currentUser.id ||
+          doc.coAssigneeIds?.includes(currentUser.id) ||
+          doc.createdById === currentUser.id)
+    );
+    if (hasLinkedIncoming) return true;
+
+    // Check if user is involved in linked outgoing docs
+    const hasLinkedOutgoing = outgoingDocs.some(
+      (doc) =>
+        (doc.dossierId === d.id || doc.dossierId === d.code) &&
+        (doc.drafterId === currentUser.id ||
+          doc.signerId === currentUser.id ||
+          doc.createdById === currentUser.id)
+    );
+    if (hasLinkedOutgoing) return true;
+
+    return false;
+  };
+
+  // Base list of dossiers this user is authorized to see
+  const accessibleDossiers = useMemo(() => {
+    if (isLeaderOrAdmin && dossierScope === 'ALL') {
+      return dossiers;
+    }
+    return dossiers.filter((d) => isParticipant(d));
+  }, [dossiers, isLeaderOrAdmin, dossierScope, tasks, incomingDocs, outgoingDocs, currentUser?.id]);
+
   // Auto open dossier if navigated from notification
   React.useEffect(() => {
     if (initialDossierId) {
-      const target = dossiers.find(
+      const target = accessibleDossiers.find(
         (d) => d.id === initialDossierId || d.code === initialDossierId
       );
       if (target) {
@@ -70,17 +121,17 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
         setFilterStatus('ALL');
       }
     }
-  }, [initialDossierId, dossiers]);
+  }, [initialDossierId, accessibleDossiers]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Partial<Dossier> | null>(null);
 
   const getUser = (id?: string) => users.find((u) => u.id === id);
 
-  const filteredDossiers = dossiers.filter((d) => {
+  const filteredDossiers = accessibleDossiers.filter((d) => {
     const matchSearch =
       d.code.toLowerCase().includes(search.toLowerCase()) ||
       d.title.toLowerCase().includes(search.toLowerCase()) ||
-      d.department.toLowerCase().includes(search.toLowerCase());
+      (typeof d.department === 'string' && d.department.toLowerCase().includes(search.toLowerCase()));
 
     const matchStatus = filterStatus === 'ALL' || d.status === filterStatus;
     return matchSearch && matchStatus;
@@ -135,20 +186,67 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Quản Lý Hồ Sơ Vụ Việc (Dossiers)</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-800">Quản Lý Hồ Sơ Vụ Việc (Dossiers)</h1>
+            {!isLeaderOrAdmin && (
+              <span className="text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
+                🔒 Hồ sơ tham gia
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Mắt xích liên kết toàn bộ Văn bản đến + Văn bản đi + Công việc + Tài liệu theo từng Mã hồ sơ
           </p>
         </div>
-        <button
-          id="add-dossier-btn"
-          onClick={handleOpenAddModal}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Mở hồ sơ vụ việc mới</span>
-        </button>
+
+        <div className="flex items-center gap-3">
+          {isLeaderOrAdmin && (
+            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-xs text-xs font-semibold">
+              <button
+                onClick={() => setDossierScope('MY')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  dossierScope === 'MY'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Hồ sơ tôi tham gia
+              </button>
+              <button
+                onClick={() => setDossierScope('ALL')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  dossierScope === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Toàn cơ quan ({dossiers.length})
+              </button>
+            </div>
+          )}
+
+          <button
+            id="add-dossier-btn"
+            onClick={handleOpenAddModal}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Mở hồ sơ vụ việc mới</span>
+          </button>
+        </div>
       </div>
+
+      {/* Security Info Banner for Staff */}
+      {!isLeaderOrAdmin && (
+        <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-3 text-xs text-indigo-900 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🛡️</span>
+            <span>
+              <strong>Bảo mật thông tin:</strong> Bạn chỉ có quyền xem và truy cập các hồ sơ vụ việc mà bạn là người lập, người chủ trì hoặc được phân công nhiệm vụ/văn bản liên quan ({filteredDossiers.length} hồ sơ).
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Filter */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3">

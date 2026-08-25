@@ -60,7 +60,44 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id);
 
-  const filteredFiles = attachments.filter((f) => {
+  const isLeaderOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
+  const [vaultScope, setVaultScope] = useState<'MY' | 'ALL'>(isLeaderOrAdmin ? 'ALL' : 'MY');
+
+  // Accessible dossiers set
+  const accessibleDossierIds = React.useMemo(() => {
+    return new Set(
+      dossiers
+        .filter(
+          (d) =>
+            isLeaderOrAdmin ||
+            !currentUser ||
+            d.managerId === currentUser.id ||
+            d.leaderId === currentUser.id ||
+            d.createdById === currentUser.id ||
+            d.creatorId === currentUser.id
+        )
+        .map((d) => d.id)
+    );
+  }, [dossiers, isLeaderOrAdmin, currentUser?.id]);
+
+  // Base list of files accessible to current user
+  const accessibleFiles = React.useMemo(() => {
+    if (isLeaderOrAdmin && vaultScope === 'ALL') {
+      return attachments;
+    }
+    if (!currentUser) return attachments;
+    return attachments.filter((f) => {
+      // Uploaded by user
+      if (f.uploadedById === currentUser.id) return true;
+      // In an accessible dossier
+      if (f.dossierId && accessibleDossierIds.has(f.dossierId)) return true;
+      // General / Public system attachments without private dossier
+      if (!f.dossierId && (f.category === 'KHAC' || !f.uploadedById)) return true;
+      return false;
+    });
+  }, [attachments, isLeaderOrAdmin, vaultScope, accessibleDossierIds, currentUser?.id]);
+
+  const filteredFiles = accessibleFiles.filter((f) => {
     const matchSearch =
       f.fileName.toLowerCase().includes(search.toLowerCase()) ||
       (f.category && f.category.toLowerCase().includes(search.toLowerCase()));
@@ -179,26 +216,70 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-800">Kho Tài Liệu & Bản Quét (Scan)</h1>
             <span className="bg-indigo-100 text-indigo-700 font-bold text-xs px-2.5 py-0.5 rounded-full border border-indigo-200">
-              {attachments.length} tệp tin
+              {accessibleFiles.length} tệp tin
             </span>
+            {!isLeaderOrAdmin && (
+              <span className="text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
+                🔒 Tài liệu liên quan
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Quản lý tập trung toàn bộ tệp scan PDF, hình ảnh, văn bản đính kèm lưu trữ trong cơ sở dữ liệu MySQL
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setSelectedFileObj(null);
-            setNewFileName('');
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
-        >
-          <Upload className="w-4 h-4" />
-          <span>Tải Lên Tệp Scan / Tài Liệu Mới</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {isLeaderOrAdmin && (
+            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-xs text-xs font-semibold">
+              <button
+                onClick={() => setVaultScope('MY')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  vaultScope === 'MY'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Tài liệu của tôi
+              </button>
+              <button
+                onClick={() => setVaultScope('ALL')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  vaultScope === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Toàn cơ quan ({attachments.length})
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => {
+              setSelectedFileObj(null);
+              setNewFileName('');
+              setIsModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Tải Lên Tệp Scan / Tài Liệu Mới</span>
+          </button>
+        </div>
       </div>
+
+      {/* Security Info Banner for Staff */}
+      {!isLeaderOrAdmin && (
+        <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-3 text-xs text-indigo-900 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🛡️</span>
+            <span>
+              <strong>Bảo mật tài liệu:</strong> Bạn chỉ có quyền xem, tải về các tệp đính kèm do bạn tải lên hoặc nằm trong các hồ sơ vụ việc / nhiệm vụ mà bạn có tham gia ({accessibleFiles.length} tệp).
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Filter */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center gap-3">

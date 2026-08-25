@@ -17,6 +17,7 @@ import {
   Users,
   Sparkles,
   BrainCircuit,
+  Lock,
 } from 'lucide-react';
 import { User, Role } from '../types';
 
@@ -61,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenUserSwitch,
   counts,
 }) => {
-  const getRoleBadge = (role: Role) => {
+  const getRoleBadge = (role?: Role) => {
     switch (role) {
       case 'ADMIN':
         return { label: 'Quản trị viên', bg: 'bg-purple-100 text-purple-700 border-purple-200' };
@@ -75,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const roleBadge = getRoleBadge(currentUser.role);
+  const roleBadge = getRoleBadge(currentUser?.role);
 
   return (
     <aside
@@ -344,14 +345,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               id="nav-master-data"
               onClick={() => onSelectSection('MASTER_DATA')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
                 currentSection === 'MASTER_DATA'
                   ? 'bg-indigo-50 text-indigo-700 font-bold'
                   : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <Sliders className="w-4 h-4" />
-              <span>Danh Mục Dùng Chung</span>
+              <div className="flex items-center gap-3">
+                <Sliders className="w-4 h-4" />
+                <span>Danh Mục Dùng Chung</span>
+              </div>
+              {currentUser?.role !== 'ADMIN' && (
+                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded flex items-center gap-1 font-medium">
+                  <Lock className="w-2.5 h-2.5" />
+                  Admin
+                </span>
+              )}
             </button>
 
             <button
@@ -378,13 +387,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           title="Bấm để chuyển đổi vai trò / cán bộ"
         >
           <img
-            src={currentUser.avatar}
-            alt={currentUser.fullName}
+            src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+            alt={currentUser?.fullName || 'User'}
             className="w-9 h-9 rounded-xl object-cover border border-slate-200"
           />
           <div className="flex flex-col min-w-0 flex-1">
             <span className="text-xs font-bold text-slate-800 truncate group-hover:text-indigo-600">
-              {currentUser.fullName}
+              {currentUser?.fullName || 'Chưa đăng nhập'}
             </span>
             <span
               className={`text-[9px] font-bold px-1.5 py-0.2 rounded border inline-block max-w-max mt-0.5 ${roleBadge.bg}`}
