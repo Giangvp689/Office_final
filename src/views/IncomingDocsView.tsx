@@ -195,7 +195,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       docType: 'Công văn',
       urgency: 'THUONG',
       securityLevel: 'THUONG',
-      assigneeId: currentUser.id,
+      assigneeId: currentUser?.id || '',
       coAssigneeIds: [],
       dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
       status: 'PROCESSING',
@@ -203,7 +203,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       dossierId: dossiers[0]?.id || '',
       attachments: [],
       linkedTaskIds: [],
-      createdById: currentUser.id,
+      createdById: currentUser?.id || '',
     });
     setFormAttachments([]);
     setRawTextToAnalyze('');
@@ -240,8 +240,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
           category: 'VAN_BAN_DEN',
           relatedId: editingDoc?.id || selectedDoc?.id || '',
           dossierId: editingDoc?.dossierId || selectedDoc?.dossierId || undefined,
-          uploadedById: currentUser.id,
-          uploadedByName: currentUser.fullName,
+          uploadedById: currentUser?.id || '',
+          uploadedByName: currentUser?.fullName || 'Người dùng',
           uploadedAt: new Date().toISOString(),
           tags: ['Văn bản đến', extension.toUpperCase()],
         };
@@ -338,7 +338,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
     try {
       const departments = ['Phòng Kế hoạch - Tài chính', 'Phòng Tổ chức Cán bộ', 'Văn phòng Cơ quan', 'Phòng Kỹ thuật - Công nghệ', 'Phòng Pháp chế - Thanh tra'];
-      const staffList = users.map((u) => ({ id: u.id, fullName: u.fullName, position: u.position || u.role || 'Chuyên viên', department: u.department }));
+      const staffList = (users || []).map((u) => ({ id: u?.id || '', fullName: u?.fullName || 'Cán bộ', position: u?.position || u?.role || 'Chuyên viên', department: u?.department || '' }));
 
       const classResult = await classifyDocumentWithAI({
         title: editingDoc?.summary || '',
@@ -348,7 +348,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       });
 
       const matchedAssignee = users.find(
-        (u) => u.fullName.toLowerCase().includes(classResult.dispatchRecommendation?.suggestedAssigneeName?.toLowerCase() || '')
+        (u) => u?.fullName?.toLowerCase().includes(classResult.dispatchRecommendation?.suggestedAssigneeName?.toLowerCase() || '')
       );
 
       const matchedDossier = dossiers.find(
@@ -612,13 +612,13 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         {assignee ? (
                           <div className="flex items-center gap-2">
                             <img
-                              src={assignee.avatar}
-                              alt={assignee.fullName}
+                              src={assignee.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                              alt={assignee.fullName || 'User'}
                               className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0"
                             />
                             <div className="truncate max-w-[120px]">
                               <span className="font-bold text-slate-700 block truncate">
-                                {assignee.fullName}
+                                {assignee.fullName || 'Cán bộ'}
                               </span>
                               <span className="text-[10px] text-slate-400 truncate block">
                                 {assignee.position || 'Chuyên viên'}

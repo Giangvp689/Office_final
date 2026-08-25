@@ -140,7 +140,7 @@ export const App: React.FC = () => {
         onSelectSection={(sec) => setCurrentSection(sec)}
         currentUser={currentUser}
         onOpenUserSwitch={() => {
-          const nextUser = users.find((u) => u.id !== currentUser.id) || users[0];
+          const nextUser = users.find((u) => u.id !== currentUser?.id) || users[0];
           if (nextUser) {
             db.setCurrentUser(nextUser.id);
           }
@@ -320,8 +320,15 @@ export const App: React.FC = () => {
               tasks={tasks}
               incomingDocs={incomingDocs}
               users={users}
-              onOpenTaskDetail={() => setCurrentSection('ALL_TASKS')}
-              onOpenIncomingDocDetail={() => setCurrentSection('INCOMING_DOCS')}
+              currentUser={currentUser}
+              onOpenTaskDetail={(id) => {
+                if (id) setActiveTarget({ type: 'TASK', id });
+                setCurrentSection('ALL_TASKS');
+              }}
+              onOpenIncomingDocDetail={(id) => {
+                if (id) setActiveTarget({ type: 'INCOMING_DOC', id });
+                setCurrentSection('INCOMING_DOCS');
+              }}
             />
           )}
 

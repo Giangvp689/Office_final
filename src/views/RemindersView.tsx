@@ -182,7 +182,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
                       </span>
                       <h4 className="font-bold text-xs text-slate-800 truncate">{t.title}</h4>
                       <div className="text-[10px] text-slate-500 mt-1">
-                        Phụ trách: {assignee?.fullName} | Tiến độ: {t.progress}%
+                        Phụ trách: {assignee?.fullName || 'Chưa giao'} | Tiến độ: {t.progress}%
                       </div>
                     </div>
                     <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-1 rounded">
@@ -229,7 +229,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
                       </span>
                       <h4 className="font-bold text-xs text-slate-800 truncate">{t.title}</h4>
                       <div className="text-[10px] text-slate-500 mt-1">
-                        Hạn: <strong>{new Date(t.dueDate).toLocaleDateString('vi-VN')}</strong> | {assignee?.fullName}
+                        Hạn: <strong>{new Date(t.dueDate).toLocaleDateString('vi-VN')}</strong> | {assignee?.fullName || 'Chưa giao'}
                       </div>
                     </div>
                     <span className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded">

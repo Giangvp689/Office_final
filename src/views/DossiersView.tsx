@@ -64,17 +64,17 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   // Check if current user is a participant in the dossier
   const isParticipant = (d: Dossier) => {
     if (!currentUser) return true;
-    if (d.managerId === currentUser.id || d.leaderId === currentUser.id || d.createdById === currentUser.id || d.creatorId === currentUser.id) {
+    if (d.managerId === currentUser?.id || d.leaderId === currentUser?.id || d.createdById === currentUser?.id || d.creatorId === currentUser?.id) {
       return true;
     }
     // Check if user is involved in linked tasks
     const hasLinkedTask = tasks.some(
       (t) =>
         (t.dossierId === d.id || t.dossierId === d.code) &&
-        (t.assigneeId === currentUser.id ||
-          t.coAssigneeIds?.includes(currentUser.id) ||
-          t.creatorId === currentUser.id ||
-          t.createdById === currentUser.id)
+        (t.assigneeId === currentUser?.id ||
+          t.coAssigneeIds?.includes(currentUser?.id || '') ||
+          t.creatorId === currentUser?.id ||
+          t.createdById === currentUser?.id)
     );
     if (hasLinkedTask) return true;
 
@@ -82,9 +82,9 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
     const hasLinkedIncoming = incomingDocs.some(
       (doc) =>
         (doc.dossierId === d.id || doc.dossierId === d.code) &&
-        (doc.assigneeId === currentUser.id ||
-          doc.coAssigneeIds?.includes(currentUser.id) ||
-          doc.createdById === currentUser.id)
+        (doc.assigneeId === currentUser?.id ||
+          doc.coAssigneeIds?.includes(currentUser?.id || '') ||
+          doc.createdById === currentUser?.id)
     );
     if (hasLinkedIncoming) return true;
 
@@ -92,9 +92,9 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
     const hasLinkedOutgoing = outgoingDocs.some(
       (doc) =>
         (doc.dossierId === d.id || doc.dossierId === d.code) &&
-        (doc.drafterId === currentUser.id ||
-          doc.signerId === currentUser.id ||
-          doc.createdById === currentUser.id)
+        (doc.drafterId === currentUser?.id ||
+          doc.signerId === currentUser?.id ||
+          doc.createdById === currentUser?.id)
     );
     if (hasLinkedOutgoing) return true;
 
@@ -143,12 +143,12 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
       code: `HS-2025-${String(dossiers.length + 1).padStart(3, '0')}`,
       title: '',
       department: 'Phòng Hành chính - Tổng hợp',
-      managerId: currentUser.id,
+      managerId: currentUser?.id || '',
       startDate: new Date().toISOString().split('T')[0],
       status: 'OPEN',
       securityLevel: 'THUONG',
       description: '',
-      createdById: currentUser.id,
+      createdById: currentUser?.id || '',
     });
     setIsModalOpen(true);
   };

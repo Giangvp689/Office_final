@@ -71,10 +71,10 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
           (d) =>
             isLeaderOrAdmin ||
             !currentUser ||
-            d.managerId === currentUser.id ||
-            d.leaderId === currentUser.id ||
-            d.createdById === currentUser.id ||
-            d.creatorId === currentUser.id
+            d.managerId === currentUser?.id ||
+            d.leaderId === currentUser?.id ||
+            d.createdById === currentUser?.id ||
+            d.creatorId === currentUser?.id
         )
         .map((d) => d.id)
     );
@@ -88,7 +88,7 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
     if (!currentUser) return attachments;
     return attachments.filter((f) => {
       // Uploaded by user
-      if (f.uploadedById === currentUser.id) return true;
+      if (f.uploadedById === currentUser?.id) return true;
       // In an accessible dossier
       if (f.dossierId && accessibleDossierIds.has(f.dossierId)) return true;
       // General / Public system attachments without private dossier
@@ -150,8 +150,8 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
       fileUrl,
       category: 'KHAC',
       uploadedAt: new Date().toISOString(),
-      uploadedById: currentUser.id,
-      uploadedByName: currentUser.fullName,
+      uploadedById: currentUser?.id || '',
+      uploadedByName: currentUser?.fullName || 'Người dùng',
       dossierId: newDossierId || undefined,
       tags: ['Kho tài liệu', fileType.toUpperCase()],
     };

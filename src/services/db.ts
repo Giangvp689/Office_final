@@ -155,6 +155,32 @@ class DatabaseService {
     if (!localStorage.getItem(DB_STORAGE_KEYS.USERS)) {
       this.resetToDefaults();
     } else {
+      // Auto-migrate legacy 2025 dates to 2026 across stored items if needed
+      const keysToMigrate = [
+        DB_STORAGE_KEYS.TASKS,
+        DB_STORAGE_KEYS.INCOMING_DOCS,
+        DB_STORAGE_KEYS.OUTGOING_DOCS,
+        DB_STORAGE_KEYS.DOSSIERS,
+        DB_STORAGE_KEYS.ATTACHMENTS,
+        DB_STORAGE_KEYS.AUDIT_LOGS,
+        DB_STORAGE_KEYS.NOTIFICATIONS,
+      ];
+      for (const key of keysToMigrate) {
+        const raw = localStorage.getItem(key);
+        if (raw && raw.includes('2025-08-')) {
+          const updated = raw
+            .replace(/2025-08-/g, '2026-08-')
+            .replace(/2025-09-/g, '2026-09-')
+            .replace(/2025-07-/g, '2026-07-')
+            .replace(/2025-01-/g, '2026-01-')
+            .replace(/2025-02-/g, '2026-02-')
+            .replace(/2025-04-/g, '2026-04-')
+            .replace(/2025-06-/g, '2026-06-')
+            .replace(/2025-12-/g, '2026-12-');
+          localStorage.setItem(key, updated);
+        }
+      }
+
       // Ensure all initial incoming documents are present if stored array has fewer
       const existing = this.getList<IncomingDocument>(DB_STORAGE_KEYS.INCOMING_DOCS, []);
       if (existing.length < INITIAL_INCOMING_DOCS.length) {
@@ -1015,9 +1041,9 @@ class DatabaseService {
     const currentUser = actor || this.getCurrentUser();
     const comment: TaskComment = {
       id: 'cmt-' + Date.now(),
-      userId: currentUser.id,
-      userName: currentUser.fullName,
-      userAvatar: currentUser.avatar || '',
+      userId: currentUser?.id || 'unknown',
+      userName: currentUser?.fullName || 'Người dùng',
+      userAvatar: currentUser?.avatar || '',
       content,
       createdAt: new Date().toISOString(),
     };

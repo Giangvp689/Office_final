@@ -444,7 +444,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       docType: classificationResult.docType,
       urgency: classificationResult.urgency,
       securityLevel: classificationResult.securityLevel,
-      assigneeId: matchedAssignee?.id || currentUser.id,
+      assigneeId: matchedAssignee?.id || currentUser?.id || '',
       dueDate: classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
       status: 'PENDING_ASSIGN',
       dossierId: matchedDossier?.id || '',
@@ -505,14 +505,17 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       startDate: new Date().toISOString().split('T')[0],
       description: `Hồ sơ mở tự động từ phân loại AI. Căn cứ: ${classificationResult.extractedEntities.summary}`,
       tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Engine'],
-      createdById: currentUser.id,
+      createdById: currentUser?.id || '',
     };
     onSaveDossier(newDos);
 
+    const fallbackAssignee = users[0] || currentUser;
     const matchedAssignee = users.find(
       (u) =>
-        u.fullName.toLowerCase().includes(classificationResult.dispatchRecommendation.suggestedAssigneeName?.toLowerCase() || '')
-    ) || users[0];
+        u?.fullName?.toLowerCase().includes(classificationResult.dispatchRecommendation.suggestedAssigneeName?.toLowerCase() || '')
+    ) || fallbackAssignee;
+    const assigneeName = matchedAssignee?.fullName || currentUser?.fullName || 'Cán bộ phụ trách';
+    const assigneeId = matchedAssignee?.id || currentUser?.id || '';
 
     const newTask = {
       id: 'task-ai-' + Date.now(),
@@ -520,7 +523,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       title: `[${classificationResult.primaryDomain}] Xử lý ${classificationResult.docType}: ${(inputTitle || classificationResult.extractedEntities.summary).slice(0, 50)}...`,
       description: `Nhiệm vụ điều phối tự động: ${classificationResult.dispatchRecommendation.routingReason}`,
       dossierId: newDosId,
-      assigneeId: matchedAssignee.id,
+      assigneeId: assigneeId,
       coAssigneeIds: [],
       priority: classificationResult.urgency === 'HOA_TOC' ? 'URGENT' : classificationResult.urgency === 'KHAN' ? 'HIGH' : 'MEDIUM',
       startDate: new Date().toISOString().split('T')[0],
@@ -539,15 +542,15 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     setSavedDossierTask({
       dossierCode: newDosCode,
       taskCode: newTask.code,
-      assigneeName: matchedAssignee.fullName,
+      assigneeName: assigneeName,
     });
-    setSuccessActionMsg(`Đã tạo mới Hồ sơ [${newDosCode}] và phân công nhiệm vụ cho [${matchedAssignee.fullName}]!`);
+    setSuccessActionMsg(`Đã tạo mới Hồ sơ [${newDosCode}] và phân công nhiệm vụ cho [${assigneeName}]!`);
 
     // Display modal notification with clear exit / navigation options
     setSuccessModal({
       isOpen: true,
       title: 'Đã Mở Hồ Sơ & Giao Việc Thành Công!',
-      message: `Đã mở Hồ sơ [${newDosCode}] và giao nhiệm vụ [${newTask.code}] cho đồng chí ${matchedAssignee.fullName}. Hạn hoàn thành: ${classificationResult.dispatchRecommendation.suggestedDueDate}.`,
+      message: `Đã mở Hồ sơ [${newDosCode}] và giao nhiệm vụ [${newTask.code}] cho đồng chí ${assigneeName}. Hạn hoàn thành: ${classificationResult.dispatchRecommendation.suggestedDueDate}.`,
       dossierCode: newDosCode,
       targetSection: 'ALL_TASKS',
       actionType: 'TASK',

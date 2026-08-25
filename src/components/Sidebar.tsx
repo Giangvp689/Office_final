@@ -323,60 +323,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Nhóm 4: Quản trị hệ thống */}
-        <div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
-            Quản Trị & Danh Mục
-          </div>
-          <div className="space-y-0.5">
-            <button
-              id="nav-personnel"
-              onClick={() => onSelectSection('PERSONNEL')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'PERSONNEL'
-                  ? 'bg-indigo-50 text-indigo-700 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Contact2 className="w-4 h-4" />
-              <span>Nhân Sự & Phân Quyền</span>
-            </button>
+        {/* Nhóm 4: Quản trị & Danh mục (Chỉ hiển thị cho Admin và Lãnh đạo) */}
+        {(currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER') && (
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
+              Quản Trị & Danh Mục
+            </div>
+            <div className="space-y-0.5">
+              <button
+                id="nav-personnel"
+                onClick={() => onSelectSection('PERSONNEL')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
+                  currentSection === 'PERSONNEL'
+                    ? 'bg-indigo-50 text-indigo-700 font-bold'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Contact2 className="w-4 h-4" />
+                <span>Nhân Sự & Phân Quyền</span>
+              </button>
 
-            <button
-              id="nav-master-data"
-              onClick={() => onSelectSection('MASTER_DATA')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'MASTER_DATA'
-                  ? 'bg-indigo-50 text-indigo-700 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <div className="flex items-center gap-3">
+              <button
+                id="nav-master-data"
+                onClick={() => onSelectSection('MASTER_DATA')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
+                  currentSection === 'MASTER_DATA'
+                    ? 'bg-indigo-50 text-indigo-700 font-bold'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
                 <Sliders className="w-4 h-4" />
                 <span>Danh Mục Dùng Chung</span>
-              </div>
-              {currentUser?.role !== 'ADMIN' && (
-                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded flex items-center gap-1 font-medium">
-                  <Lock className="w-2.5 h-2.5" />
-                  Admin
-                </span>
-              )}
-            </button>
+              </button>
 
-            <button
-              id="nav-audit-logs"
-              onClick={() => onSelectSection('AUDIT_LOGS')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'AUDIT_LOGS'
-                  ? 'bg-indigo-50 text-indigo-700 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <History className="w-4 h-4" />
-              <span>Lịch Sử & Kiểm Toán</span>
-            </button>
+              <button
+                id="nav-audit-logs"
+                onClick={() => onSelectSection('AUDIT_LOGS')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
+                  currentSection === 'AUDIT_LOGS'
+                    ? 'bg-indigo-50 text-indigo-700 font-bold'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <History className="w-4 h-4" />
+                <span>Lịch Sử & Kiểm Toán</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </nav>
 
       {/* User Footer Profile & Role Switcher */}

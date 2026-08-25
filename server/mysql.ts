@@ -46,6 +46,29 @@ export function isConnectionError(err: any): boolean {
   );
 }
 
+export function isTableEngineCorrupted(err: any): boolean {
+  if (!err) return false;
+  const msg = (err.message || '').toLowerCase();
+  const code = err.code || '';
+  const errno = err.errno;
+  return (
+    errno === 1932 ||
+    errno === 1146 ||
+    code === 'ER_NO_SUCH_TABLE_IN_ENGINE' ||
+    code === 'ER_NO_SUCH_TABLE' ||
+    code === 'ER_TABLE_NOT_LOCKED_FOR_WRITE' ||
+    code === 'ER_CRASHED_ON_USAGE' ||
+    code === 'ER_CRASHED_ON_REPAIR' ||
+    msg.includes("doesn't exist in engine") ||
+    msg.includes("does not exist in engine") ||
+    msg.includes("doesn't exist") ||
+    msg.includes("is marked as crashed") ||
+    msg.includes("tablespace for table") ||
+    msg.includes("corrupt") ||
+    (err.sqlState === '42S02')
+  );
+}
+
 export function getDbConfig(): DbConfig {
   if (currentConfig) return currentConfig;
 
@@ -431,13 +454,43 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
 
   // Create table if not exists, then ensure all columns exist and types are compatible
   for (const [tableName, schema] of Object.entries(tableSchemas)) {
+    // 1. Health check table in storage engine
+    let tableNeedsDropAndRecreate = false;
+    try {
+      await p.query(`SELECT 1 FROM \`${tableName}\` LIMIT 1`);
+    } catch (testErr: any) {
+      if (isTableEngineCorrupted(testErr)) {
+        console.warn(`[MySQL Auto-Healing]: Table \`${tableName}\` has corrupted engine state (${testErr.message}). Dropping dictionary entry to recreate cleanly...`);
+        tableNeedsDropAndRecreate = true;
+      }
+    }
+
+    if (tableNeedsDropAndRecreate) {
+      try {
+        await p.query(`DROP TABLE IF EXISTS \`${tableName}\``);
+      } catch (dropErr: any) {
+        console.warn(`[MySQL Auto-Healing Drop Warning on ${tableName}]:`, dropErr.message);
+      }
+    }
+
+    // 2. Create table
     try {
       await p.query(schema.createSql);
     } catch (createErr: any) {
       if (isConnectionError(createErr)) {
         return;
       }
-      console.warn(`[Schema Create Table Error on ${tableName}]:`, createErr.message);
+      if (isTableEngineCorrupted(createErr)) {
+        console.warn(`[MySQL Auto-Healing]: Corrupted table engine on CREATE \`${tableName}\`. Forcing DROP and Re-create...`);
+        try {
+          await p.query(`DROP TABLE IF EXISTS \`${tableName}\``);
+          await p.query(schema.createSql);
+        } catch (recreateErr: any) {
+          console.warn(`[MySQL Auto-Healing Re-create Error on ${tableName}]:`, recreateErr.message);
+        }
+      } else {
+        console.warn(`[Schema Create Table Error on ${tableName}]:`, createErr.message);
+      }
     }
 
     try {
@@ -580,8 +633,24 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
   await ensureAllTableSchemas(p);
 
   // Seed default data if empty
-  const [userCount] = (await p.query('SELECT COUNT(*) as count FROM users')) as any;
-  if (userCount[0]?.count === 0) {
+  let userCount = 0;
+  try {
+    const [userRes] = (await p.query('SELECT COUNT(*) as count FROM users')) as any;
+    userCount = userRes[0]?.count ?? 0;
+  } catch (countErr: any) {
+    if (isTableEngineCorrupted(countErr)) {
+      console.warn('[MySQL Auto-Healing in initTablesAndSeed]: users table corrupted in storage engine. Recreating all tables and seeding data...');
+      try {
+        await p.query('DROP TABLE IF EXISTS users, departments, positions, dossiers, incoming_documents, outgoing_documents, tasks, attachments, audit_logs, notifications');
+      } catch {}
+      await ensureAllTableSchemas(p);
+      userCount = 0;
+    } else {
+      console.warn('Count users notice:', countErr.message);
+    }
+  }
+
+  if (userCount === 0) {
     for (const d of INITIAL_DEPARTMENTS) {
       await p.query(
         'INSERT IGNORE INTO departments (id, code, name, description, manager_id) VALUES (?, ?, ?, ?, ?)',
@@ -818,16 +887,51 @@ export async function fetchAllDataFromMySql() {
     await ensureAllTableSchemas(p);
   }
 
-  const [departments] = (await p.query('SELECT * FROM departments')) as any[];
-  const [positions] = (await p.query('SELECT * FROM positions ORDER BY level ASC')) as any[];
-  const [users] = (await p.query('SELECT * FROM users')) as any[];
-  const [dossiers] = (await p.query('SELECT * FROM dossiers ORDER BY created_at DESC')) as any[];
-  const [incomingDocs] = (await p.query('SELECT * FROM incoming_documents ORDER BY received_date DESC')) as any[];
-  const [outgoingDocs] = (await p.query('SELECT * FROM outgoing_documents ORDER BY release_date DESC')) as any[];
-  const [tasks] = (await p.query('SELECT * FROM tasks ORDER BY due_date ASC')) as any[];
-  const [attachments] = (await p.query('SELECT * FROM attachments ORDER BY uploaded_at DESC')) as any[];
-  const [auditLogs] = (await p.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 200')) as any[];
-  const [notifications] = (await p.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 100')) as any[];
+  async function safeQuery(sql: string, tableName: string): Promise<any[]> {
+    try {
+      const [rows] = (await p!.query(sql)) as any[];
+      return Array.isArray(rows) ? rows : [];
+    } catch (err: any) {
+      if (isTableEngineCorrupted(err)) {
+        console.warn(`[MySQL Auto-Healing on query ${tableName}]: Table corrupted in engine (${err.message}). Re-creating table schema...`);
+        try {
+          await p!.query(`DROP TABLE IF EXISTS \`${tableName}\``);
+          await ensureAllTableSchemas(p!);
+          const [retryRows] = (await p!.query(sql)) as any[];
+          return Array.isArray(retryRows) ? retryRows : [];
+        } catch {
+          return [];
+        }
+      }
+      console.warn(`[MySQL Query Notice on ${tableName}]:`, err.message);
+      return [];
+    }
+  }
+
+  let departments = await safeQuery('SELECT * FROM departments', 'departments');
+  let positions = await safeQuery('SELECT * FROM positions ORDER BY level ASC', 'positions');
+  let users = await safeQuery('SELECT * FROM users', 'users');
+  let dossiers = await safeQuery('SELECT * FROM dossiers ORDER BY created_at DESC', 'dossiers');
+  let incomingDocs = await safeQuery('SELECT * FROM incoming_documents ORDER BY received_date DESC', 'incoming_documents');
+  let outgoingDocs = await safeQuery('SELECT * FROM outgoing_documents ORDER BY release_date DESC', 'outgoing_documents');
+  let tasks = await safeQuery('SELECT * FROM tasks ORDER BY due_date ASC', 'tasks');
+  let attachments = await safeQuery('SELECT * FROM attachments ORDER BY uploaded_at DESC', 'attachments');
+  let auditLogs = await safeQuery('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 200', 'audit_logs');
+  let notifications = await safeQuery('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 100', 'notifications');
+
+  // If core tables are empty after recovery, seed them automatically
+  if (users.length === 0 && departments.length === 0) {
+    try {
+      await initTablesAndSeed();
+      departments = await safeQuery('SELECT * FROM departments', 'departments');
+      positions = await safeQuery('SELECT * FROM positions ORDER BY level ASC', 'positions');
+      users = await safeQuery('SELECT * FROM users', 'users');
+      dossiers = await safeQuery('SELECT * FROM dossiers ORDER BY created_at DESC', 'dossiers');
+      incomingDocs = await safeQuery('SELECT * FROM incoming_documents ORDER BY received_date DESC', 'incoming_documents');
+      outgoingDocs = await safeQuery('SELECT * FROM outgoing_documents ORDER BY release_date DESC', 'outgoing_documents');
+      tasks = await safeQuery('SELECT * FROM tasks ORDER BY due_date ASC', 'tasks');
+    } catch {}
+  }
 
   const mappedAttachments = attachments.map((a: any) => ({
     id: a.id,

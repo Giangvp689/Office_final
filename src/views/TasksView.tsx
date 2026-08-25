@@ -163,19 +163,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
     if (!currentUser) return tasks;
     return tasks.filter(
       (t) =>
-        t.assigneeId === currentUser.id ||
-        t.coAssigneeIds?.includes(currentUser.id) ||
-        t.creatorId === currentUser.id ||
-        t.createdById === currentUser.id
+        t.assigneeId === currentUser?.id ||
+        t.coAssigneeIds?.includes(currentUser?.id || '') ||
+        t.creatorId === currentUser?.id ||
+        t.createdById === currentUser?.id
     );
   }, [tasks, isLeaderOrAdmin, agencyScope, currentUser?.id]);
 
   // Counts for tabs
   const assignedToMeTasks = accessibleTasks.filter(
-    (t) => t.assigneeId === currentUser?.id || t.coAssigneeIds?.includes(currentUser?.id)
+    (t) => t.assigneeId === currentUser?.id || t.coAssigneeIds?.includes(currentUser?.id || '')
   );
   const myLeadTasks = accessibleTasks.filter((t) => t.assigneeId === currentUser?.id);
-  const myCoTasks = accessibleTasks.filter((t) => t.coAssigneeIds?.includes(currentUser?.id));
+  const myCoTasks = accessibleTasks.filter((t) => t.coAssigneeIds?.includes(currentUser?.id || ''));
   const delegatedByMeTasks = accessibleTasks.filter(
     (t) => t.createdById === currentUser?.id || t.creatorId === currentUser?.id
   );
@@ -184,14 +184,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
     // Mode filtering
     if (activeTab === 'ASSIGNED_TO_ME') {
       if (assignedSubFilter === 'PRIMARY') {
-        if (t.assigneeId !== currentUser.id) return false;
+        if (t.assigneeId !== currentUser?.id) return false;
       } else if (assignedSubFilter === 'COOPERATE') {
-        if (!t.coAssigneeIds?.includes(currentUser.id)) return false;
+        if (!t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
       } else {
-        if (t.assigneeId !== currentUser.id && !t.coAssigneeIds?.includes(currentUser.id)) return false;
+        if (t.assigneeId !== currentUser?.id && !t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
       }
     } else if (activeTab === 'DELEGATED_BY_ME') {
-      if (t.createdById !== currentUser.id && t.creatorId !== currentUser.id) return false;
+      if (t.createdById !== currentUser?.id && t.creatorId !== currentUser?.id) return false;
     }
 
     const matchSearch =
@@ -211,9 +211,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
       code: `CV-${new Date().getFullYear()}-${String(tasks.length + 1).padStart(2, '0')}`,
       title: '',
       description: '',
-      creatorId: currentUser.id,
-      createdById: currentUser.id,
-      assigneeId: users.find((u) => u.id !== currentUser.id)?.id || currentUser.id,
+      creatorId: currentUser?.id || '',
+      createdById: currentUser?.id || '',
+      assigneeId: users.find((u) => u.id !== currentUser?.id)?.id || currentUser?.id || '',
       coAssigneeIds: [],
       startDate: today,
       dueDate: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
@@ -260,9 +260,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
       code: editingTask.code?.trim() || `CV-${new Date().getFullYear()}-${String(tasks.length + 1).padStart(2, '0')}`,
       title: finalTitle,
       description: editingTask.description || '',
-      creatorId: editingTask.creatorId || editingTask.createdById || currentUser.id,
-      createdById: editingTask.createdById || editingTask.creatorId || currentUser.id,
-      assigneeId: editingTask.assigneeId || currentUser.id,
+      creatorId: editingTask.creatorId || editingTask.createdById || currentUser?.id || '',
+      createdById: editingTask.createdById || editingTask.creatorId || currentUser?.id || '',
+      assigneeId: editingTask.assigneeId || currentUser?.id || '',
       coAssigneeIds: editingTask.coAssigneeIds || [],
       priority: editingTask.priority || 'MEDIUM',
       startDate: editingTask.startDate || today,
@@ -726,9 +726,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     const coAssignees = (t.coAssigneeIds || []).map((id) => getUser(id)).filter(Boolean);
                     const isOverdue = t.dueDate < today && t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
 
-                    const isMyLead = t.assigneeId === currentUser.id;
-                    const isMyCo = t.coAssigneeIds?.includes(currentUser.id);
-                    const isMyDelegated = t.creatorId === currentUser.id || t.createdById === currentUser.id;
+                    const isMyLead = t.assigneeId === currentUser?.id;
+                    const isMyCo = t.coAssigneeIds?.includes(currentUser?.id || '');
+                    const isMyDelegated = t.creatorId === currentUser?.id || t.createdById === currentUser?.id;
 
                     return (
                       <tr
@@ -1274,11 +1274,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     <span className="text-[11px] font-semibold text-slate-500">Tài khoản gửi tin:</span>
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 rounded-lg shadow-2xs">
                       <img
-                        src={currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-                        alt={currentUser.fullName}
+                        src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                        alt={currentUser?.fullName || 'User'}
                         className="w-4 h-4 rounded-full object-cover border border-slate-200"
                       />
-                      <span className="font-bold text-xs text-slate-800">{currentUser.fullName}</span>
+                      <span className="font-bold text-xs text-slate-800">{currentUser?.fullName || 'Người dùng'}</span>
                       <span className="text-[10px] text-indigo-700 bg-indigo-50 font-bold px-1.5 py-0.2 rounded border border-indigo-200">
                         {currentUser?.position || (currentUser?.role === 'DIRECTOR' ? 'Giám đốc' : currentUser?.role === 'DEPUTY_DIRECTOR' ? 'Phó Giám đốc' : currentUser?.role === 'CHIEF_OFFICER' ? 'Chánh Văn phòng' : 'Chuyên viên')}
                       </span>
@@ -1301,7 +1301,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   ) : (
                     // Deduplicate comments by id just in case
                     selectedTask.comments.filter((c, index, arr) => arr.findIndex(x => x.id === c.id) === index).map((cm, idx) => {
-                      const isMe = cm.userId === currentUser.id;
+                      const isMe = cm.userId === currentUser?.id;
                       const sender = getUser(cm.userId);
                       const isLeaderSender = cm.userId === (selectedTask.creatorId || selectedTask.createdById);
                       const isAssigneeSender = cm.userId === selectedTask.assigneeId;
@@ -1570,7 +1570,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     👑 Lãnh đạo giao việc <span className="text-rose-500">*</span>
                   </label>
                   <select
-                    value={editingTask.creatorId || editingTask.createdById || currentUser.id}
+                    value={editingTask.creatorId || editingTask.createdById || currentUser?.id || ''}
                     onChange={(e) =>
                       setEditingTask({
                         ...editingTask,

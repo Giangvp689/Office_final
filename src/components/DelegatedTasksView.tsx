@@ -35,7 +35,7 @@ export const DelegatedTasksView: React.FC<DelegatedTasksViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
-  const delegatedTasks = tasks.filter((t) => t.creatorId === currentUser.id);
+  const delegatedTasks = tasks.filter((t) => t.creatorId === currentUser?.id || t.createdById === currentUser?.id);
 
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id || d.code === id);
@@ -78,7 +78,7 @@ export const DelegatedTasksView: React.FC<DelegatedTasksViewProps> = ({
             </h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Giám sát tiến độ của cấp dưới và các chuyên viên được giao nhiệm vụ bởi <b>{currentUser.fullName}</b>.
+            Giám sát tiến độ của cấp dưới và các chuyên viên được giao nhiệm vụ bởi <b>{currentUser?.fullName || 'Lãnh đạo'}</b>.
           </p>
         </div>
 

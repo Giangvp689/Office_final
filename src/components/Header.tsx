@@ -295,8 +295,8 @@ export const Header: React.FC<HeaderProps> = ({
                               isCurrent ? 'bg-indigo-50 font-bold text-indigo-700' : 'text-slate-700'
                             }`}
                           >
-                            <span className="truncate">{u.fullName}</span>
-                            <span className="text-[10px] font-mono text-slate-400 shrink-0 ml-1">({u.username || u.email.split('@')[0]})</span>
+                            <span className="truncate">{u?.fullName || 'Người dùng'}</span>
+                            <span className="text-[10px] font-mono text-slate-400 shrink-0 ml-1">({u?.username || u?.email?.split('@')[0] || 'user'})</span>
                           </button>
                         );
                       })}

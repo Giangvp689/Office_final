@@ -35,7 +35,7 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
   >([
     {
       sender: 'ai',
-      text: `Xin chào đồng chí ${currentUser.fullName}! Tôi là Trợ lý AI Quản lý Văn bản & Điều hành Công việc. 
+      text: `Xin chào đồng chí ${currentUser?.fullName || 'Cán bộ'}! Tôi là Trợ lý AI Quản lý Văn bản & Điều hành Công việc. 
 Tôi có thể giúp đồng chí:
 1. Tra cứu văn bản đến, văn bản đi và hồ sơ vụ việc đang thụ lý.
 2. Phân tích danh sách công việc trễ hạn và đề xuất biện pháp đôn đốc.
@@ -181,8 +181,8 @@ Tôi có thể giúp đồng chí:
 
             {m.sender === 'user' && (
               <img
-                src={currentUser.avatar}
-                alt="avatar"
+                src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                alt={currentUser?.fullName || 'User'}
                 className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0 mt-1"
               />
             )}

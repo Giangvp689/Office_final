@@ -31,7 +31,7 @@ export const MyTasksView: React.FC<MyTasksViewProps> = ({
 }) => {
   const [filterCategory, setFilterCategory] = useState<'ALL' | 'URGENT' | 'OVERDUE' | 'IN_PROGRESS' | 'COMPLETED'>('ALL');
 
-  const myTasks = tasks.filter((t) => t.assigneeId === currentUser.id || t.coAssigneeIds?.includes(currentUser.id));
+  const myTasks = tasks.filter((t) => t.assigneeId === currentUser?.id || t.coAssigneeIds?.includes(currentUser?.id || ''));
 
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id || d.code === id);
@@ -60,7 +60,7 @@ export const MyTasksView: React.FC<MyTasksViewProps> = ({
             <h1 className="text-xl font-bold text-slate-800 tracking-tight">Việc Giao Cho Tôi ({myTasks.length})</h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Không gian làm việc của cán bộ: <b>{currentUser.fullName}</b>. Cập nhật tiến độ trực tiếp và nộp báo cáo kết quả.
+            Không gian làm việc của cán bộ: <b>{currentUser?.fullName || 'Cán bộ'}</b>. Cập nhật tiến độ trực tiếp và nộp báo cáo kết quả.
           </p>
         </div>
 

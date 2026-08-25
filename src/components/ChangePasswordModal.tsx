@@ -58,6 +58,10 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
     setSuccess(null);
 
     try {
+      if (!currentUser?.id) {
+        setError('Không tìm thấy thông tin tài khoản đang đăng nhập.');
+        return;
+      }
       const res = await db.changePassword(currentUser.id, oldPassword, newPassword);
       if (res.success) {
         setSuccess('Đổi mật khẩu thành công!');
@@ -88,7 +92,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-800">Đổi Mật Khẩu Tài Khoản</h3>
-              <p className="text-[11px] text-slate-500">{currentUser.fullName} ({currentUser.username || currentUser.email})</p>
+              <p className="text-[11px] text-slate-500">{currentUser?.fullName || 'Người dùng'} ({currentUser?.username || currentUser?.email || ''})</p>
             </div>
           </div>
           <button

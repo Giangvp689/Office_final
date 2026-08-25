@@ -38,31 +38,10 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
   const [deptInput, setDeptInput] = useState('');
   const [posInput, setPosInput] = useState('');
 
-  const isAdmin = currentUser?.role === 'ADMIN';
+  const isAdminOrLeader = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
 
-  if (currentUser && !isAdmin) {
-    return (
-      <div className="w-full p-8 flex-1 flex flex-col items-center justify-center text-center">
-        <div className="max-w-md bg-white p-8 rounded-2xl border border-rose-200 shadow-sm flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
-            <Lock className="w-7 h-7" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">Quyền Truy Cập Bị Hạn Chế</h2>
-            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Mục <strong>Quản trị Danh mục dùng chung</strong> chứa cấu hình chuẩn hóa danh mục toàn cơ quan và chỉ dành riêng cho tài khoản có vai trò <strong>Quản trị viên (ADMIN)</strong>.
-            </p>
-          </div>
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-left w-full text-xs text-slate-600 space-y-1">
-            <div><strong>Tài khoản hiện tại:</strong> {currentUser?.fullName || 'N/A'}</div>
-            <div><strong>Vai trò:</strong> <span className="text-amber-600 font-bold">{currentUser?.role || 'STAFF'}</span></div>
-          </div>
-          <p className="text-[11px] text-slate-400">
-            Nếu bạn cần bổ sung danh mục văn bản hoặc phòng ban mới, vui lòng liên hệ Quản trị viên hệ thống.
-          </p>
-        </div>
-      </div>
-    );
+  if (currentUser && !isAdminOrLeader) {
+    return null;
   }
 
   const handleAdd = (field: StringArrayField, value: string, setter: (s: string) => void) => {
