@@ -43,9 +43,11 @@ import {
   Inbox,
   Info,
   ExternalLink,
+  Lock,
 } from 'lucide-react';
 import { suggestTaskBreakdownWithAI } from '../services/aiService';
 import { dbService } from '../services/db';
+import { canAccessTask, canCommentOnTask, getTaskParticipants } from '../utils/permission';
 
 const getDeptString = (dept: any): string => {
   if (!dept) return '';
@@ -370,6 +372,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const handleSendMessage = async (customContent?: string) => {
     const textToSend = customContent || newComment;
     if (!selectedTask || !textToSend.trim()) return;
+
+    if (!canCommentOnTask(selectedTask, currentUser)) {
+      alert('Bạn không thuộc danh sách nhân sự tham gia xử lý nhiệm vụ này nên không thể gửi ý kiến trao đổi.');
+      return;
+    }
 
     setIsSendingMessage(true);
     const senderUser = currentUser;
@@ -988,8 +995,31 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </button>
             </div>
 
-            {/* Content Body */}
-            <div className="space-y-5 text-xs flex-1">
+            {/* Check privacy permission for currentUser */}
+            {!canAccessTask(selectedTask, currentUser) ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 my-auto">
+                <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mb-4 shadow-xs">
+                  <Lock className="w-8 h-8" />
+                </div>
+                <h3 className="text-base font-bold text-slate-800 mb-2">
+                  Quyền Riêng Tư & Bảo Mật Nhiệm Vụ
+                </h3>
+                <p className="text-xs text-slate-600 max-w-md leading-relaxed mb-6">
+                  Bạn không thuộc danh sách nhân sự được phân công tham gia xử lý nhiệm vụ này.
+                  <br />
+                  Toàn bộ nội dung trao đổi, ý kiến chỉ đạo và báo cáo tiến độ được bảo mật nội bộ giữa <strong>Lãnh đạo giao việc</strong> và các <strong>Cán bộ được giao việc</strong>.
+                </p>
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                >
+                  Quay lại danh sách nhiệm vụ của tôi
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Content Body */}
+                <div className="space-y-5 text-xs flex-1">
               {/* Badges & Status Selector */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
                 <div className="flex items-center gap-2">
@@ -1395,6 +1425,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 {/* Chat Input Box */}
                 {(() => {
                   const isCurrentUserLeader = selectedTask.creatorId === currentUser?.id || selectedTask.createdById === currentUser?.id || (currentUser?.role && ['DIRECTOR', 'DEPUTY_DIRECTOR', 'CHIEF_OFFICER', 'LEADER', 'ADMIN'].includes(currentUser.role));
+                  const canComment = canCommentOnTask(selectedTask, currentUser);
+
+                  if (!canComment) {
+                    return (
+                      <div className="p-3 bg-slate-100 text-center text-slate-500 text-xs italic">
+                        Bạn không có quyền gửi tin nhắn trao đổi trong nhiệm vụ này.
+                      </div>
+                    );
+                  }
+
                   return (
                     <div className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
                       <input
@@ -1436,6 +1476,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 Chỉnh sửa nhiệm vụ
               </button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}

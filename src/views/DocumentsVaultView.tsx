@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { AttachmentFile, Dossier, User } from '../types';
+import { AttachmentFile, Dossier, User, IncomingDocument, OutgoingDocument, Task } from '../types';
 import {
   FolderOpen,
   Search,
@@ -18,6 +18,7 @@ import {
   FolderKanban,
 } from 'lucide-react';
 import { FilePreviewModal } from '../components/FilePreviewModal';
+import { canAccessAttachment, isLeaderOrAdmin } from '../utils/permission';
 
 interface DocumentsVaultViewProps {
   attachments: AttachmentFile[];
@@ -26,6 +27,9 @@ interface DocumentsVaultViewProps {
   onUploadFile: (file: AttachmentFile) => void;
   onDeleteFile: (id: string) => void;
   currentUser: User;
+  incomingDocs?: IncomingDocument[];
+  outgoingDocs?: OutgoingDocument[];
+  tasks?: Task[];
 }
 
 export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
@@ -35,6 +39,9 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
   onUploadFile,
   onDeleteFile,
   currentUser,
+  incomingDocs = [],
+  outgoingDocs = [],
+  tasks = [],
 }) => {
   const [search, setSearch] = useState('');
   const [filterDossier, setFilterDossier] = useState<string>('ALL');
@@ -60,42 +67,18 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id);
 
-  const isLeaderOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
-  const [vaultScope, setVaultScope] = useState<'MY' | 'ALL'>(isLeaderOrAdmin ? 'ALL' : 'MY');
-
-  // Accessible dossiers set
-  const accessibleDossierIds = React.useMemo(() => {
-    return new Set(
-      dossiers
-        .filter(
-          (d) =>
-            isLeaderOrAdmin ||
-            !currentUser ||
-            d.managerId === currentUser?.id ||
-            d.leaderId === currentUser?.id ||
-            d.createdById === currentUser?.id ||
-            d.creatorId === currentUser?.id
-        )
-        .map((d) => d.id)
-    );
-  }, [dossiers, isLeaderOrAdmin, currentUser?.id]);
+  const isSuperUser = isLeaderOrAdmin(currentUser);
+  const [vaultScope, setVaultScope] = useState<'MY' | 'ALL'>(isSuperUser ? 'ALL' : 'MY');
 
   // Base list of files accessible to current user
   const accessibleFiles = React.useMemo(() => {
-    if (isLeaderOrAdmin && vaultScope === 'ALL') {
+    if (isSuperUser && vaultScope === 'ALL') {
       return attachments;
     }
-    if (!currentUser) return attachments;
-    return attachments.filter((f) => {
-      // Uploaded by user
-      if (f.uploadedById === currentUser?.id) return true;
-      // In an accessible dossier
-      if (f.dossierId && accessibleDossierIds.has(f.dossierId)) return true;
-      // General / Public system attachments without private dossier
-      if (!f.dossierId && (f.category === 'KHAC' || !f.uploadedById)) return true;
-      return false;
-    });
-  }, [attachments, isLeaderOrAdmin, vaultScope, accessibleDossierIds, currentUser?.id]);
+    return attachments.filter((file) =>
+      canAccessAttachment(file, currentUser, dossiers, tasks, incomingDocs, outgoingDocs)
+    );
+  }, [attachments, isSuperUser, vaultScope, currentUser, dossiers, tasks, incomingDocs, outgoingDocs]);
 
   const filteredFiles = accessibleFiles.filter((f) => {
     const matchSearch =

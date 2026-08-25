@@ -25,6 +25,7 @@ import {
   ChevronRight,
   FolderOpen,
 } from 'lucide-react';
+import { canAccessDossier, isLeaderOrAdmin } from '../utils/permission';
 
 interface DossiersViewProps {
   dossiers: Dossier[];
@@ -58,56 +59,16 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
 
   const [selectedDossier, setSelectedDossier] = useState<Dossier | null>(null);
 
-  const isLeaderOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
-  const [dossierScope, setDossierScope] = useState<'MY' | 'ALL'>(isLeaderOrAdmin ? 'ALL' : 'MY');
-
-  // Check if current user is a participant in the dossier
-  const isParticipant = (d: Dossier) => {
-    if (!currentUser) return true;
-    if (d.managerId === currentUser?.id || d.leaderId === currentUser?.id || d.createdById === currentUser?.id || d.creatorId === currentUser?.id) {
-      return true;
-    }
-    // Check if user is involved in linked tasks
-    const hasLinkedTask = tasks.some(
-      (t) =>
-        (t.dossierId === d.id || t.dossierId === d.code) &&
-        (t.assigneeId === currentUser?.id ||
-          t.coAssigneeIds?.includes(currentUser?.id || '') ||
-          t.creatorId === currentUser?.id ||
-          t.createdById === currentUser?.id)
-    );
-    if (hasLinkedTask) return true;
-
-    // Check if user is involved in linked incoming docs
-    const hasLinkedIncoming = incomingDocs.some(
-      (doc) =>
-        (doc.dossierId === d.id || doc.dossierId === d.code) &&
-        (doc.assigneeId === currentUser?.id ||
-          doc.coAssigneeIds?.includes(currentUser?.id || '') ||
-          doc.createdById === currentUser?.id)
-    );
-    if (hasLinkedIncoming) return true;
-
-    // Check if user is involved in linked outgoing docs
-    const hasLinkedOutgoing = outgoingDocs.some(
-      (doc) =>
-        (doc.dossierId === d.id || doc.dossierId === d.code) &&
-        (doc.drafterId === currentUser?.id ||
-          doc.signerId === currentUser?.id ||
-          doc.createdById === currentUser?.id)
-    );
-    if (hasLinkedOutgoing) return true;
-
-    return false;
-  };
+  const isSuperUser = isLeaderOrAdmin(currentUser);
+  const [dossierScope, setDossierScope] = useState<'MY' | 'ALL'>(isSuperUser ? 'ALL' : 'MY');
 
   // Base list of dossiers this user is authorized to see
   const accessibleDossiers = useMemo(() => {
-    if (isLeaderOrAdmin && dossierScope === 'ALL') {
+    if (isSuperUser && dossierScope === 'ALL') {
       return dossiers;
     }
-    return dossiers.filter((d) => isParticipant(d));
-  }, [dossiers, isLeaderOrAdmin, dossierScope, tasks, incomingDocs, outgoingDocs, currentUser?.id]);
+    return dossiers.filter((d) => canAccessDossier(d, currentUser, tasks, incomingDocs, outgoingDocs));
+  }, [dossiers, isSuperUser, dossierScope, tasks, incomingDocs, outgoingDocs, currentUser]);
 
   // Auto open dossier if navigated from notification
   React.useEffect(() => {

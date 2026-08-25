@@ -201,6 +201,7 @@ export const App: React.FC = () => {
           {currentSection === 'INCOMING_DOCS' && (
             <IncomingDocsView
               docs={incomingDocs}
+              tasks={tasks}
               users={users}
               dossiers={dossiers}
               onSaveDoc={(doc) => db.saveIncomingDoc(doc, currentUser)}
@@ -244,6 +245,7 @@ export const App: React.FC = () => {
             <OutgoingDocsView
               docs={outgoingDocs}
               incomingDocs={incomingDocs}
+              tasks={tasks}
               users={users}
               dossiers={dossiers}
               onSaveDoc={(doc) => db.saveOutgoingDoc(doc, currentUser)}
@@ -366,6 +368,9 @@ export const App: React.FC = () => {
             <DocumentsVaultView
               attachments={attachments}
               dossiers={dossiers}
+              incomingDocs={incomingDocs}
+              outgoingDocs={outgoingDocs}
+              tasks={tasks}
               users={users}
               onUploadFile={(file) => db.saveAttachment(file, currentUser)}
               onDeleteFile={(id) => db.deleteAttachment(id, currentUser)}

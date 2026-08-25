@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   OutgoingDocument,
   User,
@@ -6,6 +6,7 @@ import {
   IncomingDocument,
   OutgoingDocStatus,
   AttachmentFile,
+  Task,
 } from '../types';
 import {
   Search,
@@ -33,9 +34,11 @@ import {
   UserCheck,
   Calendar,
   Layers,
+  Lock,
 } from 'lucide-react';
 import { draftOutgoingDocWithAI } from '../services/aiService';
 import { FilePreviewModal } from '../components/FilePreviewModal';
+import { canAccessOutgoingDoc, isLeaderOrAdmin, isClerk } from '../utils/permission';
 
 interface OutgoingDocsViewProps {
   docs: OutgoingDocument[];
@@ -47,6 +50,7 @@ interface OutgoingDocsViewProps {
   currentUser: User;
   onOpenDossier: (dossierId: string) => void;
   initialSelectedDocId?: string;
+  tasks?: Task[];
 }
 
 export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
@@ -59,12 +63,25 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   currentUser,
   onOpenDossier,
   initialSelectedDocId,
+  tasks = [],
 }) => {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
 
+  const isSuperUser = isLeaderOrAdmin(currentUser) || isClerk(currentUser);
+  const [docScope, setDocScope] = useState<'MY' | 'ALL'>(isSuperUser ? 'ALL' : 'MY');
+  const [myRoleFilter, setMyRoleFilter] = useState<'ALL' | 'DRAFTED' | 'SIGNER'>('ALL');
+
   const [selectedDoc, setSelectedDoc] = useState<OutgoingDocument | null>(null);
+
+  // Accessible docs based on permissions
+  const accessibleDocs = useMemo(() => {
+    if (isSuperUser && docScope === 'ALL') {
+      return docs;
+    }
+    return docs.filter((d) => canAccessOutgoingDoc(d, currentUser, dossiers));
+  }, [docs, isSuperUser, docScope, currentUser, dossiers]);
 
   // Auto open document if navigated from notification
   useEffect(() => {
@@ -110,7 +127,14 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id);
 
-  const filteredDocs = docs.filter((doc) => {
+  const filteredDocs = accessibleDocs.filter((doc) => {
+    if (myRoleFilter === 'DRAFTED' && doc.drafterId !== currentUser?.id && doc.createdById !== currentUser?.id) {
+      return false;
+    }
+    if (myRoleFilter === 'SIGNER' && doc.signerId !== currentUser?.id) {
+      return false;
+    }
+
     const matchSearch =
       doc.documentNumber.toLowerCase().includes(search.toLowerCase()) ||
       doc.summary.toLowerCase().includes(search.toLowerCase()) ||
@@ -401,15 +425,49 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-800">Quản Lý Văn Bản Đi & Phát Hành</h1>
             <span className="bg-emerald-100 text-emerald-700 font-bold text-xs px-2.5 py-0.5 rounded-full border border-emerald-200">
-              {docs.length} văn bản
+              {filteredDocs.length} văn bản
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Theo dõi phát hành, đính kèm bản quét (Scan/PDF), người ký duyệt và lưu trữ đồng bộ MySQL
+            Theo dõi dự thảo phát hành, người ký duyệt và phân quyền tiếp cận nghiệp vụ
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Super user scope switcher */}
+          {isSuperUser && (
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+              <span className="text-[10px] text-slate-500 font-bold px-2 uppercase">Phạm vi:</span>
+              <button
+                onClick={() => setDocScope('MY')}
+                className={`px-3 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                  docScope === 'MY'
+                    ? 'bg-white text-indigo-700 font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Văn bản của tôi
+              </button>
+              <button
+                onClick={() => setDocScope('ALL')}
+                className={`px-3 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                  docScope === 'ALL'
+                    ? 'bg-white text-indigo-700 font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Toàn cơ quan ({docs.length})
+              </button>
+            </div>
+          )}
+
+          {!isSuperUser && (
+            <div className="text-[11px] font-medium text-slate-500 bg-slate-100/80 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+              <span>Chỉ hiển thị văn bản đi bạn soạn thảo hoặc ký duyệt</span>
+            </div>
+          )}
+
           <button
             onClick={() => {
               handleOpenAddModal();
@@ -428,6 +486,37 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
           >
             <Plus className="w-4 h-4" />
             <span>+ Tạo Mới Văn Bản Đi</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Role Sub-filters for personalized involvement */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-1.5 bg-emerald-50/70 p-1 rounded-xl border border-emerald-100 text-xs">
+          <span className="text-[11px] font-bold text-emerald-900 px-2">Nhiệm vụ văn bản:</span>
+          <button
+            onClick={() => setMyRoleFilter('ALL')}
+            className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+              myRoleFilter === 'ALL' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-600 hover:text-emerald-700'
+            }`}
+          >
+            Tất cả ({accessibleDocs.length})
+          </button>
+          <button
+            onClick={() => setMyRoleFilter('DRAFTED')}
+            className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+              myRoleFilter === 'DRAFTED' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-emerald-700'
+            }`}
+          >
+            Tôi soạn thảo ({accessibleDocs.filter((d) => d.drafterId === currentUser?.id || d.createdById === currentUser?.id).length})
+          </button>
+          <button
+            onClick={() => setMyRoleFilter('SIGNER')}
+            className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+              myRoleFilter === 'SIGNER' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-indigo-700'
+            }`}
+          >
+            Tôi ký duyệt ({accessibleDocs.filter((d) => d.signerId === currentUser?.id).length})
           </button>
         </div>
       </div>
@@ -622,20 +711,40 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
       {selectedDoc && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex justify-end z-50 animate-in fade-in duration-150">
           <div className="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col justify-between p-6 overflow-y-auto custom-scrollbar">
-            <div className="space-y-6">
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2">
-                  <Send className="w-5 h-5 text-emerald-600" />
-                  <span className="font-bold text-slate-800 text-base">Chi Tiết Văn Bản Đi</span>
+            {!canAccessOutgoingDoc(selectedDoc, currentUser, dossiers) ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 my-auto">
+                <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mb-4 shadow-xs">
+                  <Lock className="w-8 h-8" />
                 </div>
+                <h3 className="text-base font-bold text-slate-800 mb-2">
+                  Quyền Riêng Tư & Thẩm Quyền Văn Bản Đi
+                </h3>
+                <p className="text-xs text-slate-600 max-w-md leading-relaxed mb-6">
+                  Văn bản này do cán bộ khác soạn thảo hoặc thuộc hồ sơ nội bộ được phân quyền riêng. Bạn không thuộc danh sách người soạn thảo hoặc người có thẩm quyền ký duyệt văn bản này.
+                </p>
                 <button
                   onClick={() => setSelectedDoc(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
                 >
-                  <X className="w-5 h-5" />
+                  Đóng chi tiết
                 </button>
               </div>
+            ) : (
+              <>
+                <div className="space-y-6">
+                  {/* Header */}
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                    <div className="flex items-center gap-2">
+                      <Send className="w-5 h-5 text-emerald-600" />
+                      <span className="font-bold text-slate-800 text-base">Chi Tiết Văn Bản Đi</span>
+                    </div>
+                    <button
+                      onClick={() => setSelectedDoc(null)}
+                      className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
 
               {/* Status and Numbers */}
               <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-200">
@@ -797,6 +906,8 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                 <span>Chỉnh sửa văn bản</span>
               </button>
             </div>
+              </>
+            )}
           </div>
         </div>
       )}

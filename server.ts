@@ -883,7 +883,7 @@ app.put('/api/tasks/:id', async (req, res) => {
   }
 });
 
-// Endpoint riêng để thêm tin nhắn trao đổi vào nhiệm vụ
+// Endpoint riêng để thêm tin nhắn trao đổi vào nhiệm vụ (Có kiểm tra bảo mật phân quyền)
 app.post('/api/tasks/:id/comments', async (req, res) => {
   try {
     const { id } = req.params;
@@ -891,15 +891,33 @@ app.post('/api/tasks/:id/comments', async (req, res) => {
     const store = loadStore();
     const task = store.tasks.find((x) => x.id === id);
 
-    let updatedComments: any[] = [];
-    if (task) {
-      task.comments = task.comments || [];
-      if (!task.comments.some((c: any) => c.id === comment.id)) {
-        task.comments.push(comment);
-      }
-      updatedComments = task.comments;
-      saveStore(store);
+    if (!task) {
+      return res.status(404).json({ success: false, error: 'Task not found' });
     }
+
+    // Backend Access Control Check
+    const commenter = (store.users || []).find((u: any) => u.id === comment.userId);
+    const isLeaderOrAdmin = commenter && ['ADMIN', 'LEADER', 'DIRECTOR', 'DEPUTY_DIRECTOR', 'CHIEF_OFFICER'].includes(commenter.role);
+    const isParticipant =
+      comment.userId === task.assigneeId ||
+      comment.userId === task.creatorId ||
+      comment.userId === task.createdById ||
+      (Array.isArray(task.coAssigneeIds) && task.coAssigneeIds.includes(comment.userId));
+
+    if (!isLeaderOrAdmin && !isParticipant) {
+      return res.status(403).json({
+        success: false,
+        error: 'Chỉ có nhân sự tham gia xử lý hoặc Lãnh đạo mới có quyền gửi ý kiến trao đổi trong nhiệm vụ này.',
+      });
+    }
+
+    let updatedComments: any[] = [];
+    task.comments = task.comments || [];
+    if (!task.comments.some((c: any) => c.id === comment.id)) {
+      task.comments.push(comment);
+    }
+    updatedComments = task.comments;
+    saveStore(store);
 
     const dbResult = await safeDbRun(async (pool) => {
       // Lấy comments hiện tại từ DB
