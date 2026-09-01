@@ -202,10 +202,11 @@ export interface AuditLog {
   userId?: string;
   userName: string;
   userAvatar?: string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE' | 'ASSIGN' | 'UPLOAD_FILE' | 'COMMENT' | 'AI_QUERY' | 'LOGIN' | 'LOGOUT';
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE' | 'ASSIGN' | 'UPLOAD_FILE' | 'COMMENT' | 'AI_QUERY' | 'LOGIN' | 'LOGOUT' | 'SWITCH_USER';
   entityType: 'INCOMING_DOC' | 'OUTGOING_DOC' | 'TASK' | 'USER' | 'DOSSIER' | 'FILE' | 'CATEGORY' | string;
   entityId?: string;
   entityTitle?: string;
+  targetName?: string;
   details: string;
 }
 
@@ -218,7 +219,12 @@ export interface SystemNotification {
     | 'DEADLINE_TODAY'
     | 'OVERDUE'
     | 'NEW_TASK'
+    | 'TASK_ASSIGNED'
+    | 'TASK_STATUS_CHANGED'
+    | 'TASK_COMMENT'
     | 'DOC_ASSIGNED'
+    | 'DOC_INCOMING'
+    | 'DOC_OUTGOING'
     | 'STATUS_UPDATED'
     | 'INFO'
     | 'WARNING';

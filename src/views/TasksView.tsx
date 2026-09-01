@@ -1310,7 +1310,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       />
                       <span className="font-bold text-xs text-slate-800">{currentUser?.fullName || 'Người dùng'}</span>
                       <span className="text-[10px] text-indigo-700 bg-indigo-50 font-bold px-1.5 py-0.2 rounded border border-indigo-200">
-                        {currentUser?.position || (currentUser?.role === 'DIRECTOR' ? 'Giám đốc' : currentUser?.role === 'DEPUTY_DIRECTOR' ? 'Phó Giám đốc' : currentUser?.role === 'CHIEF_OFFICER' ? 'Chánh Văn phòng' : 'Chuyên viên')}
+                        {currentUser?.position || (currentUser?.role === 'ADMIN' ? 'Quản trị viên' : currentUser?.role === 'LEADER' ? 'Lãnh đạo' : currentUser?.role === 'CLERK' ? 'Văn thư' : 'Chuyên viên')}
                       </span>
                     </div>
                   </div>

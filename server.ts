@@ -1100,7 +1100,7 @@ app.post('/api/login', async (req, res) => {
               message: 'Đăng nhập thành công từ CSDL!',
             });
           } else {
-            return res.status(401).json({ success: false, message: 'Mật khẩu không chính xác. Mặc định là: 123' });
+            return res.status(401).json({ success: false, message: 'Mật khẩu không chính xác. Vui lòng kiểm tra lại.' });
           }
         }
       }
@@ -1130,11 +1130,11 @@ app.post('/api/login', async (req, res) => {
           message: 'Đăng nhập thành công!',
         });
       } else {
-        return res.status(401).json({ success: false, message: 'Mật khẩu không chính xác. Mặc định là: 123' });
+        return res.status(401).json({ success: false, message: 'Mật khẩu không chính xác. Vui lòng kiểm tra lại.' });
       }
     }
 
-    res.status(404).json({ success: false, message: 'Tài khoản không tồn tại trên hệ thống CSDL.' });
+    res.status(404).json({ success: false, message: 'Tài khoản hoặc email không tồn tại trên hệ thống.' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message || 'Lỗi đăng nhập' });
   }

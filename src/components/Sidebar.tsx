@@ -45,7 +45,9 @@ interface SidebarProps {
   currentSection: NavSection;
   onSelectSection: (section: NavSection) => void;
   currentUser: User;
-  onOpenUserSwitch: () => void;
+  onOpenUserSwitch?: () => void;
+  onReturnToAdmin?: () => void;
+  isImpersonating?: boolean;
   counts: {
     incoming: number;
     outgoing: number;
@@ -60,6 +62,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectSection,
   currentUser,
   onOpenUserSwitch,
+  onReturnToAdmin,
+  isImpersonating = false,
   counts,
 }) => {
   const getRoleBadge = (role?: Role) => {
@@ -375,10 +379,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* User Footer Profile & Role Switcher */}
       <div className="p-3 border-t border-slate-200/80 bg-slate-50/70">
+        {isImpersonating && onReturnToAdmin && (
+          <button
+            onClick={onReturnToAdmin}
+            id="btn-return-admin-sidebar"
+            className="w-full mb-2 py-1.5 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+          >
+            <span>⚡ Đang ủy quyền &middot; Về Admin</span>
+          </button>
+        )}
+
         <div
           onClick={onOpenUserSwitch}
-          className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-white hover:shadow-xs transition-all cursor-pointer group"
-          title="Bấm để chuyển đổi vai trò / cán bộ"
+          className={`flex items-center gap-2.5 p-2 rounded-xl transition-all ${
+            onOpenUserSwitch
+              ? 'hover:bg-white hover:shadow-xs cursor-pointer group'
+              : 'cursor-default'
+          }`}
+          title={onOpenUserSwitch ? 'Chuyển đổi tài khoản (Dành riêng cho Quản trị viên)' : undefined}
         >
           <img
             src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
@@ -386,7 +404,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="w-9 h-9 rounded-xl object-cover border border-slate-200"
           />
           <div className="flex flex-col min-w-0 flex-1">
-            <span className="text-xs font-bold text-slate-800 truncate group-hover:text-indigo-600">
+            <span className={`text-xs font-bold text-slate-800 truncate ${onOpenUserSwitch ? 'group-hover:text-indigo-600' : ''}`}>
               {currentUser?.fullName || 'Chưa đăng nhập'}
             </span>
             <span
@@ -395,7 +413,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {roleBadge.label}
             </span>
           </div>
-          <Users className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+          {onOpenUserSwitch && (
+            <Users className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+          )}
         </div>
       </div>
     </aside>

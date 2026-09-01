@@ -38,6 +38,7 @@ const DB_STORAGE_KEYS = {
   MASTER_DATA: 'qlvb_master_data_v2',
   CURRENT_USER_ID: 'qlvb_current_user_id_v2',
   AUTH_TOKEN: 'qlvb_auth_token_v2',
+  ADMIN_ORIGIN_USER_ID: 'qlvb_admin_origin_user_id_v2',
 };
 
 class DatabaseService {
@@ -292,7 +293,7 @@ class DatabaseService {
     // Default password if not defined is '123'
     const expectedPass = user.password || '123';
     if (password !== expectedPass) {
-      return { success: false, message: 'Mật khẩu không chính xác. (Mặc định: 123)' };
+      return { success: false, message: 'Mật khẩu không chính xác. Vui lòng kiểm tra lại.' };
     }
 
     const updatedUser = { ...user, lastLogin: new Date().toISOString() };
@@ -304,6 +305,14 @@ class DatabaseService {
     if (typeof window === 'undefined') return;
     localStorage.setItem(DB_STORAGE_KEYS.AUTH_TOKEN, token);
     localStorage.setItem(DB_STORAGE_KEYS.CURRENT_USER_ID, user.id);
+    
+    // If the authenticated user is an Admin, record as origin admin
+    if (user.role === 'ADMIN') {
+      localStorage.setItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID, user.id);
+    } else {
+      localStorage.removeItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
+    }
+
     this.logAction('LOGIN', 'USER', user.id, user.fullName, `Đăng nhập hệ thống thành công (Tài khoản: ${user.username || user.email})`, user);
     this.notify();
   }
@@ -314,7 +323,88 @@ class DatabaseService {
     this.logAction('LOGOUT', 'USER', current.id, current.fullName, `Đăng xuất khỏi hệ thống`, current);
     localStorage.removeItem(DB_STORAGE_KEYS.AUTH_TOKEN);
     localStorage.removeItem(DB_STORAGE_KEYS.CURRENT_USER_ID);
+    localStorage.removeItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
     this.notify();
+  }
+
+  public getAdminOriginUserId(): string | null {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
+  }
+
+  public getAdminOriginUser(): User | null {
+    const adminId = this.getAdminOriginUserId();
+    if (!adminId) return null;
+    return this.getUserById(adminId) || null;
+  }
+
+  public isImpersonating(): boolean {
+    const adminId = this.getAdminOriginUserId();
+    const currentId = this.getCurrentUserId();
+    return Boolean(adminId && currentId && adminId !== currentId);
+  }
+
+  public canSwitchUser(): boolean {
+    const currentUser = this.getCurrentUser();
+    const adminId = this.getAdminOriginUserId();
+    return currentUser?.role === 'ADMIN' || Boolean(adminId);
+  }
+
+  public switchUser(targetUserId: string): boolean {
+    if (!this.canSwitchUser()) {
+      console.warn('Chỉ có Quản trị viên (Admin) mới có quyền chuyển đổi tài khoản.');
+      return false;
+    }
+
+    const targetUser = this.getUserById(targetUserId);
+    if (!targetUser) return false;
+
+    const currentActor = this.getCurrentUser();
+    const adminOrigin = this.getAdminOriginUser() || currentActor;
+
+    // Ensure admin origin is saved if current actor is Admin
+    if (currentActor.role === 'ADMIN') {
+      localStorage.setItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID, currentActor.id);
+    }
+
+    localStorage.setItem(DB_STORAGE_KEYS.CURRENT_USER_ID, targetUserId);
+    localStorage.setItem(DB_STORAGE_KEYS.AUTH_TOKEN, `tok_switch_${targetUserId}_${Date.now()}`);
+
+    this.logAction(
+      'SWITCH_USER',
+      'USER',
+      targetUser.id,
+      targetUser.fullName,
+      `Quản trị viên ${adminOrigin.fullName} chuyển sang tài khoản ${targetUser.fullName} (${targetUser.role})`,
+      adminOrigin
+    );
+
+    this.notify();
+    return true;
+  }
+
+  public returnToAdminAccount(): boolean {
+    const adminId = this.getAdminOriginUserId();
+    if (!adminId) return false;
+
+    const adminUser = this.getUserById(adminId);
+    if (!adminUser) return false;
+
+    const previousUser = this.getCurrentUser();
+    localStorage.setItem(DB_STORAGE_KEYS.CURRENT_USER_ID, adminId);
+    localStorage.setItem(DB_STORAGE_KEYS.AUTH_TOKEN, `tok_return_${adminId}_${Date.now()}`);
+
+    this.logAction(
+      'SWITCH_USER',
+      'USER',
+      adminUser.id,
+      adminUser.fullName,
+      `Quản trị viên kết thúc chuyển tài khoản từ ${previousUser.fullName} quay về tài khoản chính`,
+      adminUser
+    );
+
+    this.notify();
+    return true;
   }
 
   public async changePassword(userId: string, oldPass: string, newPass: string): Promise<{ success: boolean; message: string }> {

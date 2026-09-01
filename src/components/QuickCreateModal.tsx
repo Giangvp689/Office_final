@@ -39,11 +39,22 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'INCOMING' | 'OUTGOING' | 'TASK' | 'DOSSIER'>('INCOMING');
 
+  const rawAuthorities = masterData?.authorities || [];
+  const firstAuth = rawAuthorities[0];
+  const initialAuth = typeof firstAuth === 'object' && firstAuth ? firstAuth.name : (typeof firstAuth === 'string' ? firstAuth : 'UBND Tỉnh');
+
+  const rawDocTypes: Array<{ id: string; name: string }> = (masterData?.documentTypes && masterData.documentTypes.length > 0)
+    ? masterData.documentTypes
+    : (masterData?.docTypes || ['Công văn', 'Quyết định', 'Tờ trình', 'Kế hoạch', 'Thông báo', 'Báo cáo']).map((d: any, i: number) => ({
+        id: typeof d === 'object' && d?.id ? d.id : String(i),
+        name: typeof d === 'object' && d?.name ? d.name : String(d),
+      }));
+
   // Form states - Incoming Doc
   const [incDocNum, setIncDocNum] = useState('');
   const [incOfficialNum, setIncOfficialNum] = useState('');
-  const [incAuthority, setIncAuthority] = useState(masterData.authorities[0]?.name || 'UBND Tỉnh');
-  const [incDocType, setIncDocType] = useState(masterData.documentTypes[0]?.name || 'Công văn');
+  const [incAuthority, setIncAuthority] = useState(initialAuth);
+  const [incDocType, setIncDocType] = useState(rawDocTypes[0]?.name || 'Công văn');
   const [incSummary, setIncSummary] = useState('');
   const [incUrgency, setIncUrgency] = useState<UrgencyLevel>('THUONG');
   const [incAssigneeId, setIncAssigneeId] = useState(users[0]?.id || '');
@@ -53,7 +64,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
   // Form states - Outgoing Doc
   const [outDocNum, setOutDocNum] = useState('');
   const [outRecipient, setOutRecipient] = useState('');
-  const [outDocType, setOutDocType] = useState(masterData.documentTypes[0]?.name || 'Công văn');
+  const [outDocType, setOutDocType] = useState(rawDocTypes[0]?.name || 'Công văn');
   const [outSummary, setOutSummary] = useState('');
   const [outDrafterId, setOutDrafterId] = useState(currentUser?.id || users[0]?.id || '');
   const [outSignerId, setOutSignerId] = useState(users.find((u) => u?.role === 'LEADER')?.id || users[0]?.id || '');
@@ -262,7 +273,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
                     onChange={(e) => setIncDocType(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-indigo-500"
                   >
-                    {masterData.documentTypes.map((t) => (
+                    {rawDocTypes.map((t) => (
                       <option key={t.id} value={t.name}>
                         {t.name}
                       </option>
@@ -378,7 +389,7 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
                     onChange={(e) => setOutDocType(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 outline-none focus:border-indigo-500"
                   >
-                    {masterData.documentTypes.map((t) => (
+                    {rawDocTypes.map((t) => (
                       <option key={t.id} value={t.name}>
                         {t.name}
                       </option>
