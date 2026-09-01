@@ -10,11 +10,12 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredLogs = logs.filter((log) => {
+    const target = log.targetName || log.entityTitle || log.entityType || '';
     return (
       !searchTerm ||
       log.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.targetName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      target.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.details?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   });
@@ -101,7 +102,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs }) => {
                   <td className="p-3.5 whitespace-nowrap">{getActionBadge(log.action)}</td>
 
                   <td className="p-3.5 whitespace-nowrap font-medium text-indigo-700">
-                    {log.targetName}
+                    {log.targetName || log.entityTitle || log.entityType || '---'}
                   </td>
 
                   <td className="p-3.5 text-slate-600">

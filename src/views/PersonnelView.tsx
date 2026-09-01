@@ -754,7 +754,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                   <label className="block font-bold text-slate-700 mb-1">Trạng thái làm việc</label>
                   <select
                     value={editingUser.status || 'ACTIVE'}
-                    onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value })}
+                    onChange={(e) => setEditingUser({ ...editingUser, status: e.target.value as 'ACTIVE' | 'ON_LEAVE' | 'INACTIVE' })}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
                   >
                     <option value="ACTIVE">Đang công tác (Hoạt động)</option>

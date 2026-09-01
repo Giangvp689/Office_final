@@ -76,7 +76,7 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
       return attachments;
     }
     return attachments.filter((file) =>
-      canAccessAttachment(file, currentUser, dossiers, tasks, incomingDocs, outgoingDocs)
+      canAccessAttachment(file, currentUser, dossiers, incomingDocs, outgoingDocs, tasks)
     );
   }, [attachments, isSuperUser, vaultScope, currentUser, dossiers, tasks, incomingDocs, outgoingDocs]);
 

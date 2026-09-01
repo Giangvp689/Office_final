@@ -139,12 +139,18 @@ export const App: React.FC = () => {
         currentSection={currentSection}
         onSelectSection={(sec) => setCurrentSection(sec)}
         currentUser={currentUser}
-        onOpenUserSwitch={() => {
-          const nextUser = users.find((u) => u.id !== currentUser?.id) || users[0];
-          if (nextUser) {
-            db.setCurrentUser(nextUser.id);
-          }
-        }}
+        isImpersonating={db.isImpersonating()}
+        onReturnToAdmin={() => db.returnToAdminAccount()}
+        onOpenUserSwitch={
+          db.canSwitchUser()
+            ? () => {
+                const nextUser = users.find((u) => u.id !== currentUser?.id) || users[0];
+                if (nextUser) {
+                  db.switchUser(nextUser.id);
+                }
+              }
+            : undefined
+        }
         counts={counts}
       />
 
@@ -154,7 +160,11 @@ export const App: React.FC = () => {
         <Header
           currentUser={currentUser}
           allUsers={users}
-          onSwitchUser={(userId) => db.setCurrentUser(userId)}
+          canSwitchUser={db.canSwitchUser()}
+          isImpersonating={db.isImpersonating()}
+          adminOriginUser={db.getAdminOriginUser()}
+          onSwitchUser={db.canSwitchUser() ? (userId) => db.switchUser(userId) : undefined}
+          onReturnToAdmin={() => db.returnToAdminAccount()}
           onLogout={() => {
             db.logout(currentUser);
             setIsAuthenticated(false);
@@ -324,11 +334,11 @@ export const App: React.FC = () => {
               users={users}
               currentUser={currentUser}
               onOpenTaskDetail={(id) => {
-                if (id) setActiveTarget({ type: 'TASK', id });
+                if (id) setActiveTarget({ type: 'TASK', id, timestamp: Date.now() });
                 setCurrentSection('ALL_TASKS');
               }}
               onOpenIncomingDocDetail={(id) => {
-                if (id) setActiveTarget({ type: 'INCOMING_DOC', id });
+                if (id) setActiveTarget({ type: 'INCOMING_DOC', id, timestamp: Date.now() });
                 setCurrentSection('INCOMING_DOCS');
               }}
             />
@@ -386,7 +396,7 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentSection === 'AUDIT_LOGS' && <AuditLogsView logs={auditLogs} />}
+          {currentSection === 'AUDIT_LOGS' && <AuditLogsView logs={auditLogs} users={users} />}
 
           {currentSection === 'AI_ASSISTANT' && (
             <AIAssistantView
