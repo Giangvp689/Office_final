@@ -51,21 +51,15 @@ export function isTableEngineCorrupted(err: any): boolean {
   const msg = (err.message || '').toLowerCase();
   const code = err.code || '';
   const errno = err.errno;
+  // Only genuine storage engine corruption errors (NOT normal missing table 1146)
   return (
     errno === 1932 ||
-    errno === 1146 ||
     code === 'ER_NO_SUCH_TABLE_IN_ENGINE' ||
-    code === 'ER_NO_SUCH_TABLE' ||
-    code === 'ER_TABLE_NOT_LOCKED_FOR_WRITE' ||
     code === 'ER_CRASHED_ON_USAGE' ||
     code === 'ER_CRASHED_ON_REPAIR' ||
     msg.includes("doesn't exist in engine") ||
     msg.includes("does not exist in engine") ||
-    msg.includes("doesn't exist") ||
-    msg.includes("is marked as crashed") ||
-    msg.includes("tablespace for table") ||
-    msg.includes("corrupt") ||
-    (err.sqlState === '42S02')
+    msg.includes("is marked as crashed")
   );
 }
 
@@ -454,43 +448,14 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
 
   // Create table if not exists, then ensure all columns exist and types are compatible
   for (const [tableName, schema] of Object.entries(tableSchemas)) {
-    // 1. Health check table in storage engine
-    let tableNeedsDropAndRecreate = false;
-    try {
-      await p.query(`SELECT 1 FROM \`${tableName}\` LIMIT 1`);
-    } catch (testErr: any) {
-      if (isTableEngineCorrupted(testErr)) {
-        console.warn(`[MySQL Auto-Healing]: Table \`${tableName}\` has corrupted engine state (${testErr.message}). Dropping dictionary entry to recreate cleanly...`);
-        tableNeedsDropAndRecreate = true;
-      }
-    }
-
-    if (tableNeedsDropAndRecreate) {
-      try {
-        await p.query(`DROP TABLE IF EXISTS \`${tableName}\``);
-      } catch (dropErr: any) {
-        console.warn(`[MySQL Auto-Healing Drop Warning on ${tableName}]:`, dropErr.message);
-      }
-    }
-
-    // 2. Create table
+    // 1. Create table safely if it doesn't exist
     try {
       await p.query(schema.createSql);
     } catch (createErr: any) {
       if (isConnectionError(createErr)) {
         return;
       }
-      if (isTableEngineCorrupted(createErr)) {
-        console.warn(`[MySQL Auto-Healing]: Corrupted table engine on CREATE \`${tableName}\`. Forcing DROP and Re-create...`);
-        try {
-          await p.query(`DROP TABLE IF EXISTS \`${tableName}\``);
-          await p.query(schema.createSql);
-        } catch (recreateErr: any) {
-          console.warn(`[MySQL Auto-Healing Re-create Error on ${tableName}]:`, recreateErr.message);
-        }
-      } else {
-        console.warn(`[Schema Create Table Error on ${tableName}]:`, createErr.message);
-      }
+      console.warn(`[Schema Create Table Notice on ${tableName}]:`, createErr.message);
     }
 
     try {
@@ -638,16 +603,7 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
     const [userRes] = (await p.query('SELECT COUNT(*) as count FROM users')) as any;
     userCount = userRes[0]?.count ?? 0;
   } catch (countErr: any) {
-    if (isTableEngineCorrupted(countErr)) {
-      console.warn('[MySQL Auto-Healing in initTablesAndSeed]: users table corrupted in storage engine. Recreating all tables and seeding data...');
-      try {
-        await p.query('DROP TABLE IF EXISTS users, departments, positions, dossiers, incoming_documents, outgoing_documents, tasks, attachments, audit_logs, notifications');
-      } catch {}
-      await ensureAllTableSchemas(p);
-      userCount = 0;
-    } else {
-      console.warn('Count users notice:', countErr.message);
-    }
+    console.warn('Count users notice:', countErr.message);
   }
 
   if (userCount === 0) {
@@ -892,17 +848,6 @@ export async function fetchAllDataFromMySql() {
       const [rows] = (await p!.query(sql)) as any[];
       return Array.isArray(rows) ? rows : [];
     } catch (err: any) {
-      if (isTableEngineCorrupted(err)) {
-        console.warn(`[MySQL Auto-Healing on query ${tableName}]: Table corrupted in engine (${err.message}). Re-creating table schema...`);
-        try {
-          await p!.query(`DROP TABLE IF EXISTS \`${tableName}\``);
-          await ensureAllTableSchemas(p!);
-          const [retryRows] = (await p!.query(sql)) as any[];
-          return Array.isArray(retryRows) ? retryRows : [];
-        } catch {
-          return [];
-        }
-      }
       console.warn(`[MySQL Query Notice on ${tableName}]:`, err.message);
       return [];
     }
