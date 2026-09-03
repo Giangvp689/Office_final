@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Allow read/write for all application collections in this operational applet
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -62,6 +62,24 @@ export function loadStore(): FullDbState {
     try {
       const content = fs.readFileSync(STORE_FILE, 'utf-8');
       inMemoryState = JSON.parse(content);
+      if (inMemoryState) {
+        const initial = getInitialState();
+        const mergeMissing = (existingList: any[] = [], initList: any[] = []) => {
+          const idSet = new Set(existingList.map(item => item.id));
+          const missing = initList.filter(item => !idSet.has(item.id));
+          return [...existingList, ...missing];
+        };
+        inMemoryState.departments = mergeMissing(inMemoryState.departments, initial.departments);
+        inMemoryState.positions = mergeMissing(inMemoryState.positions, initial.positions);
+        inMemoryState.users = mergeMissing(inMemoryState.users, initial.users);
+        inMemoryState.dossiers = mergeMissing(inMemoryState.dossiers, initial.dossiers);
+        inMemoryState.incomingDocs = mergeMissing(inMemoryState.incomingDocs, initial.incomingDocs);
+        inMemoryState.outgoingDocs = mergeMissing(inMemoryState.outgoingDocs, initial.outgoingDocs);
+        inMemoryState.tasks = mergeMissing(inMemoryState.tasks, initial.tasks);
+        inMemoryState.attachments = mergeMissing(inMemoryState.attachments, initial.attachments);
+        inMemoryState.auditLogs = mergeMissing(inMemoryState.auditLogs, initial.auditLogs);
+        inMemoryState.notifications = mergeMissing(inMemoryState.notifications, initial.notifications);
+      }
       return inMemoryState!;
     } catch (e) {
       console.warn('Failed to parse cache store, creating initial store:', e);

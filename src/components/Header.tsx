@@ -13,6 +13,7 @@ interface HeaderProps {
   onReturnToAdmin?: () => void;
   onLogout: () => void;
   onOpenChangePassword: () => void;
+  onOpenDatabaseCenter?: () => void;
   notifications: SystemNotification[];
   onMarkNotificationAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
@@ -31,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onReturnToAdmin,
   onLogout,
   onOpenChangePassword,
+  onOpenDatabaseCenter,
   notifications,
   onMarkNotificationAsRead,
   onMarkAllAsRead,
@@ -108,7 +110,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Right controls */}
       <div className="flex items-center gap-3">
         {/* DB Sync indicator & button */}
-        <div className="relative flex items-center">
+        <div className="relative flex items-center gap-1.5">
           <button
             onClick={handleSyncDb}
             disabled={isSyncing}
@@ -123,6 +125,17 @@ export const Header: React.FC<HeaderProps> = ({
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-700'}`} />
             <span className="hidden lg:inline">{isSyncing ? 'Đang nạp CSDL...' : 'Lấy dữ liệu từ CSDL'}</span>
           </button>
+
+          {onOpenDatabaseCenter && (
+            <button
+              onClick={onOpenDatabaseCenter}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+              title="Mở bảng điều khiển CSDL Firebase & MySQL, cấu hình và sao lưu"
+            >
+              <Database className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="hidden xl:inline">Quản Lý CSDL</span>
+            </button>
+          )}
 
           {syncToast && (
             <div className="absolute top-10 right-0 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap z-50 animate-in fade-in slide-in-from-top-2">

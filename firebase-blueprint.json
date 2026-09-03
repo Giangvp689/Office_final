@@ -1,0 +1,239 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Cán bộ, chuyên viên, lãnh đạo hoặc văn thư trong hệ thống",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "avatar": { "type": "string" },
+        "department": { "type": "string" },
+        "departmentId": { "type": "string" },
+        "position": { "type": "string" },
+        "positionId": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "LEADER", "CLERK", "STAFF"] },
+        "status": { "type": "string" },
+        "joinDate": { "type": "string" },
+        "bio": { "type": "string" },
+        "lastLogin": { "type": "string" }
+      },
+      "required": ["id", "fullName", "email", "role"]
+    },
+    "IncomingDocument": {
+      "title": "IncomingDocument",
+      "description": "Văn bản đến gửi tới cơ quan, đơn vị",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "officialNumber": { "type": "string" },
+        "receivedDate": { "type": "string" },
+        "issueDate": { "type": "string" },
+        "issuingAuthority": { "type": "string" },
+        "summary": { "type": "string" },
+        "docType": { "type": "string" },
+        "urgency": { "type": "string" },
+        "securityLevel": { "type": "string" },
+        "assigneeId": { "type": "string" },
+        "coAssigneeIds": { "type": "array", "items": { "type": "string" } },
+        "dueDate": { "type": "string" },
+        "status": { "type": "string" },
+        "resultSummary": { "type": "string" },
+        "dossierId": { "type": "string" },
+        "linkedTaskIds": { "type": "array", "items": { "type": "string" } },
+        "attachments": { "type": "array" },
+        "createdById": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "documentNumber", "receivedDate", "issuingAuthority", "summary", "docType", "urgency", "securityLevel", "dueDate", "status"]
+    },
+    "OutgoingDocument": {
+      "title": "OutgoingDocument",
+      "description": "Văn bản đi do cơ quan ban hành hoặc phát hành",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "releaseDate": { "type": "string" },
+        "docType": { "type": "string" },
+        "recipient": { "type": "string" },
+        "summary": { "type": "string" },
+        "content": { "type": "string" },
+        "drafterId": { "type": "string" },
+        "signerId": { "type": "string" },
+        "status": { "type": "string" },
+        "dossierId": { "type": "string" },
+        "replyToDocId": { "type": "string" },
+        "attachments": { "type": "array" },
+        "createdById": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "documentNumber", "releaseDate", "docType", "recipient", "summary", "status"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Nhiệm vụ, công việc hành chính được phân công",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "dossierId": { "type": "string" },
+        "incomingDocId": { "type": "string" },
+        "linkedDocId": { "type": "string" },
+        "createdById": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "assigneeId": { "type": "string" },
+        "coAssigneeIds": { "type": "array", "items": { "type": "string" } },
+        "priority": { "type": "string" },
+        "startDate": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "completedDate": { "type": "string" },
+        "progress": { "type": "number" },
+        "status": { "type": "string" },
+        "resultNotes": { "type": "string" },
+        "subTasks": { "type": "array" },
+        "attachments": { "type": "array" },
+        "comments": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "assigneeId", "priority", "startDate", "dueDate", "progress", "status"]
+    },
+    "Dossier": {
+      "title": "Dossier",
+      "description": "Hồ sơ công việc hành chính",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "title": { "type": "string" },
+        "department": { "type": "string" },
+        "departmentId": { "type": "string" },
+        "managerId": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "status": { "type": "string" },
+        "securityLevel": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "createdById": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "code", "title", "status", "startDate", "description"]
+    },
+    "Attachment": {
+      "title": "Attachment",
+      "description": "Tệp đính kèm văn bản, hồ sơ hoặc công việc",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "size": { "type": "string" },
+        "fileType": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "url": { "type": "string" },
+        "category": { "type": "string" },
+        "relatedId": { "type": "string" },
+        "dossierId": { "type": "string" },
+        "uploadedById": { "type": "string" },
+        "uploadedByName": { "type": "string" },
+        "uploadedAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Nhật ký truy vết thao tác hệ thống",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "entityType": { "type": "string" },
+        "entityId": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "userName", "action", "entityType", "details"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Thông báo công việc và tiến độ",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "linkType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "type"]
+    },
+    "MasterData": {
+      "title": "MasterData",
+      "description": "Dữ liệu danh mục hệ thống",
+      "type": "object",
+      "properties": {
+        "departments": { "type": "array" },
+        "positions": { "type": "array" },
+        "docTypes": { "type": "array" },
+        "issuingAuthorities": { "type": "array" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Danh sách cán bộ và thông tin người dùng"
+    },
+    "/incoming_documents/{docId}": {
+      "schema": "IncomingDocument",
+      "description": "Văn bản đến trong cơ quan"
+    },
+    "/outgoing_documents/{docId}": {
+      "schema": "OutgoingDocument",
+      "description": "Văn bản đi ban hành"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Nhiệm vụ, công việc hành chính"
+    },
+    "/dossiers/{dossierId}": {
+      "schema": "Dossier",
+      "description": "Hồ sơ công việc hành chính"
+    },
+    "/attachments/{attachmentId}": {
+      "schema": "Attachment",
+      "description": "Kho tệp đính kèm"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Nhật ký hệ thống"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Thông báo nhắc việc"
+    },
+    "/settings/{settingId}": {
+      "schema": "MasterData",
+      "description": "Cấu hình danh mục dùng chung"
+    }
+  }
+}

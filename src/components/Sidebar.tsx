@@ -18,6 +18,7 @@ import {
   Sparkles,
   BrainCircuit,
   Lock,
+  Database,
 } from 'lucide-react';
 import { User, Role } from '../types';
 
@@ -47,6 +48,7 @@ interface SidebarProps {
   currentUser: User;
   onOpenUserSwitch?: () => void;
   onReturnToAdmin?: () => void;
+  onOpenDatabaseCenter?: () => void;
   isImpersonating?: boolean;
   counts: {
     incoming: number;
@@ -63,6 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   onOpenUserSwitch,
   onReturnToAdmin,
+  onOpenDatabaseCenter,
   isImpersonating = false,
   counts,
 }) => {
@@ -372,6 +375,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <History className="w-4 h-4" />
                 <span>Lịch Sử & Kiểm Toán</span>
               </button>
+
+              {onOpenDatabaseCenter && (
+                <button
+                  id="nav-db-center"
+                  onClick={onOpenDatabaseCenter}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors text-slate-600 hover:bg-slate-50 hover:text-indigo-600 cursor-pointer"
+                >
+                  <Database className="w-4 h-4 text-emerald-600" />
+                  <span>Trung Tâm CSDL & Sao Lưu</span>
+                </button>
+              )}
             </div>
           </div>
         )}

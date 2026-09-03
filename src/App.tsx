@@ -31,12 +31,14 @@ import { ClassificationStudioView } from './views/ClassificationStudioView';
 import { VsCodeGuideView } from './views/VsCodeGuideView';
 import { LoginView } from './views/LoginView';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { DatabaseCenterModal } from './components/DatabaseCenterModal';
 import { FacebookNotificationToast } from './components/FacebookNotificationToast';
 
 export const App: React.FC = () => {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => db.isAuthenticated());
   const [showChangePasswordModal, setShowChangePasswordModal] = useState<boolean>(false);
+  const [showDatabaseCenterModal, setShowDatabaseCenterModal] = useState<boolean>(false);
 
   // Navigation State
   const [currentSection, setCurrentSection] = useState<NavSection>('DASHBOARD');
@@ -141,6 +143,7 @@ export const App: React.FC = () => {
         currentUser={currentUser}
         isImpersonating={db.isImpersonating()}
         onReturnToAdmin={() => db.returnToAdminAccount()}
+        onOpenDatabaseCenter={() => setShowDatabaseCenterModal(true)}
         onOpenUserSwitch={
           db.canSwitchUser()
             ? () => {
@@ -170,6 +173,7 @@ export const App: React.FC = () => {
             setIsAuthenticated(false);
           }}
           onOpenChangePassword={() => setShowChangePasswordModal(true)}
+          onOpenDatabaseCenter={() => setShowDatabaseCenterModal(true)}
           notifications={notifications}
           onMarkNotificationAsRead={(id) => db.markNotificationAsRead(id)}
           onMarkAllAsRead={() => db.markAllNotificationsAsRead()}
@@ -412,6 +416,13 @@ export const App: React.FC = () => {
           {currentSection === 'VSCODE_GUIDE' && <VsCodeGuideView />}
         </main>
       </div>
+
+      {/* Database Center & Domain Modal */}
+      <DatabaseCenterModal
+        isOpen={showDatabaseCenterModal}
+        onClose={() => setShowDatabaseCenterModal(false)}
+        onDataResetOrRestored={reloadData}
+      />
 
       {/* Change Password Modal */}
       <ChangePasswordModal

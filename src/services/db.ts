@@ -25,6 +25,7 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_MASTER_DATA,
 } from '../data/mockData';
+import { firestoreSync } from './firestoreSync';
 
 const DB_STORAGE_KEYS = {
   USERS: 'qlvb_users_v2',
@@ -45,10 +46,103 @@ class DatabaseService {
   private listeners: Array<() => void> = [];
   private mySqlConnected: boolean = false;
   private mySqlInfo: any = null;
+  private firestoreConnected: boolean = false;
 
   constructor() {
     this.initIfEmpty();
     this.checkAndSyncMySql();
+    this.initFirestoreSync();
+  }
+
+  private async initFirestoreSync() {
+    if (typeof window === 'undefined') return;
+    try {
+      this.firestoreConnected = await firestoreSync.checkConnection();
+
+      // Listen to real-time changes from Firestore
+      firestoreSync.listenToAll({
+        onUsers: (users) => {
+          this.firestoreConnected = true;
+          localStorage.setItem(DB_STORAGE_KEYS.USERS, JSON.stringify(users));
+          this.notify();
+        },
+        onDossiers: (dossiers) => {
+          this.firestoreConnected = true;
+          localStorage.setItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(dossiers));
+          this.notify();
+        },
+        onIncomingDocs: (docs) => {
+          this.firestoreConnected = true;
+          localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(docs));
+          this.notify();
+        },
+        onOutgoingDocs: (docs) => {
+          this.firestoreConnected = true;
+          localStorage.setItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(docs));
+          this.notify();
+        },
+        onTasks: (tasks) => {
+          this.firestoreConnected = true;
+          localStorage.setItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+          this.notify();
+        },
+        onAttachments: (attachments) => {
+          this.firestoreConnected = true;
+          localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(attachments));
+          this.notify();
+        },
+        onAuditLogs: (logs) => {
+          this.firestoreConnected = true;
+          localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs));
+          this.notify();
+        },
+        onNotifications: (notifications) => {
+          this.firestoreConnected = true;
+          localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifications));
+          this.notify();
+        },
+      });
+
+      // If Firestore is empty on first run, upload our initial dataset
+      const remoteData = await firestoreSync.fetchAllFromFirestore();
+      if (remoteData && remoteData.users.length === 0) {
+        console.log('[Firestore] Cloud database initialized, seeding data...');
+        await firestoreSync.migrateInitialDataToFirestore({
+          users: this.getUsers(),
+          dossiers: this.getDossiers(),
+          incomingDocs: this.getIncomingDocs(),
+          outgoingDocs: this.getOutgoingDocs(),
+          tasks: this.getTasks(),
+          attachments: this.getAttachments(),
+          auditLogs: this.getAuditLogs(),
+          notifications: this.getNotifications(),
+          masterData: this.getMasterData(),
+        });
+      }
+    } catch (err) {
+      console.warn('[Firestore] Initialization notice:', err);
+    }
+  }
+
+  public getFirestoreStatus() {
+    return {
+      connected: this.firestoreConnected,
+      info: firestoreSync.getStatus(),
+    };
+  }
+
+  public async syncAllToFirestore() {
+    return await firestoreSync.migrateInitialDataToFirestore({
+      users: this.getUsers(),
+      dossiers: this.getDossiers(),
+      incomingDocs: this.getIncomingDocs(),
+      outgoingDocs: this.getOutgoingDocs(),
+      tasks: this.getTasks(),
+      attachments: this.getAttachments(),
+      auditLogs: this.getAuditLogs(),
+      notifications: this.getNotifications(),
+      masterData: this.getMasterData(),
+    });
   }
 
   public async checkAndSyncMySql(): Promise<boolean> {
@@ -182,17 +276,38 @@ class DatabaseService {
         }
       }
 
-      // Ensure all initial incoming documents are present if stored array has fewer
-      const existing = this.getList<IncomingDocument>(DB_STORAGE_KEYS.INCOMING_DOCS, []);
-      if (existing.length < INITIAL_INCOMING_DOCS.length) {
-        const existingIds = new Set(existing.map((d) => d.id));
-        const missing = INITIAL_INCOMING_DOCS.filter((d) => !existingIds.has(d.id));
-        if (missing.length > 0) {
-          const merged = [...existing, ...missing];
-          localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(merged));
-          this.notify();
+      // Ensure all initial items across all collections are present if stored array has fewer
+      const syncCollection = <T extends { id?: string }>(storageKey: string, initialList: T[]) => {
+        const existing = this.getList<T>(storageKey, []);
+        if (existing.length < initialList.length) {
+          const existingIds = new Set(existing.map((d) => d.id || (d as any).fileName));
+          const missing = initialList.filter((d) => !existingIds.has(d.id || (d as any).fileName));
+          if (missing.length > 0) {
+            const merged = [...existing, ...missing];
+            localStorage.setItem(storageKey, JSON.stringify(merged));
+          }
         }
+      };
+
+      syncCollection(DB_STORAGE_KEYS.USERS, INITIAL_USERS);
+      syncCollection(DB_STORAGE_KEYS.DOSSIERS, INITIAL_DOSSIERS);
+      syncCollection(DB_STORAGE_KEYS.INCOMING_DOCS, INITIAL_INCOMING_DOCS);
+      syncCollection(DB_STORAGE_KEYS.OUTGOING_DOCS, INITIAL_OUTGOING_DOCS);
+      syncCollection(DB_STORAGE_KEYS.TASKS, INITIAL_TASKS);
+      syncCollection(DB_STORAGE_KEYS.ATTACHMENTS, INITIAL_ATTACHMENTS);
+      syncCollection(DB_STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+      syncCollection(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+
+      // Ensure master data has all updated departments
+      const currentMaster = this.getMasterData();
+      const existingDepts = new Set(currentMaster.departments);
+      const missingDepts = INITIAL_MASTER_DATA.departments.filter((d) => !existingDepts.has(d));
+      if (missingDepts.length > 0) {
+        currentMaster.departments = [...currentMaster.departments, ...missingDepts];
+        localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(currentMaster));
       }
+
+      this.notify();
     }
   }
 
@@ -480,6 +595,7 @@ class DatabaseService {
     };
     this.setList(DB_STORAGE_KEYS.AUDIT_LOGS, [newLog, ...logs]);
     this.apiCall('/api/audit-logs', 'POST', newLog);
+    firestoreSync.saveAuditLog(newLog);
   }
 
   public getAuditLogs(): AuditLog[] {
@@ -502,6 +618,7 @@ class DatabaseService {
       isRead: false,
     };
     this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, [newNotif, ...list]);
+    firestoreSync.saveNotification(newNotif);
   }
 
   public markNotificationAsRead(id: string) {
@@ -543,6 +660,7 @@ class DatabaseService {
     }
     this.setList(DB_STORAGE_KEYS.USERS, updated);
     this.apiCall('/api/users', 'POST', user);
+    firestoreSync.saveUser(user);
   }
 
   public deleteUser(id: string, actor?: User) {
@@ -552,6 +670,7 @@ class DatabaseService {
       this.setList(DB_STORAGE_KEYS.USERS, users.filter((u) => u.id !== id));
       this.logAction('DELETE', 'USER', id, target.fullName, `Xóa nhân sự: ${target.fullName}`, actor);
       this.apiCall(`/api/users/${id}`, 'DELETE');
+      firestoreSync.deleteUser(id);
     }
   }
 
@@ -579,6 +698,7 @@ class DatabaseService {
     }
     this.setList(DB_STORAGE_KEYS.DOSSIERS, updated);
     this.apiCall('/api/dossiers', 'POST', dossier);
+    firestoreSync.saveDossier(dossier);
   }
 
   public deleteDossier(id: string, actor?: User) {
@@ -588,6 +708,7 @@ class DatabaseService {
       this.setList(DB_STORAGE_KEYS.DOSSIERS, dossiers.filter((d) => d.id !== id));
       this.logAction('DELETE', 'DOSSIER', id, target.title, `Xóa hồ sơ vụ việc: ${target.code}`, actor);
       this.apiCall(`/api/dossiers/${id}`, 'DELETE');
+      firestoreSync.deleteDossier(id);
     }
   }
 
@@ -641,6 +762,7 @@ class DatabaseService {
     }
     this.setList(DB_STORAGE_KEYS.INCOMING_DOCS, updated);
     this.apiCall('/api/incoming-docs', 'POST', doc);
+    firestoreSync.saveIncomingDoc(doc);
 
     // Save attachments to central attachments storage and MySQL
     if (doc.attachments && doc.attachments.length > 0) {
@@ -701,6 +823,7 @@ class DatabaseService {
       );
     }
     this.apiCall(`/api/incoming-docs/${id}`, 'DELETE');
+    firestoreSync.deleteIncomingDoc(id);
   }
 
   // --- Outgoing Documents (Văn bản đi) ---
@@ -741,6 +864,7 @@ class DatabaseService {
     }
     this.setList(DB_STORAGE_KEYS.OUTGOING_DOCS, updated);
     this.apiCall('/api/outgoing-docs', 'POST', doc);
+    firestoreSync.saveOutgoingDoc(doc);
 
     if (doc.attachments && doc.attachments.length > 0) {
       const existingAttachments = this.getAttachments();
@@ -790,6 +914,7 @@ class DatabaseService {
       );
     }
     this.apiCall(`/api/outgoing-docs/${id}`, 'DELETE');
+    firestoreSync.deleteOutgoingDoc(id);
   }
 
   // --- Tasks (Công việc) ---
@@ -860,6 +985,7 @@ class DatabaseService {
     }
     this.setList(DB_STORAGE_KEYS.TASKS, updated);
     this.apiCall('/api/tasks', 'POST', task);
+    firestoreSync.saveTask(task);
 
     if (task.attachments && task.attachments.length > 0) {
       const existingAttachments = this.getAttachments();
@@ -892,6 +1018,7 @@ class DatabaseService {
       this.setList(DB_STORAGE_KEYS.TASKS, tasks.filter((t) => t.id !== id));
       this.logAction('DELETE', 'TASK', id, target.title, `Hủy / Xóa công việc: ${target.title}`, actor);
       this.apiCall(`/api/tasks/${id}`, 'DELETE');
+      firestoreSync.deleteTask(id);
     }
   }
 
@@ -949,6 +1076,7 @@ class DatabaseService {
     this.setList(DB_STORAGE_KEYS.ATTACHMENTS, [file, ...list]);
     this.logAction('UPLOAD_FILE', 'FILE', file.id, file.fileName, `Tải lên tài liệu: ${file.fileName}`, actor);
     this.apiCall('/api/attachments', 'POST', file);
+    firestoreSync.saveAttachment(file);
   }
 
   public addAttachment(file: AttachmentFile, actor?: User) {
@@ -962,6 +1090,7 @@ class DatabaseService {
       this.setList(DB_STORAGE_KEYS.ATTACHMENTS, list.filter((f) => f.id !== id));
       this.logAction('DELETE', 'FILE', id, target.fileName, `Xóa tài liệu: ${target.fileName}`, actor);
       this.apiCall(`/api/attachments/${id}`, 'DELETE');
+      firestoreSync.deleteAttachment(id);
     }
   }
 
@@ -1017,6 +1146,7 @@ class DatabaseService {
     localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(data));
     this.notify();
     this.logAction('UPDATE', 'CATEGORY', 'master-data', 'Danh mục dùng chung', 'Cập nhật danh mục hệ thống', actor);
+    firestoreSync.saveMasterData(data);
   }
 
   public updateMasterData(data: MasterData, actor?: User) {

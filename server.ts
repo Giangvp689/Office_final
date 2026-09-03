@@ -1601,9 +1601,10 @@ YÊU CẦU: Trả về duy nhất định dạng JSON thuần túy (không bọc
 // Serve frontend in production or development
 async function startServer() {
   if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   } else {
     // In development, Vite handles frontend assets via middleware
