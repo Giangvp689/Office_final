@@ -14,9 +14,29 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
   onNavigate,
 }) => {
   const [activeNotif, setActiveNotif] = useState<SystemNotification | null>(null);
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem('vanphong_so_seen_toast_ids');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const recordDismissed = (id: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem('vanphong_so_seen_toast_ids', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
 
   // Show the latest unread notification as a Facebook-style interactive popup
+  // If a notification has already been read or dismissed, it will NEVER be shown again
   useEffect(() => {
     const unread = notifications.filter((n) => !n.isRead && !dismissedIds.has(n.id));
     if (unread.length > 0) {
@@ -32,15 +52,20 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
 
   const handleDismiss = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setDismissedIds((prev) => new Set(prev).add(activeNotif.id));
+    if (activeNotif) {
+      recordDismissed(activeNotif.id);
+      onMarkAsRead(activeNotif.id);
+    }
     setActiveNotif(null);
   };
 
   const handleClick = () => {
-    onMarkAsRead(activeNotif.id);
-    setDismissedIds((prev) => new Set(prev).add(activeNotif.id));
-    if (activeNotif.linkType && activeNotif.targetId) {
-      onNavigate(activeNotif.linkType, activeNotif.targetId);
+    if (activeNotif) {
+      recordDismissed(activeNotif.id);
+      onMarkAsRead(activeNotif.id);
+      if (activeNotif.linkType && activeNotif.targetId) {
+        onNavigate(activeNotif.linkType, activeNotif.targetId);
+      }
     }
     setActiveNotif(null);
   };

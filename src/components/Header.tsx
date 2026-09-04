@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, Check, Clock, AlertTriangle, ChevronDown, LogOut, KeyRound, Sparkles, RefreshCw, Database, Shield, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { Search, Bell, Check, Clock, AlertTriangle, ChevronDown, LogOut, KeyRound, Sparkles, RefreshCw, Database, Shield, ShieldAlert, ArrowLeft, UserCircle2 } from 'lucide-react';
 import { User, SystemNotification } from '../types';
 import { db } from '../services/db';
 
@@ -12,6 +12,7 @@ interface HeaderProps {
   onSwitchUser?: (userId: string) => void;
   onReturnToAdmin?: () => void;
   onLogout: () => void;
+  onOpenUserProfile?: () => void;
   onOpenChangePassword: () => void;
   onOpenDatabaseCenter?: () => void;
   notifications: SystemNotification[];
@@ -31,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSwitchUser,
   onReturnToAdmin,
   onLogout,
+  onOpenUserProfile,
   onOpenChangePassword,
   onOpenDatabaseCenter,
   notifications,
@@ -318,8 +320,21 @@ export const Header: React.FC<HeaderProps> = ({
 
               {/* Actions */}
               <div className="p-2 divide-y divide-slate-100">
-                <div className="py-1">
+                <div className="py-1 space-y-0.5">
                   <button
+                    id="btn-open-user-profile-header"
+                    onClick={() => {
+                      onOpenUserProfile?.();
+                      setShowUserDropdown(false);
+                    }}
+                    className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <UserCircle2 className="w-4 h-4 text-indigo-600" />
+                    <span>Thông tin cá nhân & Giới thiệu</span>
+                  </button>
+
+                  <button
+                    id="btn-open-change-password-header"
                     onClick={() => {
                       onOpenChangePassword();
                       setShowUserDropdown(false);

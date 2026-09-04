@@ -98,7 +98,9 @@ class DatabaseService {
         },
         onNotifications: (notifications) => {
           this.firestoreConnected = true;
-          localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifications));
+          const readIds = this.getPersistentReadNotifIds();
+          const merged = (notifications || []).map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n));
+          localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
           this.notify();
         },
       });
@@ -167,7 +169,11 @@ class DatabaseService {
           if (Array.isArray(d.tasks)) localStorage.setItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(d.tasks));
           if (Array.isArray(d.attachments)) localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(d.attachments));
           if (Array.isArray(d.auditLogs)) localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(d.auditLogs));
-          if (Array.isArray(d.notifications)) localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(d.notifications));
+          if (Array.isArray(d.notifications)) {
+            const readIds = this.getPersistentReadNotifIds();
+            const merged = d.notifications.map((n: SystemNotification) => (readIds.has(n.id) ? { ...n, isRead: true } : n));
+            localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
+          }
           if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
             const currentMaster = this.getMasterData();
             const normalizedDepts = Array.isArray(d.departments) && d.departments.length > 0
@@ -602,9 +608,31 @@ class DatabaseService {
     return this.getList<AuditLog>(DB_STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
   }
 
+  // --- Notifications Helper: Persistent Read IDs ---
+  private getPersistentReadNotifIds(): Set<string> {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem('vanphong_so_read_notif_ids');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  }
+
+  private savePersistentReadNotifIds(idsToAdd: string[]) {
+    if (typeof window === 'undefined') return;
+    try {
+      const current = this.getPersistentReadNotifIds();
+      idsToAdd.forEach((id) => current.add(id));
+      localStorage.setItem('vanphong_so_read_notif_ids', JSON.stringify(Array.from(current)));
+    } catch {}
+  }
+
   // --- Notifications ---
   public getNotifications(userId?: string): SystemNotification[] {
-    const list = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+    const rawList = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+    const readIds = this.getPersistentReadNotifIds();
+    const list = rawList.map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n));
     if (!userId) return list;
     return list.filter((n) => !n.userId || n.userId === userId);
   }
@@ -622,18 +650,33 @@ class DatabaseService {
   }
 
   public markNotificationAsRead(id: string) {
+    this.savePersistentReadNotifIds([id]);
     const list = this.getNotifications().map((n) => (n.id === id ? { ...n, isRead: true } : n));
     this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, list);
+    this.apiCall('/api/notifications/mark-read', 'POST', { id });
+    const target = list.find((n) => n.id === id);
+    if (target) {
+      firestoreSync.saveNotification({ ...target, isRead: true });
+    }
   }
 
   public markAllNotificationsAsRead(userId?: string) {
-    const list = this.getNotifications().map((n) => {
+    const current = this.getNotifications();
+    const idsToMark = current.filter((n) => !userId || n.userId === userId).map((n) => n.id);
+    this.savePersistentReadNotifIds(idsToMark);
+    const list = current.map((n) => {
       if (!userId || n.userId === userId) {
         return { ...n, isRead: true };
       }
       return n;
     });
     this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, list);
+    this.apiCall('/api/notifications/mark-all-read', 'POST', { userId });
+    list.forEach((n) => {
+      if (!userId || n.userId === userId) {
+        firestoreSync.saveNotification(n);
+      }
+    });
   }
 
   // --- Users & Personnel ---

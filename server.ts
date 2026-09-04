@@ -453,6 +453,53 @@ app.get('/api/notifications', async (_req, res) => {
   }
 });
 
+app.post('/api/notifications/mark-read', async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ success: false, error: 'Thiếu ID thông báo' });
+
+    const store = loadStore();
+    store.notifications = (store.notifications || []).map((n) =>
+      n.id === id ? { ...n, isRead: true } : n
+    );
+    saveStore(store);
+
+    await safeDbRun(async (pool) => {
+      await pool.query('UPDATE notifications SET is_read = 1 WHERE id = ?', [id]);
+    });
+
+    res.json({ success: true, message: 'Đã cập nhật trạng thái đã đọc' });
+  } catch (e: any) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/notifications/mark-all-read', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const store = loadStore();
+    store.notifications = (store.notifications || []).map((n) => {
+      if (!userId || n.userId === userId) {
+        return { ...n, isRead: true };
+      }
+      return n;
+    });
+    saveStore(store);
+
+    await safeDbRun(async (pool) => {
+      if (userId) {
+        await pool.query('UPDATE notifications SET is_read = 1 WHERE user_id = ?', [userId]);
+      } else {
+        await pool.query('UPDATE notifications SET is_read = 1');
+      }
+    });
+
+    res.json({ success: true, message: 'Đã đánh dấu đã đọc tất cả thông báo' });
+  } catch (e: any) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
 // ==========================================
 // 2. CRUD: NGƯỜI DÙNG & CÁN BỘ (users)
 // ==========================================

@@ -28,9 +28,9 @@ import { MasterDataView } from './views/MasterDataView';
 import { AuditLogsView } from './views/AuditLogsView';
 import { AIAssistantView } from './views/AIAssistantView';
 import { ClassificationStudioView } from './views/ClassificationStudioView';
-import { VsCodeGuideView } from './views/VsCodeGuideView';
 import { LoginView } from './views/LoginView';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { UserProfileModal } from './components/UserProfileModal';
 import { DatabaseCenterModal } from './components/DatabaseCenterModal';
 import { FacebookNotificationToast } from './components/FacebookNotificationToast';
 
@@ -38,6 +38,8 @@ export const App: React.FC = () => {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => db.isAuthenticated());
   const [showChangePasswordModal, setShowChangePasswordModal] = useState<boolean>(false);
+  const [showUserProfileModal, setShowUserProfileModal] = useState<boolean>(false);
+  const [userProfileTab, setUserProfileTab] = useState<'PROFILE' | 'PASSWORD'>('PROFILE');
   const [showDatabaseCenterModal, setShowDatabaseCenterModal] = useState<boolean>(false);
 
   // Navigation State
@@ -144,6 +146,10 @@ export const App: React.FC = () => {
         isImpersonating={db.isImpersonating()}
         onReturnToAdmin={() => db.returnToAdminAccount()}
         onOpenDatabaseCenter={() => setShowDatabaseCenterModal(true)}
+        onOpenUserProfile={() => {
+          setUserProfileTab('PROFILE');
+          setShowUserProfileModal(true);
+        }}
         onOpenUserSwitch={
           db.canSwitchUser()
             ? () => {
@@ -172,7 +178,14 @@ export const App: React.FC = () => {
             db.logout(currentUser);
             setIsAuthenticated(false);
           }}
-          onOpenChangePassword={() => setShowChangePasswordModal(true)}
+          onOpenUserProfile={() => {
+            setUserProfileTab('PROFILE');
+            setShowUserProfileModal(true);
+          }}
+          onOpenChangePassword={() => {
+            setUserProfileTab('PASSWORD');
+            setShowUserProfileModal(true);
+          }}
           onOpenDatabaseCenter={() => setShowDatabaseCenterModal(true)}
           notifications={notifications}
           onMarkNotificationAsRead={(id) => db.markNotificationAsRead(id)}
@@ -412,8 +425,6 @@ export const App: React.FC = () => {
               currentUser={currentUser}
             />
           )}
-
-          {currentSection === 'VSCODE_GUIDE' && <VsCodeGuideView />}
         </main>
       </div>
 
@@ -424,7 +435,20 @@ export const App: React.FC = () => {
         onDataResetOrRestored={reloadData}
       />
 
-      {/* Change Password Modal */}
+      {/* User Profile & Password Modal */}
+      <UserProfileModal
+        isOpen={showUserProfileModal}
+        onClose={() => setShowUserProfileModal(false)}
+        currentUser={currentUser}
+        onSaveProfile={(updatedUser) => {
+          db.saveUser(updatedUser, currentUser);
+          setCurrentUser(updatedUser);
+          setUsers(db.getUsers());
+        }}
+        initialTab={userProfileTab}
+      />
+
+      {/* Change Password Modal (Fallback / Direct) */}
       <ChangePasswordModal
         isOpen={showChangePasswordModal}
         onClose={() => setShowChangePasswordModal(false)}

@@ -37,8 +37,7 @@ export type NavSection =
   | 'VAULT'
   | 'MASTER_DATA'
   | 'AUDIT_LOGS'
-  | 'AI_ASSISTANT'
-  | 'VSCODE_GUIDE';
+  | 'AI_ASSISTANT';
 
 export type TabKey = NavSection; // For backwards compatibility
 
@@ -46,6 +45,7 @@ interface SidebarProps {
   currentSection: NavSection;
   onSelectSection: (section: NavSection) => void;
   currentUser: User;
+  onOpenUserProfile?: () => void;
   onOpenUserSwitch?: () => void;
   onReturnToAdmin?: () => void;
   onOpenDatabaseCenter?: () => void;
@@ -63,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentSection,
   onSelectSection,
   currentUser,
+  onOpenUserProfile,
   onOpenUserSwitch,
   onReturnToAdmin,
   onOpenDatabaseCenter,
@@ -134,19 +135,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Bot className="w-4 h-4 text-indigo-600" />
           <span>Trợ Lý Gemini AI</span>
-        </button>
-
-        <button
-          id="btn-nav-vscode"
-          onClick={() => onSelectSection('VSCODE_GUIDE')}
-          className={`w-full text-[11px] font-bold py-1.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 border cursor-pointer ${
-            currentSection === 'VSCODE_GUIDE'
-              ? 'bg-slate-900 text-white border-slate-900'
-              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-          }`}
-        >
-          <Laptop className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Hướng Dẫn Chạy Offline</span>
         </button>
       </div>
 
@@ -330,26 +318,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Nhóm 4: Quản trị & Danh mục (Chỉ hiển thị cho Admin và Lãnh đạo) */}
+        {/* Nhóm 4: Danh bạ & Tổ chức (Tất cả thành viên đều có thể xem) */}
+        <div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
+            Danh Bạ & Tổ Chức
+          </div>
+          <div className="space-y-0.5">
+            <button
+              id="nav-personnel"
+              onClick={() => onSelectSection('PERSONNEL')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
+                currentSection === 'PERSONNEL'
+                  ? 'bg-indigo-50 text-indigo-700 font-bold'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Contact2 className="w-4 h-4" />
+              <span>Danh Bạ & Nhân Sự</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Nhóm 5: Quản trị Hệ thống (Chỉ hiển thị cho Admin và Lãnh đạo) */}
         {(currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER') && (
           <div>
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
-              Quản Trị & Danh Mục
+              Quản Trị Hệ Thống
             </div>
             <div className="space-y-0.5">
-              <button
-                id="nav-personnel"
-                onClick={() => onSelectSection('PERSONNEL')}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                  currentSection === 'PERSONNEL'
-                    ? 'bg-indigo-50 text-indigo-700 font-bold'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <Contact2 className="w-4 h-4" />
-                <span>Nhân Sự & Phân Quyền</span>
-              </button>
-
               <button
                 id="nav-master-data"
                 onClick={() => onSelectSection('MASTER_DATA')}
@@ -403,32 +399,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
 
-        <div
-          onClick={onOpenUserSwitch}
-          className={`flex items-center gap-2.5 p-2 rounded-xl transition-all ${
-            onOpenUserSwitch
-              ? 'hover:bg-white hover:shadow-xs cursor-pointer group'
-              : 'cursor-default'
-          }`}
-          title={onOpenUserSwitch ? 'Chuyển đổi tài khoản (Dành riêng cho Quản trị viên)' : undefined}
-        >
-          <img
-            src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-            alt={currentUser?.fullName || 'User'}
-            className="w-9 h-9 rounded-xl object-cover border border-slate-200"
-          />
-          <div className="flex flex-col min-w-0 flex-1">
-            <span className={`text-xs font-bold text-slate-800 truncate ${onOpenUserSwitch ? 'group-hover:text-indigo-600' : ''}`}>
-              {currentUser?.fullName || 'Chưa đăng nhập'}
-            </span>
-            <span
-              className={`text-[9px] font-bold px-1.5 py-0.2 rounded border inline-block max-w-max mt-0.5 ${roleBadge.bg}`}
-            >
-              {roleBadge.label}
-            </span>
+        <div className="flex items-center gap-1.5">
+          <div
+            onClick={onOpenUserProfile}
+            className="flex-1 min-w-0 flex items-center gap-2.5 p-1.5 rounded-xl hover:bg-white hover:shadow-xs transition-all cursor-pointer group"
+            title="Nhấp để xem và chỉnh sửa thông tin cá nhân (ảnh, giới thiệu, mật khẩu)"
+          >
+            <div className="relative shrink-0">
+              <img
+                src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                alt={currentUser?.fullName || 'User'}
+                className="w-9 h-9 rounded-xl object-cover border border-slate-200 group-hover:ring-2 group-hover:ring-indigo-400 transition-all"
+              />
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-xs font-bold text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
+                {currentUser?.fullName || 'Chưa đăng nhập'}
+              </span>
+              <span
+                className={`text-[9px] font-bold px-1.5 py-0.2 rounded border inline-block max-w-max mt-0.5 ${roleBadge.bg}`}
+              >
+                {roleBadge.label}
+              </span>
+            </div>
           </div>
+
           {onOpenUserSwitch && (
-            <Users className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+            <button
+              onClick={onOpenUserSwitch}
+              className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-white hover:shadow-xs transition-all cursor-pointer shrink-0"
+              title="Chuyển đổi tài khoản (Dành riêng cho Quản trị viên)"
+            >
+              <Users className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>

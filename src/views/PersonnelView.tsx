@@ -52,6 +52,9 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
+  const isAdminOrLeader = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
+  const isEditingSelf = Boolean(editingUser.id && editingUser.id === currentUser.id);
+
   // Get distinct departments from existing users
   const departments = Array.from(
     new Set(
@@ -227,18 +230,20 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Thêm mới, sửa thông tin cán bộ, tải ảnh đại diện từ máy tính và lưu trữ đồng bộ trực tiếp vào MySQL
+            Danh bạ cán bộ, thông tin liên hệ, hồ sơ công tác. Mỗi thành viên có thể tự cập nhật ảnh đại diện và phần giới thiệu của mình.
           </p>
         </div>
 
-        <button
-          id="add-user-btn"
-          onClick={handleOpenAddModal}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ Thêm Cán Bộ Mới</span>
-        </button>
+        {isAdminOrLeader && (
+          <button
+            id="add-user-btn"
+            onClick={handleOpenAddModal}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Thêm Cán Bộ Mới</span>
+          </button>
+        )}
       </div>
 
       {/* Filter and Search Bar */}
@@ -370,24 +375,35 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <span className="text-[10px] text-slate-400">
-                      Mật khẩu: <span className="font-mono text-slate-600">{u.password || '123'}</span>
+                      Mật khẩu: <span className="font-mono text-slate-600">
+                        {isAdminOrLeader || u.id === currentUser.id ? (u.password || '123') : '••••••'}
+                      </span>
                     </span>
 
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleOpenEditModal(u)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                        title="Sửa thông tin cán bộ"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(u.id, u.fullName)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Xóa cán bộ"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {(isAdminOrLeader || u.id === currentUser.id) && (
+                        <button
+                          onClick={() => handleOpenEditModal(u)}
+                          className={`rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-xs ${
+                            u.id === currentUser.id && !isAdminOrLeader
+                              ? 'bg-indigo-50 text-indigo-700 font-bold px-2 py-1 hover:bg-indigo-100 border border-indigo-200/60'
+                              : 'p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'
+                          }`}
+                          title={u.id === currentUser.id ? 'Sửa thông tin cá nhân của bạn (ảnh, giới thiệu, SĐT)' : 'Sửa thông tin cán bộ'}
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                          {u.id === currentUser.id && !isAdminOrLeader && <span>Sửa hồ sơ</span>}
+                        </button>
+                      )}
+                      {isAdminOrLeader && (
+                        <button
+                          onClick={() => handleDelete(u.id, u.fullName)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Xóa cán bộ"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -433,7 +449,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                   </p>
                   <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 mt-2 font-mono">
                     <span>Tài khoản: <strong>{selectedUser.username || selectedUser.email.split('@')[0]}</strong></span>
-                    <span>MK: <strong>{selectedUser.password || '123'}</strong></span>
+                    <span>MK: <strong>{isAdminOrLeader || selectedUser.id === currentUser.id ? (selectedUser.password || '123') : '••••••'}</strong></span>
                   </div>
                 </div>
               </div>
@@ -510,25 +526,29 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
 
             {/* Bottom Actions inside drawer */}
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3 mt-6">
-              <button
-                onClick={() => handleDelete(selectedUser.id, selectedUser.fullName)}
-                className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Xóa cán bộ</span>
-              </button>
+              {isAdminOrLeader ? (
+                <button
+                  onClick={() => handleDelete(selectedUser.id, selectedUser.fullName)}
+                  className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Xóa cán bộ</span>
+                </button>
+              ) : <div />}
 
-              <button
-                onClick={() => {
-                  const u = selectedUser;
-                  setSelectedUser(null);
-                  handleOpenEditModal(u);
-                }}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-              >
-                <Edit className="w-4 h-4" />
-                <span>Chỉnh sửa thông tin</span>
-              </button>
+              {(isAdminOrLeader || selectedUser.id === currentUser.id) && (
+                <button
+                  onClick={() => {
+                    const u = selectedUser;
+                    setSelectedUser(null);
+                    handleOpenEditModal(u);
+                  }}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                >
+                  <Edit className="w-4 h-4" />
+                  <span>{selectedUser.id === currentUser.id ? 'Sửa thông tin của tôi' : 'Chỉnh sửa thông tin'}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -546,12 +566,16 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-800 text-sm">
-                    {isEditingExisting
+                    {isEditingSelf && !isAdminOrLeader
+                      ? 'Cập Nhật Hồ Sơ Cá Nhân & Giới Thiệu'
+                      : isEditingExisting
                       ? `Cập Nhật Thông Tin Cán Bộ: ${editingUser.fullName}`
                       : 'Thêm Cán Bộ Công Chức Mới'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Dữ liệu và ảnh đại diện sẽ được lưu trữ trực tiếp vào cơ sở dữ liệu MySQL
+                    {isEditingSelf && !isAdminOrLeader
+                      ? 'Tùy chỉnh ảnh đại diện, tiểu sử giới thiệu, số điện thoại và mật khẩu của bạn'
+                      : 'Dữ liệu và ảnh đại diện sẽ được lưu trữ trực tiếp vào cơ sở dữ liệu MySQL'}
                   </p>
                 </div>
               </div>
@@ -641,17 +665,37 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Vai trò hệ thống <span className="text-rose-500">*</span>
+                    {!isAdminOrLeader && isEditingSelf && (
+                      <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên/Lãnh đạo đổi)</span>
+                    )}
                   </label>
-                  <select
-                    value={editingUser.role || 'STAFF'}
-                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as UserRole })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
-                  >
-                    <option value="STAFF">Chuyên viên xử lý nhiệm vụ</option>
-                    <option value="LEADER">Lãnh đạo cơ quan (Ký duyệt, chỉ đạo)</option>
-                    <option value="CLERK">Văn thư lưu trữ (Tiếp nhận & Vào sổ)</option>
-                    <option value="ADMIN">Quản trị hệ thống cấp cao</option>
-                  </select>
+                  {isAdminOrLeader ? (
+                    <select
+                      value={editingUser.role || 'STAFF'}
+                      onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as UserRole })}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                    >
+                      <option value="STAFF">Chuyên viên xử lý nhiệm vụ</option>
+                      <option value="LEADER">Lãnh đạo cơ quan (Ký duyệt, chỉ đạo)</option>
+                      <option value="CLERK">Văn thư lưu trữ (Tiếp nhận & Vào sổ)</option>
+                      <option value="ADMIN">Quản trị hệ thống cấp cao</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      disabled
+                      value={
+                        editingUser.role === 'ADMIN'
+                          ? 'Quản trị hệ thống'
+                          : editingUser.role === 'LEADER'
+                          ? 'Lãnh đạo cơ quan'
+                          : editingUser.role === 'CLERK'
+                          ? 'Văn thư lưu trữ'
+                          : 'Chuyên viên'
+                      }
+                      className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500 cursor-not-allowed"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -716,24 +760,44 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
               {/* Department & Position */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Phòng ban công tác</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Phòng ban công tác
+                    {!isAdminOrLeader && isEditingSelf && (
+                      <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên đổi)</span>
+                    )}
+                  </label>
                   <input
                     type="text"
+                    disabled={!isAdminOrLeader && isEditingSelf}
                     value={editingUser.department || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, department: e.target.value })}
                     placeholder="VD: Phòng Hành chính - Tổng hợp"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    className={`w-full p-2.5 rounded-xl text-xs font-medium border border-slate-200 ${
+                      !isAdminOrLeader && isEditingSelf
+                        ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
+                        : 'bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Chức danh / Chức vụ</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Chức danh / Chức vụ
+                    {!isAdminOrLeader && isEditingSelf && (
+                      <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên đổi)</span>
+                    )}
+                  </label>
                   <input
                     type="text"
+                    disabled={!isAdminOrLeader && isEditingSelf}
                     value={editingUser.position || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, position: e.target.value })}
                     placeholder="VD: Trưởng phòng / Chuyên viên"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    className={`w-full p-2.5 rounded-xl text-xs font-medium border border-slate-200 ${
+                      !isAdminOrLeader && isEditingSelf
+                        ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
+                        : 'bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20'
+                    }`}
                   />
                 </div>
               </div>
