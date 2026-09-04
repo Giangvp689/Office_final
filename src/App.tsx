@@ -231,6 +231,7 @@ export const App: React.FC = () => {
               tasks={tasks}
               users={users}
               dossiers={dossiers}
+              masterData={masterData}
               onSaveDoc={(doc) => db.saveIncomingDoc(doc, currentUser)}
               onDeleteDoc={(id) => db.deleteIncomingDoc(id, currentUser)}
               onCreateTaskFromDoc={(doc) => {
@@ -275,6 +276,7 @@ export const App: React.FC = () => {
               tasks={tasks}
               users={users}
               dossiers={dossiers}
+              masterData={masterData}
               onSaveDoc={(doc) => db.saveOutgoingDoc(doc, currentUser)}
               onDeleteDoc={(id) => db.deleteOutgoingDoc(id, currentUser)}
               currentUser={currentUser}
@@ -335,6 +337,7 @@ export const App: React.FC = () => {
               outgoingDocs={outgoingDocs}
               tasks={tasks}
               users={users}
+              masterData={masterData}
               onSaveDossier={(dossier) => db.saveDossier(dossier, currentUser)}
               onDeleteDossier={(id) => db.deleteDossier(id, currentUser)}
               currentUser={currentUser}
@@ -384,6 +387,7 @@ export const App: React.FC = () => {
             <PersonnelView
               users={users}
               tasks={tasks}
+              masterData={masterData}
               onSaveUser={(user) => db.saveUser(user, currentUser)}
               onDeleteUser={(id) => db.deleteUser(id, currentUser)}
               currentUser={currentUser}

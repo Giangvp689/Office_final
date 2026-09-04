@@ -7,6 +7,7 @@ import {
   AttachmentFile,
   User,
   DossierStatus,
+  MasterData,
 } from '../types';
 import {
   FolderKanban,
@@ -39,6 +40,7 @@ interface DossiersViewProps {
   onOpenTaskDetail: (id: string) => void;
   onOpenIncomingDocDetail: (id: string) => void;
   initialDossierId?: string;
+  masterData?: MasterData;
 }
 
 export const DossiersView: React.FC<DossiersViewProps> = ({
@@ -53,11 +55,29 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   onOpenTaskDetail,
   onOpenIncomingDocDetail,
   initialDossierId,
+  masterData,
 }) => {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
   const [selectedDossier, setSelectedDossier] = useState<Dossier | null>(null);
+
+  // Departments from masterData + existing users & dossiers
+  const departmentList = useMemo(() => {
+    const fromMaster = (masterData?.departments || [])
+      .map((d: any) => (typeof d === 'string' ? d : d.name))
+      .filter(Boolean);
+    const fromUsers = users
+      .map((u) => (typeof u.department === 'string' ? u.department : (u.department as any)?.name || ''))
+      .filter(Boolean);
+    const fromDossiers = dossiers
+      .map((d) => (typeof d.department === 'string' ? d.department : (d.department as any)?.name || ''))
+      .filter(Boolean);
+    const combined = Array.from(new Set([...fromMaster, ...fromUsers, ...fromDossiers]));
+    return combined.length > 0
+      ? combined
+      : ['Phòng Hành chính - Tổng hợp', 'Phòng Kế hoạch - Tài chính', 'Phòng Quản lý đô thị'];
+  }, [masterData, users, dossiers]);
 
   const isSuperUser = isLeaderOrAdmin(currentUser);
   const [dossierScope, setDossierScope] = useState<'MY' | 'ALL'>(isSuperUser ? 'ALL' : 'MY');
@@ -514,12 +534,20 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Phòng ban quản lý</label>
-                  <input
-                    type="text"
-                    value={editingDossier.department || ''}
+                  <select
+                    value={editingDossier.department || departmentList[0] || ''}
                     onChange={(e) => setEditingDossier({ ...editingDossier, department: e.target.value })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                  />
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    {editingDossier.department && !departmentList.includes(editingDossier.department) && (
+                      <option value={editingDossier.department}>{editingDossier.department}</option>
+                    )}
+                    {departmentList.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

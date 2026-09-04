@@ -7,6 +7,7 @@ import {
   OutgoingDocStatus,
   AttachmentFile,
   Task,
+  MasterData,
 } from '../types';
 import {
   Search,
@@ -51,6 +52,7 @@ interface OutgoingDocsViewProps {
   onOpenDossier: (dossierId: string) => void;
   initialSelectedDocId?: string;
   tasks?: Task[];
+  masterData?: MasterData;
 }
 
 export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
@@ -64,6 +66,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   onOpenDossier,
   initialSelectedDocId,
   tasks = [],
+  masterData,
 }) => {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
@@ -74,6 +77,36 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   const [myRoleFilter, setMyRoleFilter] = useState<'ALL' | 'DRAFTED' | 'SIGNER'>('ALL');
 
   const [selectedDoc, setSelectedDoc] = useState<OutgoingDocument | null>(null);
+
+  // Recipient suggestions from masterData + existing outgoing docs
+  const recipientList = useMemo(() => {
+    const fromMaster = (masterData?.authorities || masterData?.issuingAuthorities || [])
+      .map((a: any) => (typeof a === 'string' ? a : a.name))
+      .filter(Boolean);
+    const fromDocs = docs.map((d) => d.recipient).filter(Boolean);
+    const combined = Array.from(new Set([...fromMaster, ...fromDocs]));
+    return combined.length > 0
+      ? combined
+      : ['Ủy Ban Nhân Dân Tỉnh', 'Sở Tư Pháp', 'Sở Nội Vụ', 'Sở Kế Hoạch và Đầu Tư', 'Văn Phòng UBND'];
+  }, [masterData, docs]);
+
+  // Doc types from masterData + standards
+  const docTypeList = useMemo(() => {
+    const fromMaster = (masterData?.docTypes || masterData?.documentTypes || [])
+      .map((t: any) => (typeof t === 'string' ? t : t.name))
+      .filter(Boolean);
+    const defaultTypes = [
+      'Công văn',
+      'Tờ trình',
+      'Báo cáo',
+      'Thông báo',
+      'Quyết định',
+      'Kế hoạch',
+      'Giấy mời',
+      'Chỉ thị',
+    ];
+    return Array.from(new Set([...fromMaster, ...defaultTypes]));
+  }, [masterData]);
 
   // Accessible docs based on permissions
   const accessibleDocs = useMemo(() => {
@@ -1048,17 +1081,18 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Loại văn bản</label>
                   <select
-                    value={editingDoc.docType || 'Công văn'}
+                    value={editingDoc.docType || docTypeList[0] || 'Công văn'}
                     onChange={(e) => setEditingDoc({ ...editingDoc, docType: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer font-medium"
                   >
-                    <option value="Công văn">Công văn</option>
-                    <option value="Tờ trình">Tờ trình</option>
-                    <option value="Báo cáo">Báo cáo</option>
-                    <option value="Thông báo">Thông báo</option>
-                    <option value="Quyết định">Quyết định</option>
-                    <option value="Kế hoạch">Kế hoạch</option>
-                    <option value="Giấy mời">Giấy mời</option>
+                    {editingDoc.docType && !docTypeList.includes(editingDoc.docType) && (
+                      <option value={editingDoc.docType}>{editingDoc.docType}</option>
+                    )}
+                    {docTypeList.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1074,17 +1108,26 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Đơn vị / Cơ quan nhận văn bản <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-700">
+                    Đơn vị / Cơ quan nhận văn bản <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[10px] text-indigo-600 font-semibold">Gợi ý từ danh mục dùng chung</span>
+                </div>
                 <input
                   type="text"
                   required
+                  list="outgoing-recipient-list"
                   value={editingDoc.recipient || ''}
                   onChange={(e) => setEditingDoc({ ...editingDoc, recipient: e.target.value })}
-                  placeholder="VD: Ủy Ban Nhân Dân Tỉnh, Sở Nội Vụ..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                  placeholder="Chọn từ danh mục cơ quan hoặc gõ tên người nhận..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
                 />
+                <datalist id="outgoing-recipient-list">
+                  {recipientList.map((rec, idx) => (
+                    <option key={`rec-${idx}`} value={rec} />
+                  ))}
+                </datalist>
               </div>
 
               <div>

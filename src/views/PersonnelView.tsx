@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { User, Task, UserRole } from '../types';
+import React, { useState, useRef, useMemo } from 'react';
+import { User, Task, UserRole, MasterData } from '../types';
 import {
   Users,
   Search,
@@ -31,6 +31,7 @@ interface PersonnelViewProps {
   onDeleteUser: (id: string) => void;
   currentUser: User;
   onOpenTaskDetail: (id: string) => void;
+  masterData?: MasterData;
 }
 
 export const PersonnelView: React.FC<PersonnelViewProps> = ({
@@ -40,6 +41,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
   onDeleteUser,
   currentUser,
   onOpenTaskDetail,
+  masterData,
 }) => {
   const [search, setSearch] = useState('');
   const [filterRole, setFilterRole] = useState<string>('ALL');
@@ -49,20 +51,39 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditingExisting, setIsEditingExisting] = useState(false);
   const [editingUser, setEditingUser] = useState<Partial<User>>({});
+  const [isCustomDept, setIsCustomDept] = useState(false);
+  const [isCustomPos, setIsCustomPos] = useState(false);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const isAdminOrLeader = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
   const isEditingSelf = Boolean(editingUser.id && editingUser.id === currentUser.id);
 
-  // Get distinct departments from existing users
-  const departments = Array.from(
-    new Set(
-      users
-        .map((u) => (typeof u.department === 'string' ? u.department : (u.department as any)?.name || ''))
-        .filter(Boolean)
-    )
-  );
+  // Get distinct departments from masterData + existing users
+  const departments = useMemo(() => {
+    const fromMaster = (masterData?.departments || [])
+      .map((d: any) => (typeof d === 'string' ? d : d.name))
+      .filter(Boolean);
+    const fromUsers = users
+      .map((u) => (typeof u.department === 'string' ? u.department : (u.department as any)?.name || ''))
+      .filter(Boolean);
+    const list = Array.from(new Set([...fromMaster, ...fromUsers]));
+    return list.length > 0
+      ? list
+      : ['Phòng Hành chính - Tổng hợp', 'Phòng Kế hoạch - Tài chính', 'Phòng Quản lý đô thị'];
+  }, [masterData, users]);
+
+  // Get distinct positions from masterData + existing users
+  const positions = useMemo(() => {
+    const fromMaster = (masterData?.positions || [])
+      .map((p: any) => (typeof p === 'string' ? p : p.name))
+      .filter(Boolean);
+    const fromUsers = users
+      .map((u) => (typeof u.position === 'string' ? u.position : (u.position as any)?.name || ''))
+      .filter(Boolean);
+    const list = Array.from(new Set([...fromMaster, ...fromUsers]));
+    return list.length > 0 ? list : ['Chuyên viên', 'Trưởng phòng', 'Phó trưởng phòng', 'Văn thư'];
+  }, [masterData, users]);
 
   const filteredUsers = users.filter((u) => {
     const matchSearch =
@@ -83,6 +104,10 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
   const handleOpenAddModal = () => {
     const newId = 'u-' + Date.now();
     setIsEditingExisting(false);
+    setIsCustomDept(false);
+    setIsCustomPos(false);
+    const initialDept = departments[0] || 'Phòng Hành chính - Tổng hợp';
+    const initialPos = positions[0] || 'Chuyên viên';
     setEditingUser({
       id: newId,
       username: '',
@@ -92,9 +117,9 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
       phone: '',
       role: 'STAFF',
       status: 'ACTIVE',
-      department: 'Phòng Hành chính - Tổng hợp',
+      department: initialDept,
       departmentId: 'dept-1',
-      position: 'Chuyên viên',
+      position: initialPos,
       positionId: 'pos-4',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       joinDate: new Date().toISOString().split('T')[0],
@@ -106,6 +131,8 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
   // Open modal to EDIT an EXISTING user
   const handleOpenEditModal = (u: User) => {
     setIsEditingExisting(true);
+    setIsCustomDept(false);
+    setIsCustomPos(false);
     setEditingUser({
       ...u,
       password: u.password || '123',
@@ -760,45 +787,139 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
               {/* Department & Position */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Phòng ban công tác
-                    {!isAdminOrLeader && isEditingSelf && (
-                      <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên đổi)</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-slate-700">
+                      Phòng ban công tác
+                      {!isAdminOrLeader && isEditingSelf && (
+                        <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên đổi)</span>
+                      )}
+                    </label>
+                    {isAdminOrLeader && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomDept(!isCustomDept);
+                          if (isCustomDept) {
+                            setEditingUser({ ...editingUser, department: departments[0] || '' });
+                          }
+                        }}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer"
+                      >
+                        {isCustomDept ? '← Chọn từ danh mục' : '+ Nhập tên khác'}
+                      </button>
                     )}
-                  </label>
-                  <input
-                    type="text"
-                    disabled={!isAdminOrLeader && isEditingSelf}
-                    value={editingUser.department || ''}
-                    onChange={(e) => setEditingUser({ ...editingUser, department: e.target.value })}
-                    placeholder="VD: Phòng Hành chính - Tổng hợp"
-                    className={`w-full p-2.5 rounded-xl text-xs font-medium border border-slate-200 ${
-                      !isAdminOrLeader && isEditingSelf
-                        ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
-                        : 'bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20'
-                    }`}
-                  />
+                  </div>
+
+                  {!isAdminOrLeader && isEditingSelf ? (
+                    <input
+                      type="text"
+                      disabled
+                      value={editingUser.department || ''}
+                      className="w-full p-2.5 rounded-xl text-xs font-medium border border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+                    />
+                  ) : isCustomDept ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={editingUser.department || ''}
+                      onChange={(e) => setEditingUser({ ...editingUser, department: e.target.value })}
+                      placeholder="Gõ tên phòng ban mới..."
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  ) : (
+                    <select
+                      value={editingUser.department || departments[0] || ''}
+                      onChange={(e) => {
+                        if (e.target.value === '__OTHER__') {
+                          setIsCustomDept(true);
+                          setEditingUser({ ...editingUser, department: '' });
+                        } else {
+                          setEditingUser({ ...editingUser, department: e.target.value });
+                        }
+                      }}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                    >
+                      {editingUser.department && !departments.includes(editingUser.department) && (
+                        <option value={editingUser.department}>{editingUser.department}</option>
+                      )}
+                      {departments.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept}
+                        </option>
+                      ))}
+                      <option value="__OTHER__" className="text-indigo-600 font-bold">
+                        + Nhập phòng ban khác...
+                      </option>
+                    </select>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Chức danh / Chức vụ
-                    {!isAdminOrLeader && isEditingSelf && (
-                      <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên đổi)</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-slate-700">
+                      Chức danh / Chức vụ
+                      {!isAdminOrLeader && isEditingSelf && (
+                        <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên đổi)</span>
+                      )}
+                    </label>
+                    {isAdminOrLeader && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCustomPos(!isCustomPos);
+                          if (isCustomPos) {
+                            setEditingUser({ ...editingUser, position: positions[0] || '' });
+                          }
+                        }}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer"
+                      >
+                        {isCustomPos ? '← Chọn từ danh mục' : '+ Nhập tên khác'}
+                      </button>
                     )}
-                  </label>
-                  <input
-                    type="text"
-                    disabled={!isAdminOrLeader && isEditingSelf}
-                    value={editingUser.position || ''}
-                    onChange={(e) => setEditingUser({ ...editingUser, position: e.target.value })}
-                    placeholder="VD: Trưởng phòng / Chuyên viên"
-                    className={`w-full p-2.5 rounded-xl text-xs font-medium border border-slate-200 ${
-                      !isAdminOrLeader && isEditingSelf
-                        ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
-                        : 'bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20'
-                    }`}
-                  />
+                  </div>
+
+                  {!isAdminOrLeader && isEditingSelf ? (
+                    <input
+                      type="text"
+                      disabled
+                      value={editingUser.position || ''}
+                      className="w-full p-2.5 rounded-xl text-xs font-medium border border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+                    />
+                  ) : isCustomPos ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={editingUser.position || ''}
+                      onChange={(e) => setEditingUser({ ...editingUser, position: e.target.value })}
+                      placeholder="Gõ tên chức danh / chức vụ mới..."
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  ) : (
+                    <select
+                      value={editingUser.position || positions[0] || ''}
+                      onChange={(e) => {
+                        if (e.target.value === '__OTHER__') {
+                          setIsCustomPos(true);
+                          setEditingUser({ ...editingUser, position: '' });
+                        } else {
+                          setEditingUser({ ...editingUser, position: e.target.value });
+                        }
+                      }}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                    >
+                      {editingUser.position && !positions.includes(editingUser.position) && (
+                        <option value={editingUser.position}>{editingUser.position}</option>
+                      )}
+                      {positions.map((pos) => (
+                        <option key={pos} value={pos}>
+                          {pos}
+                        </option>
+                      ))}
+                      <option value="__OTHER__" className="text-indigo-600 font-bold">
+                        + Nhập chức danh khác...
+                      </option>
+                    </select>
+                  )}
                 </div>
               </div>
 

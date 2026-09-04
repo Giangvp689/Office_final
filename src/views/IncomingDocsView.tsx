@@ -8,6 +8,7 @@ import {
   SecurityLevel,
   IncomingDocStatus,
   Task,
+  MasterData,
 } from '../types';
 import {
   Search,
@@ -60,6 +61,7 @@ interface IncomingDocsViewProps {
   currentUser: User;
   onOpenDossier: (dossierId: string) => void;
   initialSelectedDocId?: string;
+  masterData?: MasterData;
 }
 
 export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
@@ -73,6 +75,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   currentUser,
   onOpenDossier,
   initialSelectedDocId,
+  masterData,
 }) => {
   const [search, setSearch] = useState('');
   const [filterUrgency, setFilterUrgency] = useState<string>('ALL');
@@ -84,6 +87,37 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [myRoleFilter, setMyRoleFilter] = useState<'ALL' | 'PRIMARY' | 'COOPERATE'>('ALL');
 
   const [selectedDoc, setSelectedDoc] = useState<IncomingDocument | null>(null);
+
+  // Authority suggestions from masterData + existing docs
+  const authorityList = useMemo(() => {
+    const fromMaster = (masterData?.authorities || masterData?.issuingAuthorities || [])
+      .map((a: any) => (typeof a === 'string' ? a : a.name))
+      .filter(Boolean);
+    const fromDocs = docs.map((d) => d.issuingAuthority).filter(Boolean);
+    const combined = Array.from(new Set([...fromMaster, ...fromDocs]));
+    return combined.length > 0
+      ? combined
+      : ['Ủy Ban Nhân Dân Tỉnh', 'Sở Tư Pháp', 'Sở Nội Vụ', 'Sở Kế Hoạch và Đầu Tư', 'Văn Phòng UBND'];
+  }, [masterData, docs]);
+
+  // Document types from masterData + standards
+  const docTypeList = useMemo(() => {
+    const fromMaster = (masterData?.docTypes || masterData?.documentTypes || [])
+      .map((t: any) => (typeof t === 'string' ? t : t.name))
+      .filter(Boolean);
+    const defaultTypes = [
+      'Công văn',
+      'Đơn kiến nghị / Đơn thư',
+      'Quyết định',
+      'Tờ trình',
+      'Thông báo',
+      'Chỉ thị',
+      'Kế hoạch',
+      'Báo cáo',
+      'Giấy mời',
+    ];
+    return Array.from(new Set([...fromMaster, ...defaultTypes]));
+  }, [masterData]);
 
   // Accessible docs list based on permissions
   const accessibleDocs = useMemo(() => {
@@ -1279,17 +1313,26 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               {/* Row 2: Authority & Doc Type */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Cơ quan ban hành / Người gửi <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-slate-700">
+                      Cơ quan ban hành / Người gửi <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-indigo-600 font-semibold">Gợi ý từ danh mục</span>
+                  </div>
                   <input
                     type="text"
                     required
+                    list="incoming-authorities-list"
                     value={editingDoc.issuingAuthority || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, issuingAuthority: e.target.value })}
-                    placeholder="VD: Người dân Nguyễn Văn A / UBND Huyện..."
+                    placeholder="Chọn từ danh mục hoặc gõ tên cơ quan / người gửi..."
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium"
                   />
+                  <datalist id="incoming-authorities-list">
+                    {authorityList.map((auth, idx) => (
+                      <option key={`auth-${idx}`} value={auth} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div>
@@ -1297,18 +1340,18 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     Loại văn bản
                   </label>
                   <select
-                    value={editingDoc.docType || 'Công văn'}
+                    value={editingDoc.docType || docTypeList[0] || 'Công văn'}
                     onChange={(e) => setEditingDoc({ ...editingDoc, docType: e.target.value })}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium cursor-pointer"
                   >
-                    <option value="Đơn kiến nghị / Đơn thư">Đơn kiến nghị / Đơn thư của dân</option>
-                    <option value="Công văn">Công văn</option>
-                    <option value="Quyết định">Quyết định</option>
-                    <option value="Tờ trình">Tờ trình</option>
-                    <option value="Thông báo">Thông báo</option>
-                    <option value="Chỉ thị">Chỉ thị</option>
-                    <option value="Kế hoạch">Kế hoạch</option>
-                    <option value="Báo cáo">Báo cáo</option>
+                    {editingDoc.docType && !docTypeList.includes(editingDoc.docType) && (
+                      <option value={editingDoc.docType}>{editingDoc.docType}</option>
+                    )}
+                    {docTypeList.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
