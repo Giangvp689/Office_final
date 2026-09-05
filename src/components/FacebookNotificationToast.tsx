@@ -29,7 +29,8 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
       const next = new Set(prev);
       next.add(id);
       try {
-        localStorage.setItem('vanphong_so_seen_toast_ids', JSON.stringify(Array.from(next)));
+        const capped = Array.from(next).slice(-50);
+        localStorage.setItem('vanphong_so_seen_toast_ids', JSON.stringify(capped));
       } catch {}
       return next;
     });

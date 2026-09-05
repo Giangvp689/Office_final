@@ -47,11 +47,195 @@ class DatabaseService {
   private mySqlConnected: boolean = false;
   private mySqlInfo: any = null;
   private firestoreConnected: boolean = false;
+  private memoryStore: Record<string, string> = {};
 
   constructor() {
+    this.cleanStorageOnBoot();
     this.initIfEmpty();
     this.checkAndSyncMySql();
     this.initFirestoreSync();
+  }
+
+  /**
+   * Safe setItem wrapper with in-memory fallback and quota recovery
+   */
+  private safeSetItem(key: string, value: string): boolean {
+    if (typeof window === 'undefined') return false;
+    this.memoryStore[key] = value;
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (err) {
+      console.warn(`[Storage] localStorage.setItem failed for key "${key}". Running quota recovery...`, err);
+      return this.handleStorageQuotaExceeded(key, value);
+    }
+  }
+
+  /**
+   * Safe getItem wrapper with fallback to memory store
+   */
+  private safeGetItem(key: string): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const item = localStorage.getItem(key);
+      if (item !== null) return item;
+    } catch (err) {
+      console.warn(`[Storage] localStorage.getItem failed for key "${key}":`, err);
+    }
+    return this.memoryStore[key] ?? null;
+  }
+
+  /**
+   * Safe removeItem wrapper
+   */
+  private safeRemoveItem(key: string): void {
+    if (typeof window === 'undefined') return;
+    delete this.memoryStore[key];
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+  }
+
+  /**
+   * Recovers from QuotaExceededError by trimming non-critical telemetry/log caches
+   */
+  private handleStorageQuotaExceeded(key: string, value: string): boolean {
+    try {
+      // 1. If key itself is AUDIT_LOGS, aggressively trim to 30 latest
+      if (key === DB_STORAGE_KEYS.AUDIT_LOGS) {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            const trimmed = parsed.slice(0, 30);
+            const trimmedJson = JSON.stringify(trimmed);
+            this.memoryStore[key] = trimmedJson;
+            localStorage.setItem(key, trimmedJson);
+            return true;
+          }
+        } catch {}
+      }
+
+      // 2. Free quota by trimming existing stored audit logs
+      try {
+        const rawAudit = localStorage.getItem(DB_STORAGE_KEYS.AUDIT_LOGS);
+        if (rawAudit) {
+          const logs = JSON.parse(rawAudit);
+          if (Array.isArray(logs) && logs.length > 20) {
+            localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs.slice(0, 20)));
+          }
+        }
+      } catch {
+        try { localStorage.removeItem(DB_STORAGE_KEYS.AUDIT_LOGS); } catch {}
+      }
+
+      // 3. Free quota by trimming notifications
+      try {
+        const rawNotifs = localStorage.getItem(DB_STORAGE_KEYS.NOTIFICATIONS);
+        if (rawNotifs) {
+          const notifs = JSON.parse(rawNotifs);
+          if (Array.isArray(notifs) && notifs.length > 20) {
+            localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifs.slice(0, 20)));
+          }
+        }
+      } catch {
+        try { localStorage.removeItem(DB_STORAGE_KEYS.NOTIFICATIONS); } catch {}
+      }
+
+      // 4. Free quota by stripping oversized base64 data URLs in attachments
+      try {
+        const rawAtt = localStorage.getItem(DB_STORAGE_KEYS.ATTACHMENTS);
+        if (rawAtt && rawAtt.length > 150000) {
+          const atts = JSON.parse(rawAtt);
+          if (Array.isArray(atts)) {
+            const sanitized = atts.map((a: any) => {
+              if (a.fileUrl && typeof a.fileUrl === 'string' && a.fileUrl.startsWith('data:') && a.fileUrl.length > 10000) {
+                return { ...a, fileUrl: '' };
+              }
+              return a;
+            });
+            localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(sanitized));
+          }
+        }
+      } catch {}
+
+      // 5. Retry saving key with trimmed payload if array
+      try {
+        if (key === DB_STORAGE_KEYS.AUDIT_LOGS) {
+          const parsed = JSON.parse(value);
+          const trimmed = Array.isArray(parsed) ? parsed.slice(0, 20) : parsed;
+          localStorage.setItem(key, JSON.stringify(trimmed));
+        } else {
+          localStorage.setItem(key, value);
+        }
+        return true;
+      } catch (retryErr) {
+        console.warn(`[Storage] Retry for "${key}" still failed. Value retained in memoryStore without crashing.`, retryErr);
+        return false;
+      }
+    } catch (e) {
+      console.warn('[Storage] Quota recovery failed, continuing with memoryStore:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Boot-time sanity check to prevent QuotaExceeded on launch
+   */
+  private cleanStorageOnBoot() {
+    if (typeof window === 'undefined') return;
+    try {
+      const rawAudit = localStorage.getItem(DB_STORAGE_KEYS.AUDIT_LOGS);
+      if (rawAudit) {
+        try {
+          const logs = JSON.parse(rawAudit);
+          if (Array.isArray(logs) && logs.length > 40) {
+            localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs.slice(0, 40)));
+          }
+        } catch {
+          localStorage.removeItem(DB_STORAGE_KEYS.AUDIT_LOGS);
+        }
+      }
+    } catch {
+      try { localStorage.removeItem(DB_STORAGE_KEYS.AUDIT_LOGS); } catch {}
+    }
+
+    try {
+      const rawNotifs = localStorage.getItem(DB_STORAGE_KEYS.NOTIFICATIONS);
+      if (rawNotifs) {
+        try {
+          const notifs = JSON.parse(rawNotifs);
+          if (Array.isArray(notifs) && notifs.length > 40) {
+            localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifs.slice(0, 40)));
+          }
+        } catch {
+          localStorage.removeItem(DB_STORAGE_KEYS.NOTIFICATIONS);
+        }
+      }
+    } catch {
+      try { localStorage.removeItem(DB_STORAGE_KEYS.NOTIFICATIONS); } catch {}
+    }
+
+    try {
+      const rawAtt = localStorage.getItem(DB_STORAGE_KEYS.ATTACHMENTS);
+      if (rawAtt && rawAtt.length > 300000) {
+        try {
+          const atts = JSON.parse(rawAtt);
+          if (Array.isArray(atts)) {
+            let changed = false;
+            const sanitized = atts.map((a: any) => {
+              if (a.fileUrl && typeof a.fileUrl === 'string' && a.fileUrl.startsWith('data:') && a.fileUrl.length > 15000) {
+                changed = true;
+                return { ...a, fileUrl: '' };
+              }
+              return a;
+            });
+            if (changed) {
+              localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(sanitized));
+            }
+          }
+        } catch {}
+      }
+    } catch {}
   }
 
   private async initFirestoreSync() {
@@ -63,44 +247,45 @@ class DatabaseService {
       firestoreSync.listenToAll({
         onUsers: (users) => {
           this.firestoreConnected = true;
-          localStorage.setItem(DB_STORAGE_KEYS.USERS, JSON.stringify(users));
+          this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(users));
           this.notify();
         },
         onDossiers: (dossiers) => {
           this.firestoreConnected = true;
-          localStorage.setItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(dossiers));
+          this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(dossiers));
           this.notify();
         },
         onIncomingDocs: (docs) => {
           this.firestoreConnected = true;
-          localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(docs));
+          this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(docs));
           this.notify();
         },
         onOutgoingDocs: (docs) => {
           this.firestoreConnected = true;
-          localStorage.setItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(docs));
+          this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(docs));
           this.notify();
         },
         onTasks: (tasks) => {
           this.firestoreConnected = true;
-          localStorage.setItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+          this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(tasks));
           this.notify();
         },
         onAttachments: (attachments) => {
           this.firestoreConnected = true;
-          localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(attachments));
+          this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(attachments));
           this.notify();
         },
         onAuditLogs: (logs) => {
           this.firestoreConnected = true;
-          localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs));
+          const cappedLogs = Array.isArray(logs) ? logs.slice(0, 60) : [];
+          this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(cappedLogs));
           this.notify();
         },
         onNotifications: (notifications) => {
           this.firestoreConnected = true;
           const readIds = this.getPersistentReadNotifIds();
-          const merged = (notifications || []).map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n));
-          localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
+          const merged = (notifications || []).map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n)).slice(0, 60);
+          this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
           this.notify();
         },
       });
@@ -162,17 +347,20 @@ class DatabaseService {
         const syncData = await syncRes.json();
         if (syncData && syncData.data) {
           const d = syncData.data;
-          if (Array.isArray(d.users)) localStorage.setItem(DB_STORAGE_KEYS.USERS, JSON.stringify(d.users));
-          if (Array.isArray(d.dossiers)) localStorage.setItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(d.dossiers));
-          if (Array.isArray(d.incomingDocs)) localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(d.incomingDocs));
-          if (Array.isArray(d.outgoingDocs)) localStorage.setItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(d.outgoingDocs));
-          if (Array.isArray(d.tasks)) localStorage.setItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(d.tasks));
-          if (Array.isArray(d.attachments)) localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(d.attachments));
-          if (Array.isArray(d.auditLogs)) localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(d.auditLogs));
+          if (Array.isArray(d.users)) this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(d.users));
+          if (Array.isArray(d.dossiers)) this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(d.dossiers));
+          if (Array.isArray(d.incomingDocs)) this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(d.incomingDocs));
+          if (Array.isArray(d.outgoingDocs)) this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(d.outgoingDocs));
+          if (Array.isArray(d.tasks)) this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(d.tasks));
+          if (Array.isArray(d.attachments)) this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(d.attachments));
+          if (Array.isArray(d.auditLogs)) {
+            const cappedLogs = d.auditLogs.slice(0, 60);
+            this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(cappedLogs));
+          }
           if (Array.isArray(d.notifications)) {
             const readIds = this.getPersistentReadNotifIds();
-            const merged = d.notifications.map((n: SystemNotification) => (readIds.has(n.id) ? { ...n, isRead: true } : n));
-            localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
+            const merged = d.notifications.map((n: SystemNotification) => (readIds.has(n.id) ? { ...n, isRead: true } : n)).slice(0, 60);
+            this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
           }
           if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
             const currentMaster = this.getMasterData();
@@ -188,7 +376,7 @@ class DatabaseService {
               departments: normalizedDepts,
               positions: normalizedPositions,
             };
-            localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(newMaster));
+            this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(newMaster));
           }
           this.notify();
           return true;
@@ -253,7 +441,7 @@ class DatabaseService {
   private initIfEmpty() {
     if (typeof window === 'undefined') return;
 
-    if (!localStorage.getItem(DB_STORAGE_KEYS.USERS)) {
+    if (!this.safeGetItem(DB_STORAGE_KEYS.USERS)) {
       this.resetToDefaults();
     } else {
       // Auto-migrate legacy 2025 dates to 2026 across stored items if needed
@@ -267,7 +455,7 @@ class DatabaseService {
         DB_STORAGE_KEYS.NOTIFICATIONS,
       ];
       for (const key of keysToMigrate) {
-        const raw = localStorage.getItem(key);
+        const raw = this.safeGetItem(key);
         if (raw && raw.includes('2025-08-')) {
           const updated = raw
             .replace(/2025-08-/g, '2026-08-')
@@ -278,7 +466,7 @@ class DatabaseService {
             .replace(/2025-04-/g, '2026-04-')
             .replace(/2025-06-/g, '2026-06-')
             .replace(/2025-12-/g, '2026-12-');
-          localStorage.setItem(key, updated);
+          this.safeSetItem(key, updated);
         }
       }
 
@@ -290,7 +478,7 @@ class DatabaseService {
           const missing = initialList.filter((d) => !existingIds.has(d.id || (d as any).fileName));
           if (missing.length > 0) {
             const merged = [...existing, ...missing];
-            localStorage.setItem(storageKey, JSON.stringify(merged));
+            this.setList(storageKey, merged);
           }
         }
       };
@@ -310,7 +498,7 @@ class DatabaseService {
       const missingDepts = INITIAL_MASTER_DATA.departments.filter((d) => !existingDepts.has(d));
       if (missingDepts.length > 0) {
         currentMaster.departments = [...currentMaster.departments, ...missingDepts];
-        localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(currentMaster));
+        this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(currentMaster));
       }
 
       this.notify();
@@ -319,16 +507,16 @@ class DatabaseService {
 
   public resetToDefaults() {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(DB_STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-    localStorage.setItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(INITIAL_DOSSIERS));
-    localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(INITIAL_INCOMING_DOCS));
-    localStorage.setItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(INITIAL_OUTGOING_DOCS));
-    localStorage.setItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-    localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(INITIAL_ATTACHMENTS));
-    localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS));
-    localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS));
-    localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(INITIAL_MASTER_DATA));
-    localStorage.setItem(DB_STORAGE_KEYS.CURRENT_USER_ID, 'usr-01');
+    this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+    this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(INITIAL_DOSSIERS));
+    this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(INITIAL_INCOMING_DOCS));
+    this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(INITIAL_OUTGOING_DOCS));
+    this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
+    this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(INITIAL_ATTACHMENTS));
+    this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS.slice(0, 60)));
+    this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(INITIAL_NOTIFICATIONS.slice(0, 60)));
+    this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(INITIAL_MASTER_DATA));
+    this.safeSetItem(DB_STORAGE_KEYS.CURRENT_USER_ID, 'usr-01');
     this.notify();
   }
 
@@ -351,7 +539,7 @@ class DatabaseService {
 
   private getList<T>(key: string, defaultVal: T[]): T[] {
     if (typeof window === 'undefined') return defaultVal;
-    const raw = localStorage.getItem(key);
+    const raw = this.safeGetItem(key);
     if (!raw) return defaultVal;
     try {
       return JSON.parse(raw);
@@ -362,15 +550,21 @@ class DatabaseService {
 
   private setList<T>(key: string, items: T[]) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(key, JSON.stringify(items));
+    let itemsToStore = items;
+    if (key === DB_STORAGE_KEYS.AUDIT_LOGS && items.length > 60) {
+      itemsToStore = items.slice(0, 60) as T[];
+    } else if (key === DB_STORAGE_KEYS.NOTIFICATIONS && items.length > 60) {
+      itemsToStore = items.slice(0, 60) as T[];
+    }
+    this.safeSetItem(key, JSON.stringify(itemsToStore));
     this.notify();
   }
 
   // --- Current User & Authentication ---
   public isAuthenticated(): boolean {
     if (typeof window === 'undefined') return false;
-    const token = localStorage.getItem(DB_STORAGE_KEYS.AUTH_TOKEN);
-    const userId = localStorage.getItem(DB_STORAGE_KEYS.CURRENT_USER_ID);
+    const token = this.safeGetItem(DB_STORAGE_KEYS.AUTH_TOKEN);
+    const userId = this.safeGetItem(DB_STORAGE_KEYS.CURRENT_USER_ID);
     return Boolean(token && userId);
   }
 
@@ -424,14 +618,14 @@ class DatabaseService {
 
   public saveUserSession(user: User, token: string) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(DB_STORAGE_KEYS.AUTH_TOKEN, token);
-    localStorage.setItem(DB_STORAGE_KEYS.CURRENT_USER_ID, user.id);
+    this.safeSetItem(DB_STORAGE_KEYS.AUTH_TOKEN, token);
+    this.safeSetItem(DB_STORAGE_KEYS.CURRENT_USER_ID, user.id);
     
     // If the authenticated user is an Admin, record as origin admin
     if (user.role === 'ADMIN') {
-      localStorage.setItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID, user.id);
+      this.safeSetItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID, user.id);
     } else {
-      localStorage.removeItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
+      this.safeRemoveItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
     }
 
     this.logAction('LOGIN', 'USER', user.id, user.fullName, `Đăng nhập hệ thống thành công (Tài khoản: ${user.username || user.email})`, user);
@@ -442,15 +636,15 @@ class DatabaseService {
     if (typeof window === 'undefined') return;
     const current = actor || this.getCurrentUser();
     this.logAction('LOGOUT', 'USER', current.id, current.fullName, `Đăng xuất khỏi hệ thống`, current);
-    localStorage.removeItem(DB_STORAGE_KEYS.AUTH_TOKEN);
-    localStorage.removeItem(DB_STORAGE_KEYS.CURRENT_USER_ID);
-    localStorage.removeItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
+    this.safeRemoveItem(DB_STORAGE_KEYS.AUTH_TOKEN);
+    this.safeRemoveItem(DB_STORAGE_KEYS.CURRENT_USER_ID);
+    this.safeRemoveItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
     this.notify();
   }
 
   public getAdminOriginUserId(): string | null {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
+    return this.safeGetItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
   }
 
   public getAdminOriginUser(): User | null {
@@ -485,11 +679,11 @@ class DatabaseService {
 
     // Ensure admin origin is saved if current actor is Admin
     if (currentActor.role === 'ADMIN') {
-      localStorage.setItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID, currentActor.id);
+      this.safeSetItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID, currentActor.id);
     }
 
-    localStorage.setItem(DB_STORAGE_KEYS.CURRENT_USER_ID, targetUserId);
-    localStorage.setItem(DB_STORAGE_KEYS.AUTH_TOKEN, `tok_switch_${targetUserId}_${Date.now()}`);
+    this.safeSetItem(DB_STORAGE_KEYS.CURRENT_USER_ID, targetUserId);
+    this.safeSetItem(DB_STORAGE_KEYS.AUTH_TOKEN, `tok_switch_${targetUserId}_${Date.now()}`);
 
     this.logAction(
       'SWITCH_USER',
@@ -512,8 +706,8 @@ class DatabaseService {
     if (!adminUser) return false;
 
     const previousUser = this.getCurrentUser();
-    localStorage.setItem(DB_STORAGE_KEYS.CURRENT_USER_ID, adminId);
-    localStorage.setItem(DB_STORAGE_KEYS.AUTH_TOKEN, `tok_return_${adminId}_${Date.now()}`);
+    this.safeSetItem(DB_STORAGE_KEYS.CURRENT_USER_ID, adminId);
+    this.safeSetItem(DB_STORAGE_KEYS.AUTH_TOKEN, `tok_return_${adminId}_${Date.now()}`);
 
     this.logAction(
       'SWITCH_USER',
@@ -556,13 +750,13 @@ class DatabaseService {
 
   public getCurrentUserId(): string {
     if (typeof window === 'undefined') return 'usr-01';
-    return localStorage.getItem(DB_STORAGE_KEYS.CURRENT_USER_ID) || 'usr-01';
+    return this.safeGetItem(DB_STORAGE_KEYS.CURRENT_USER_ID) || 'usr-01';
   }
 
   public setCurrentUserId(userId: string) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(DB_STORAGE_KEYS.CURRENT_USER_ID, userId);
-    localStorage.setItem(DB_STORAGE_KEYS.AUTH_TOKEN, `tok_${userId}_${Date.now()}`);
+    this.safeSetItem(DB_STORAGE_KEYS.CURRENT_USER_ID, userId);
+    this.safeSetItem(DB_STORAGE_KEYS.AUTH_TOKEN, `tok_${userId}_${Date.now()}`);
     this.notify();
   }
 
@@ -599,7 +793,8 @@ class DatabaseService {
       entityTitle,
       details,
     };
-    this.setList(DB_STORAGE_KEYS.AUDIT_LOGS, [newLog, ...logs]);
+    const updatedLogs = [newLog, ...logs].slice(0, 60);
+    this.setList(DB_STORAGE_KEYS.AUDIT_LOGS, updatedLogs);
     this.apiCall('/api/audit-logs', 'POST', newLog);
     firestoreSync.saveAuditLog(newLog);
   }
@@ -608,11 +803,28 @@ class DatabaseService {
     return this.getList<AuditLog>(DB_STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
   }
 
+  public clearAuditLogs(actor?: User) {
+    const currentActor = actor || this.getCurrentUser();
+    const defaultLog: AuditLog = {
+      id: 'log-' + Date.now(),
+      timestamp: new Date().toISOString(),
+      userId: currentActor?.id,
+      userName: currentActor?.fullName || 'Hệ thống',
+      userAvatar: currentActor?.avatar,
+      action: 'DELETE',
+      entityType: 'USER',
+      entityId: 'audit-logs',
+      entityTitle: 'Nhật ký truy vết',
+      details: 'Đã dọn dẹp bộ nhớ đệm nhật ký hệ thống',
+    };
+    this.setList(DB_STORAGE_KEYS.AUDIT_LOGS, [defaultLog]);
+  }
+
   // --- Notifications Helper: Persistent Read IDs ---
   private getPersistentReadNotifIds(): Set<string> {
     if (typeof window === 'undefined') return new Set();
     try {
-      const raw = localStorage.getItem('vanphong_so_read_notif_ids');
+      const raw = this.safeGetItem('vanphong_so_read_notif_ids');
       return raw ? new Set(JSON.parse(raw)) : new Set();
     } catch {
       return new Set();
@@ -624,7 +836,8 @@ class DatabaseService {
     try {
       const current = this.getPersistentReadNotifIds();
       idsToAdd.forEach((id) => current.add(id));
-      localStorage.setItem('vanphong_so_read_notif_ids', JSON.stringify(Array.from(current)));
+      const capped = Array.from(current).slice(-60);
+      this.safeSetItem('vanphong_so_read_notif_ids', JSON.stringify(capped));
     } catch {}
   }
 
@@ -1140,7 +1353,7 @@ class DatabaseService {
   // --- Master Data ---
   public getMasterData(): MasterData {
     if (typeof window === 'undefined') return INITIAL_MASTER_DATA;
-    const raw = localStorage.getItem(DB_STORAGE_KEYS.MASTER_DATA);
+    const raw = this.safeGetItem(DB_STORAGE_KEYS.MASTER_DATA);
     if (!raw) return INITIAL_MASTER_DATA;
     try {
       const parsed = JSON.parse(raw);
@@ -1186,7 +1399,7 @@ class DatabaseService {
 
   public saveMasterData(data: MasterData, actor?: User) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(data));
+    this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(data));
     this.notify();
     this.logAction('UPDATE', 'CATEGORY', 'master-data', 'Danh mục dùng chung', 'Cập nhật danh mục hệ thống', actor);
     firestoreSync.saveMasterData(data);
@@ -1680,15 +1893,21 @@ CREATE TABLE \`notifications\` (
     try {
       const parsed = JSON.parse(jsonString);
       const data = parsed.data || parsed;
-      if (data.users) localStorage.setItem(DB_STORAGE_KEYS.USERS, JSON.stringify(data.users));
-      if (data.dossiers) localStorage.setItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(data.dossiers));
-      if (data.incomingDocs) localStorage.setItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(data.incomingDocs));
-      if (data.outgoingDocs) localStorage.setItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(data.outgoingDocs));
-      if (data.tasks) localStorage.setItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(data.tasks));
-      if (data.attachments) localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(data.attachments));
-      if (data.auditLogs) localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(data.auditLogs));
-      if (data.notifications) localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(data.notifications));
-      if (data.masterData) localStorage.setItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(data.masterData));
+      if (data.users) this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(data.users));
+      if (data.dossiers) this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(data.dossiers));
+      if (data.incomingDocs) this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(data.incomingDocs));
+      if (data.outgoingDocs) this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(data.outgoingDocs));
+      if (data.tasks) this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(data.tasks));
+      if (data.attachments) this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(data.attachments));
+      if (data.auditLogs) {
+        const capped = Array.isArray(data.auditLogs) ? data.auditLogs.slice(0, 60) : [];
+        this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(capped));
+      }
+      if (data.notifications) {
+        const capped = Array.isArray(data.notifications) ? data.notifications.slice(0, 60) : [];
+        this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(capped));
+      }
+      if (data.masterData) this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(data.masterData));
       this.notify();
       return true;
     } catch (err) {
