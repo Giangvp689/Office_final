@@ -66,7 +66,7 @@ export function isTableEngineCorrupted(err: any): boolean {
 export function getDbConfig(): DbConfig {
   if (currentConfig) return currentConfig;
 
-  const host = (process.env.DB_HOST || process.env.MYSQL_HOST || '').trim() || '127.0.0.1';
+  const host = (process.env.DB_HOST || process.env.MYSQL_HOST || '').trim();
   const user = (process.env.DB_USER || process.env.MYSQL_USER || '').trim() || 'root';
   const password = (process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : (process.env.MYSQL_PASSWORD !== undefined ? process.env.MYSQL_PASSWORD : '')).trim();
   const database = (process.env.DB_NAME || process.env.MYSQL_DATABASE || '').trim() || 'vanphong_so';
@@ -104,6 +104,10 @@ export function getPool(): mysql.Pool | null {
   if (pool) return pool;
   try {
     const config = getDbConfig();
+    if (!config.host) {
+      connectionError = 'MySQL chưa được cấu hình DB_HOST';
+      return null;
+    }
     pool = mysql.createPool({
       host: config.host,
       user: config.user,
@@ -535,6 +539,15 @@ export async function checkMySqlConnection(): Promise<{
   tablesCount?: number;
 }> {
   const config = getDbConfig();
+  if (!config.host) {
+    isConnected = false;
+    connectionError = 'Chưa cấu hình DB_HOST cho MySQL';
+    return {
+      connected: false,
+      config,
+      error: connectionError,
+    };
+  }
   try {
     const p = getPool();
     if (!p) throw new Error('Không thể khởi tạo kết nối MySQL Pool');

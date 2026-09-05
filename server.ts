@@ -78,7 +78,14 @@ function getAIClient(): GoogleGenAI {
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong file .env. Hãy điền khóa API vào file .env rồi khởi động lại server.');
   }
   if (!aiClient) {
-    aiClient = new GoogleGenAI({ apiKey });
+    aiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
   }
   return aiClient;
 }
@@ -91,8 +98,8 @@ async function generateGeminiContent(options: {
   jsonMode?: boolean;
 }): Promise<string> {
   const ai = getAIClient();
-  // Order of models: prioritize ultra-stable and high-availability models with fallback cascade
-  const models = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.7-flash', 'gemini-2.5-pro'];
+  // Order of models: prioritize ultra-stable gemini-3.6-flash and high-availability lite models
+  const models = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
   let lastError: any = null;
 
   let requestContents: any;
@@ -105,31 +112,21 @@ async function generateGeminiContent(options: {
   }
 
   for (const model of models) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: requestContents,
-          config: options.jsonMode ? { responseMimeType: 'application/json' } : undefined,
-        });
-        if (response.text) {
-          return response.text;
-        }
-      } catch (err: any) {
-        lastError = err;
-        const errMsg = err?.message || String(err);
-        const is503OrRateLimit = errMsg.includes('503') || errMsg.includes('high demand') || errMsg.includes('UNAVAILABLE') || errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED');
-        
-        console.warn(`[Gemini] Model ${model} (attempt ${attempt + 1}) encountered error:`, errMsg);
-        
-        if (is503OrRateLimit && attempt === 0) {
-          // Quick wait before 2nd attempt or switching to next model
-          await new Promise((r) => setTimeout(r, 400));
-        } else {
-          // Switch to next model immediately
-          break;
-        }
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: requestContents,
+        config: options.jsonMode ? { responseMimeType: 'application/json' } : undefined,
+      });
+      if (response.text) {
+        return response.text;
       }
+    } catch (err: any) {
+      lastError = err;
+      const errMsg = err?.message || String(err);
+      console.warn(`[Gemini] Model ${model} encountered error, failing over to next model:`, errMsg);
+      // Immediately failover to the next candidate model in the cascade
+      continue;
     }
   }
 

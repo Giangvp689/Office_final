@@ -299,6 +299,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       if (res.title) setInputTitle(res.title);
       if (res.text) {
         setInputText(res.text);
+        setSuccessActionMsg(`Đã trích xuất thành công ${res.text.length.toLocaleString('vi-VN')} ký tự từ tệp "${file.name}"!`);
       }
       if (!res.success && res.error) {
         setErrorMessage(res.error);
@@ -718,7 +719,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                   </button>
                   <label className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer flex items-center gap-1">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>{isReadingFile ? 'Đang quét OCR tệp...' : 'Tải tệp (.docx, PDF scan, Ảnh)'}</span>
+                    <span>{isReadingFile ? 'Đang trích xuất nội dung...' : 'Tải tệp (.docx, .pdf, ảnh)'}</span>
                     <input
                       type="file"
                       className="hidden"
@@ -729,12 +730,14 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                         if (file) {
                           setIsReadingFile(true);
                           setErrorMessage(null);
+                          setSuccessActionMsg(null);
                           try {
                             const res = await extractTextFromFile(file);
                             setFileName(file.name);
                             if (res.title) setInputTitle(res.title);
                             if (res.text) {
                               setInputText(res.text);
+                              setSuccessActionMsg(`Đã trích xuất thành công ${res.text.length.toLocaleString('vi-VN')} ký tự từ tệp "${file.name}"!`);
                             }
                             if (!res.success && res.error) {
                               setErrorMessage(res.error);
@@ -751,6 +754,31 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                   </label>
                 </div>
               </div>
+
+              {/* Uploaded File Banner */}
+              {fileName && (
+                <div className="flex items-center justify-between px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs text-indigo-900 animate-in fade-in">
+                  <div className="flex items-center gap-2 truncate">
+                    <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span className="font-bold truncate">{fileName}</span>
+                    <span className="text-slate-500 font-mono text-[11px] shrink-0">
+                      ({inputText.length.toLocaleString('vi-VN')} ký tự)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFileName('');
+                      setInputTitle('');
+                      setInputText('');
+                      setClassificationResult(null);
+                    }}
+                    className="text-xs text-rose-600 hover:text-rose-800 font-bold ml-2 shrink-0 cursor-pointer"
+                  >
+                    Xóa tệp
+                  </button>
+                </div>
+              )}
 
               {/* Title input */}
               <div>

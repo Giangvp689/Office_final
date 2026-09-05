@@ -9,8 +9,12 @@ import {
   Calendar,
   AlertCircle,
   FileText,
+  Upload,
+  Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
 import { User, Dossier, MasterData, UrgencyLevel, TaskPriority } from '../types';
+import { extractTextFromFile } from '../utils/fileExtractor';
 
 interface QuickCreateModalProps {
   isOpen: boolean;
@@ -60,6 +64,8 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
   const [incAssigneeId, setIncAssigneeId] = useState(users[0]?.id || '');
   const [incDueDate, setIncDueDate] = useState(new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]);
   const [incDossierId, setIncDossierId] = useState(dossiers[0]?.id || dossiers[0]?.code || '');
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractStatus, setExtractStatus] = useState<string | null>(null);
 
   // Form states - Outgoing Doc
   const [outDocNum, setOutDocNum] = useState('');
@@ -229,6 +235,63 @@ export const QuickCreateModal: React.FC<QuickCreateModalProps> = ({
           {/* TAB 1: INCOMING DOC */}
           {activeTab === 'INCOMING' && (
             <>
+              {/* Quick File Autofill */}
+              <div className="p-3 bg-gradient-to-r from-indigo-50/80 to-blue-50/80 rounded-xl border border-indigo-100 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-800 text-[11px] block">
+                      Tự động trích xuất thông tin từ tệp đính kèm
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      Hỗ trợ PDF, Word (.docx), TXT và ảnh scan văn bản
+                    </span>
+                  </div>
+                </div>
+                <label className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{isExtracting ? 'Đang trích xuất...' : 'Tải tệp tự điền'}</span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                    disabled={isExtracting}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setIsExtracting(true);
+                      setExtractStatus(null);
+                      try {
+                        const res = await extractTextFromFile(file);
+                        if (res.documentNumber) setIncOfficialNum(res.documentNumber);
+                        if (res.issuingAuthority) setIncAuthority(res.issuingAuthority);
+                        if (res.docType) setIncDocType(res.docType);
+                        if (res.title || res.summary) setIncSummary(res.title || res.summary || '');
+                        if (res.success && res.text) {
+                          setExtractStatus(`Đã trích xuất thông tin từ "${file.name}" và tự động điền form!`);
+                        } else if (res.error) {
+                          setExtractStatus(res.error);
+                        }
+                      } catch {
+                        setExtractStatus('Lỗi khi đọc tệp');
+                      } finally {
+                        setIsExtracting(false);
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              {extractStatus && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-[11px] font-semibold flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{extractStatus}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Số đến nội bộ *</label>
