@@ -136,6 +136,34 @@ export const App: React.FC = () => {
     setActiveTarget({ type: normalizedType, id, timestamp: Date.now() });
   };
 
+  const handleDraftOutgoingDocFromTask = (task: Task) => {
+    const leaderUser = users.find((u) => u.role === 'LEADER') || users.find((u) => u.role === 'ADMIN') || currentUser;
+    const summaryText = `Dự thảo Báo cáo / Công văn trả lời thực hiện nhiệm vụ [${task.code}]: ${task.title}`;
+    const newOutgoingDoc: OutgoingDocument = {
+      id: `out-${Date.now()}`,
+      documentNumber: `DT-${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
+      summary: summaryText,
+      title: summaryText,
+      releaseDate: new Date().toISOString().split('T')[0],
+      docType: 'Công văn',
+      department: (currentUser.department as any) || 'Phòng Chuyên Môn',
+      drafterId: currentUser.id,
+      signerId: task.creatorId || task.createdById || leaderUser.id,
+      recipient: task.incomingDocId
+        ? incomingDocs.find((d) => d.id === task.incomingDocId)?.issuingAuthority || 'Cơ quan cấp trên'
+        : 'Cơ quan cấp trên / Lãnh đạo đơn vị',
+      status: 'DRAFT',
+      dossierId: task.dossierId || '',
+      replyToDocId: task.incomingDocId || '',
+      attachments: task.attachments || [],
+      createdById: currentUser.id,
+      createdAt: new Date().toISOString(),
+    };
+    db.saveOutgoingDoc(newOutgoingDoc, currentUser);
+    setActiveTarget({ type: 'OUTGOING_DOC', id: newOutgoingDoc.id, timestamp: Date.now() });
+    setCurrentSection('OUTGOING_DOCS');
+  };
+
   return (
     <div className="flex h-screen w-screen bg-slate-50 overflow-hidden font-sans text-slate-800 antialiased">
       {/* Sleek Sidebar */}
@@ -235,17 +263,19 @@ export const App: React.FC = () => {
               onSaveDoc={(doc) => db.saveIncomingDoc(doc, currentUser)}
               onDeleteDoc={(id) => db.deleteIncomingDoc(id, currentUser)}
               onCreateTaskFromDoc={(doc) => {
+                const newTaskId = 'task-' + Date.now();
                 db.saveTask(
                   {
-                    id: 'task-' + Date.now(),
+                    id: newTaskId,
                     code: 'CV-' + new Date().getFullYear() + '-' + Math.floor(Math.random() * 900 + 100),
                     title: `Xử lý VB đến: ${doc.summary.slice(0, 60)}...`,
-                    description: `Căn cứ văn bản đến số ${doc.documentNumber} do ${doc.issuingAuthority} ban hành. Yêu cầu nghiên cứu và thực hiện đúng thời hạn.`,
+                    description: `Căn cứ văn bản đến số ${doc.documentNumber} do ${doc.issuingAuthority} ban hành. Yêu cầu chủ trì nghiên cứu và thực hiện đúng thời hạn.`,
                     dossierId: doc.dossierId,
                     incomingDocId: doc.id,
                     linkedDocId: doc.id,
                     docTypeRelation: 'INCOMING',
                     createdById: currentUser.id,
+                    creatorId: currentUser.id,
                     assigneeId: doc.assigneeId || currentUser.id,
                     coAssigneeIds: doc.coAssigneeIds || [],
                     priority: doc.urgency === 'HOA_TOC' ? 'URGENT' : doc.urgency === 'KHAN' ? 'HIGH' : 'MEDIUM',
@@ -254,13 +284,25 @@ export const App: React.FC = () => {
                     progress: 0,
                     status: 'IN_PROGRESS',
                     subTasks: [
-                      { id: 'sub-1', title: 'Nghiên cứu văn bản và tài liệu đính kèm', completed: false },
-                      { id: 'sub-2', title: 'Soạn thảo văn bản phản hồi / báo cáo kết quả', completed: false },
+                      { id: 'sub-1', title: 'Tiếp nhận văn bản & nghiên cứu tài liệu đính kèm', completed: false },
+                      { id: 'sub-2', title: 'Dự thảo phương án xử lý / văn bản trả lời', completed: false },
+                      { id: 'sub-3', title: 'Báo cáo kết quả và trình Lãnh đạo nghiệm thu', completed: false },
                     ],
                     attachments: doc.attachments || [],
                   },
                   currentUser
                 );
+
+                const updatedLinkedTasks = [...(doc.linkedTaskIds || []), newTaskId];
+                db.saveIncomingDoc(
+                  {
+                    ...doc,
+                    status: doc.status === 'PENDING_ASSIGN' ? 'PROCESSING' : doc.status,
+                    linkedTaskIds: updatedLinkedTasks,
+                  },
+                  currentUser
+                );
+
                 setCurrentSection('ALL_TASKS');
               }}
               currentUser={currentUser}
@@ -291,11 +333,13 @@ export const App: React.FC = () => {
               users={users}
               dossiers={dossiers}
               incomingDocs={incomingDocs}
+              outgoingDocs={outgoingDocs}
               onSaveTask={(task) => db.saveTask(task, currentUser)}
               onDeleteTask={(id) => db.deleteTask(id, currentUser)}
               currentUser={currentUser}
               filterMode="ALL"
               onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              onDraftOutgoingDoc={handleDraftOutgoingDocFromTask}
               initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
             />
           )}
@@ -306,11 +350,13 @@ export const App: React.FC = () => {
               users={users}
               dossiers={dossiers}
               incomingDocs={incomingDocs}
+              outgoingDocs={outgoingDocs}
               onSaveTask={(task) => db.saveTask(task, currentUser)}
               onDeleteTask={(id) => db.deleteTask(id, currentUser)}
               currentUser={currentUser}
               filterMode="ASSIGNED_TO_ME"
               onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              onDraftOutgoingDoc={handleDraftOutgoingDocFromTask}
               initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
             />
           )}
@@ -321,11 +367,13 @@ export const App: React.FC = () => {
               users={users}
               dossiers={dossiers}
               incomingDocs={incomingDocs}
+              outgoingDocs={outgoingDocs}
               onSaveTask={(task) => db.saveTask(task, currentUser)}
               onDeleteTask={(id) => db.deleteTask(id, currentUser)}
               currentUser={currentUser}
               filterMode="DELEGATED_BY_ME"
               onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              onDraftOutgoingDoc={handleDraftOutgoingDocFromTask}
               initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
             />
           )}

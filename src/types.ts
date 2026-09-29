@@ -124,6 +124,9 @@ export interface IncomingDocument {
   status: IncomingDocStatus;
   resultSummary?: string; // Tóm tắt kết quả xử lý
   dossierId?: string; // Liên kết mã hồ sơ
+  leaderDirective?: string; // Ý kiến chỉ đạo của Lãnh đạo khi giao việc
+  assignedAt?: string;
+  leaderId?: string; // Lãnh đạo chỉ đạo
   attachments: AttachmentFile[];
   linkedTaskIds?: string[];
   createdById?: string;
@@ -137,10 +140,16 @@ export interface OutgoingDocument {
   releaseDate: string; // Ngày phát hành
   docType: string; // Công văn, Tờ trình, Báo cáo, Quyết định...
   recipient: string; // Đơn vị nhận
+  department?: string; // Phòng ban soạn thảo
   summary: string; // Trích yếu
+  title?: string; // Tiêu đề / trích yếu (alias)
   content?: string; // Toàn văn dự thảo
   drafterId?: string; // Người soạn thảo
   signerId?: string; // Người ký duyệt
+  signerNote?: string; // Ý kiến phê duyệt của Lãnh đạo
+  signedAt?: string; // Thời điểm ký số
+  issuedAt?: string; // Thời điểm văn thư cấp số & phát hành
+  clerkId?: string; // Văn thư thực hiện phát hành
   status: OutgoingDocStatus;
   dossierId?: string; // Liên kết mã hồ sơ
   replyToDocId?: string; // Trả lời cho VB Đến nào
@@ -188,6 +197,11 @@ export interface Task {
   progress: number; // 0 - 100
   status: TaskStatus;
   resultNotes?: string;
+  submissionNote?: string; // Báo cáo kết quả của chuyên viên khi trình duyệt
+  leaderFeedback?: string; // Ý kiến chỉ đạo / đánh giá của Lãnh đạo khi duyệt hoặc trả lại
+  approvedById?: string; // Lãnh đạo duyệt hoàn thành
+  approvedAt?: string; // Thời điểm Lãnh đạo phê duyệt
+  submittedAt?: string; // Thời điểm chuyên viên trình duyệt
   subTasks?: TaskSubItem[];
   attachments: AttachmentFile[];
   comments?: TaskComment[];
@@ -221,10 +235,16 @@ export interface SystemNotification {
     | 'NEW_TASK'
     | 'TASK_ASSIGNED'
     | 'TASK_STATUS_CHANGED'
+    | 'TASK_APPROVAL_REQUEST'
+    | 'TASK_APPROVED'
+    | 'TASK_REJECTED'
     | 'TASK_COMMENT'
     | 'DOC_ASSIGNED'
     | 'DOC_INCOMING'
     | 'DOC_OUTGOING'
+    | 'DOC_SIGN_REQUEST'
+    | 'DOC_SIGNED'
+    | 'DOC_ISSUED'
     | 'STATUS_UPDATED'
     | 'INFO'
     | 'WARNING';

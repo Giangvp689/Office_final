@@ -36,10 +36,13 @@ import {
   Calendar,
   Layers,
   Lock,
+  CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 import { draftOutgoingDocWithAI } from '../services/aiService';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { canAccessOutgoingDoc, isLeaderOrAdmin, isClerk } from '../utils/permission';
+import { dbService } from '../services/db';
 
 interface OutgoingDocsViewProps {
   docs: OutgoingDocument[];
@@ -911,6 +914,219 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* WORKFLOW STEPPER & ACTION PANELS */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Quy Trình Xử Lý & Phát Hành Văn Bản Đi
+                  </span>
+                  <span className="text-[10px] text-indigo-600 font-semibold">Theo NĐ 30/2020/NĐ-CP</span>
+                </div>
+
+                {/* 4-Step Stepper */}
+                <div className="grid grid-cols-4 gap-1.5 text-center">
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 ${
+                    selectedDoc.status === 'DRAFT'
+                      ? 'bg-slate-800 text-white border-slate-900 ring-2 ring-slate-400/40'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  }`}>
+                    <span>1. Dự thảo</span>
+                    <span className="text-[9px] font-normal opacity-80">Chuyên viên soạn</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 ${
+                    selectedDoc.status === 'REVIEWING'
+                      ? 'bg-purple-600 text-white border-purple-700 ring-2 ring-purple-400/40 animate-pulse'
+                      : selectedDoc.status === 'SIGNED' || selectedDoc.status === 'ISSUED' || selectedDoc.status === 'SENT'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-white text-slate-400 border-slate-200'
+                  }`}>
+                    <span>2. Trình ký</span>
+                    <span className="text-[9px] font-normal opacity-80">Chờ Lãnh đạo</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 ${
+                    selectedDoc.status === 'SIGNED'
+                      ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-400/40 animate-pulse'
+                      : selectedDoc.status === 'ISSUED' || selectedDoc.status === 'SENT'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-white text-slate-400 border-slate-200'
+                  }`}>
+                    <span>3. Ký số</span>
+                    <span className="text-[9px] font-normal opacity-80">Lãnh đạo ký</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 ${
+                    selectedDoc.status === 'ISSUED' || selectedDoc.status === 'SENT'
+                      ? 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-400/40'
+                      : 'bg-white text-slate-400 border-slate-200'
+                  }`}>
+                    <span>4. Phát hành</span>
+                    <span className="text-[9px] font-normal opacity-80">Văn thư cấp số</span>
+                  </div>
+                </div>
+
+                {/* ROLE SPECIFIC ACTION BANNERS */}
+
+                {/* Step 1: DRAFT -> Chuyên viên Trình ký Lãnh đạo */}
+                {selectedDoc.status === 'DRAFT' && (
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-xs">
+                      <span className="font-bold text-slate-800 block">Văn bản đang ở mức Dự thảo</span>
+                      <span className="text-[11px] text-slate-500">
+                        Người ký được chỉ định: <strong>{getUser(selectedDoc.signerId)?.fullName || 'Lãnh đạo'}</strong>
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = dbService.submitOutgoingDocForSign(selectedDoc.id, currentUser);
+                        if (updated) {
+                          setSelectedDoc(updated);
+                          onSaveDoc(updated);
+                        }
+                      }}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Trình Ký Lãnh Đạo</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Step 2: REVIEWING -> Lãnh đạo Phê duyệt & Ký số */}
+                {selectedDoc.status === 'REVIEWING' && (
+                  <div className="bg-purple-50/80 border border-purple-200 p-3.5 rounded-xl space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-600 animate-ping"></span>
+                        <span className="font-bold text-purple-950 text-xs">
+                          Văn bản đang chờ Lãnh đạo phê duyệt & ký số
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-purple-800 bg-purple-100 font-bold px-2 py-0.5 rounded-full">
+                        Người ký: {getUser(selectedDoc.signerId)?.fullName}
+                      </span>
+                    </div>
+
+                    {isLeaderOrAdmin(currentUser) || selectedDoc.signerId === currentUser?.id ? (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const note = prompt('Nhập ý kiến phê duyệt / xác nhận ký số điện tử:', 'Đã xem xét và đồng ý ký số duyệt ban hành.');
+                            if (note !== null) {
+                              const updated = dbService.signOutgoingDoc(selectedDoc.id, currentUser, note);
+                              if (updated) {
+                                setSelectedDoc(updated);
+                                onSaveDoc(updated);
+                              }
+                            }
+                          }}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Phê Duyệt & Ký Số Điện Tử</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const reason = prompt('Nhập lý do trả lại yêu cầu sửa đổi dự thảo:');
+                            if (reason) {
+                              const updated: OutgoingDocument = {
+                                ...selectedDoc,
+                                status: 'DRAFT',
+                                summary: `${selectedDoc.summary} [Lãnh đạo yêu cầu sửa: ${reason}]`,
+                                updatedAt: new Date().toISOString(),
+                              };
+                              dbService.saveOutgoingDoc(updated, currentUser);
+                              setSelectedDoc(updated);
+                              onSaveDoc(updated);
+                            }
+                          }}
+                          className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Yêu cầu sửa dự thảo</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-purple-900 italic">
+                        Dự thảo đã được gửi tới Lãnh đạo <strong>{getUser(selectedDoc.signerId)?.fullName}</strong>. Vui lòng chờ Thủ trưởng kiểm tra và ký số.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 3: SIGNED -> Văn thư cấp số & phát hành */}
+                {selectedDoc.status === 'SIGNED' && (
+                  <div className="bg-indigo-50/80 border border-indigo-200 p-3.5 rounded-xl space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span className="font-bold text-indigo-950 text-xs">
+                          Văn bản đã được Lãnh đạo ký số &bull; Chờ Văn thư phát hành
+                        </span>
+                      </div>
+                      {selectedDoc.signedAt && (
+                        <span className="text-[10px] text-indigo-700 font-mono">
+                          Ký lúc: {new Date(selectedDoc.signedAt).toLocaleDateString('vi-VN')}
+                        </span>
+                      )}
+                    </div>
+
+                    {isClerk(currentUser) || isLeaderOrAdmin(currentUser) ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <span className="text-[11px] text-slate-600">
+                          Văn thư kiểm tra thể thức, đóng dấu số và chuyển phát hành chính thức:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newNum = prompt('Nhập Số văn bản đi chính thức vào sổ:', selectedDoc.documentNumber);
+                            if (newNum !== null) {
+                              const updated = dbService.issueOutgoingDoc(selectedDoc.id, currentUser, newNum);
+                              if (updated) {
+                                setSelectedDoc(updated);
+                                onSaveDoc(updated);
+                              }
+                            }
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Cấp Số, Đóng Dấu & Phát Hành Đi</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-indigo-900 italic">
+                        Lãnh đạo đã ký số điện tử hoàn tất. Đang chuyển Văn thư cơ quan vào sổ, đóng dấu và phát hành văn bản.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 4: ISSUED / SENT -> Đã phát hành chính thức */}
+                {(selectedDoc.status === 'ISSUED' || selectedDoc.status === 'SENT') && (
+                  <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 text-xs">
+                      <span className="font-bold text-emerald-950 block">
+                        Văn bản đã phát hành chính thức đến nơi nhận
+                      </span>
+                      <span className="text-[11px] text-emerald-800">
+                        Nơi nhận: <strong>{selectedDoc.recipient}</strong> &bull; Số lưu: <strong>{selectedDoc.documentNumber}</strong>
+                        {selectedDoc.issuedAt && ` &bull; Ngày: ${new Date(selectedDoc.issuedAt).toLocaleDateString('vi-VN')}`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Bottom Actions */}
@@ -1276,17 +1492,26 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Trạng thái văn bản</label>
-                  <select
-                    value={editingDoc.status || 'DRAFT'}
-                    onChange={(e) => setEditingDoc({ ...editingDoc, status: e.target.value as OutgoingDocStatus })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold cursor-pointer"
-                  >
-                    <option value="DRAFT">Dự thảo</option>
-                    <option value="REVIEWING">Chờ duyệt</option>
-                    <option value="SIGNED">Đã ký duyệt</option>
-                    <option value="ISSUED">Đã phát hành</option>
-                    <option value="SENT">Đã gửi đi</option>
-                  </select>
+                  {isLeaderOrAdmin(currentUser) || isClerk(currentUser) ? (
+                    <select
+                      value={editingDoc.status || 'DRAFT'}
+                      onChange={(e) => setEditingDoc({ ...editingDoc, status: e.target.value as OutgoingDocStatus })}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold cursor-pointer"
+                    >
+                      <option value="DRAFT">Dự thảo</option>
+                      <option value="REVIEWING">Chờ duyệt ký</option>
+                      <option value="SIGNED">Đã ký duyệt (Lãnh đạo)</option>
+                      <option value="ISSUED">Đã phát hành (Văn thư)</option>
+                      <option value="SENT">Đã gửi đi</option>
+                    </select>
+                  ) : (
+                    <div className="p-2.5 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold text-slate-700">
+                      <span>{editingDoc.status === 'ISSUED' || editingDoc.status === 'SENT' ? 'Đã phát hành' : editingDoc.status === 'SIGNED' ? 'Đã ký số' : editingDoc.status === 'REVIEWING' ? 'Chờ duyệt ký' : 'Dự thảo'}</span>
+                      <span className="block text-[10px] text-slate-500 font-normal mt-0.5">
+                        * Nhân viên soạn thảo văn bản ở mức "Dự thảo". Lãnh đạo ký số và Văn thư cấp số phát hành.
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

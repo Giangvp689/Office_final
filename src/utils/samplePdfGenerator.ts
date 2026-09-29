@@ -185,3 +185,166 @@ export function downloadSamplePdfFile(preset: SampleDocPreset) {
   document.body.removeChild(link);
   setTimeout(() => URL.revokeObjectURL(link.href), 10000);
 }
+
+/**
+ * Remove Vietnamese accents for clean PDF rendering in default jsPDF helvetica
+ */
+function removeVietnameseTones(str: string): string {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D');
+}
+
+/**
+ * Tạo tệp PDF Báo cáo kết quả xử lý công việc chuẩn hành chính của Chuyên viên
+ */
+export function generateTaskResultReportPdf(
+  task: { code: string; title: string; description?: string; subTasks?: { title: string; completed: boolean }[] },
+  staff: { fullName: string; department?: string; position?: string },
+  customNote?: string
+): { blob: Blob; file: File; url: string; base64: string; fileName: string; fileSize: number } {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 20;
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+
+  // Header Left (Agency)
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'bold');
+  const agencyText = removeVietnameseTones(staff.department || 'VAN PHONG CO QUAN');
+  doc.text(agencyText.toUpperCase(), margin, 22);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`So: BC-${task.code.replace(/[^a-zA-Z0-9]/g, '')}`, margin, 27);
+  doc.setLineWidth(0.3);
+  doc.line(margin, 29, margin + 40, 29);
+
+  // Header Right (Nation)
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('CONG HOA XA HOI CHU NGHIA VIET NAM', pageWidth - margin, 22, { align: 'right' });
+  doc.setFont('helvetica', 'italic');
+  doc.text('Doc lap - Tu do - Hanh phuc', pageWidth - margin, 27, { align: 'right' });
+  doc.setLineWidth(0.3);
+  doc.line(pageWidth - margin - 50, 29, pageWidth - margin, 29);
+
+  // Date
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'italic');
+  doc.text(`Ngay ${day} thang ${month} nam ${year}`, pageWidth - margin, 36, { align: 'right' });
+
+  // Title
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text('BAO CAO KET QUA HOAN THANH NHIEM VU', pageWidth / 2, 46, { align: 'center' });
+  doc.setFontSize(10.5);
+  doc.setFont('helvetica', 'italic');
+  doc.text(`(Nhiem vu: ${removeVietnameseTones(task.code)} - ${removeVietnameseTones(task.title.slice(0, 50))})`, pageWidth / 2, 52, { align: 'center' });
+
+  // To Leader
+  let currentY = 62;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Kinh gui: Thu truong don vi / Lanh dao phu trach', margin, currentY);
+
+  currentY += 8;
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Can bo bao cao: ${removeVietnameseTones(staff.fullName)}`, margin, currentY);
+  doc.text(`Chuc vu / Phong ban: ${removeVietnameseTones(staff.position || staff.department || 'Chuyen vien')}`, margin + 85, currentY);
+
+  currentY += 7;
+  doc.text(`Ma nhiem vu: ${removeVietnameseTones(task.code)}`, margin, currentY);
+  doc.text(`Ngay trinh bao cao: ${day}/${month}/${year}`, margin + 85, currentY);
+
+  // Divider
+  currentY += 4;
+  doc.setDrawColor(200, 200, 200);
+  doc.line(margin, currentY, pageWidth - margin, currentY);
+  currentY += 6;
+
+  // Section 1: Overview
+  doc.setFont('helvetica', 'bold');
+  doc.text('I. NOI DUNG NHIEM VU DUOC GIAO:', margin, currentY);
+  currentY += 6;
+  doc.setFont('helvetica', 'normal');
+  const taskDesc = removeVietnameseTones(task.description || task.title);
+  const descLines = doc.splitTextToSize(taskDesc, pageWidth - margin * 2);
+  doc.text(descLines, margin, currentY);
+  currentY += descLines.length * 5 + 4;
+
+  // Section 2: Subtasks / checklist
+  doc.setFont('helvetica', 'bold');
+  doc.text('II. KET QUA TRIEN KHAI CAC HANG MUC CONG VIEC:', margin, currentY);
+  currentY += 6;
+  doc.setFont('helvetica', 'normal');
+
+  const subTasks = task.subTasks && task.subTasks.length > 0 ? task.subTasks : [
+    { title: 'Nghien cuu van ban va ho so lien quan', completed: true },
+    { title: 'Xay dung phuong an xu ly va thuc hien', completed: true },
+    { title: 'Hoan thien san pham dau ra va du thao bao cao', completed: true }
+  ];
+
+  subTasks.forEach((st, idx) => {
+    const statusText = st.completed ? '[DA HOAN THANH - 100%]' : '[DANG TIEN HANH]';
+    const stLine = `${idx + 1}. ${removeVietnameseTones(st.title)}: ${statusText}`;
+    doc.text(stLine, margin + 4, currentY);
+    currentY += 5.5;
+  });
+
+  currentY += 3;
+
+  // Section 3: Summary & Proposal
+  doc.setFont('helvetica', 'bold');
+  doc.text('III. KET QUA THUC TE VA KIEN NGHI THAM DINH:', margin, currentY);
+  currentY += 6;
+  doc.setFont('helvetica', 'normal');
+  const noteContent = customNote?.trim()
+    ? removeVietnameseTones(customNote)
+    : 'Can bo da hoan thanh day du toan bo noi dung va san pham dau ra theo dung yeu cau. Cac tai lieu dinh kem, so lieu tong hop da duoc kiem tra ky luong va dap ung tien do.';
+  const noteLines = doc.splitTextToSize(noteContent, pageWidth - margin * 2);
+  doc.text(noteLines, margin, currentY);
+  currentY += noteLines.length * 5 + 4;
+
+  // Proposal
+  doc.text('Kinh trinh Lanh dao xem xet phe duyet va nghiem thu hoan thanh nhiem vu theo quy dinh./.', margin, currentY);
+
+  // Signer block
+  currentY = Math.max(currentY + 16, 230);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('NGUOI BAO CAO', pageWidth - margin - 35, currentY, { align: 'center' });
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'italic');
+  doc.text('(Ky va ghi ro ho ten)', pageWidth - margin - 35, currentY + 5, { align: 'center' });
+
+  // Signature box
+  doc.setFontSize(10.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 58, 138); // Blue for signature
+  doc.text(removeVietnameseTones(staff.fullName), pageWidth - margin - 35, currentY + 28, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+
+  const fileName = `BaoCao_KetQua_${task.code.replace(/[^a-zA-Z0-9]/g, '_')}_${day}${month}${year}.pdf`;
+  const pdfBlob = doc.output('blob');
+  const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+  const url = URL.createObjectURL(pdfBlob);
+  const base64 = doc.output('datauristring');
+
+  return {
+    blob: pdfBlob,
+    file,
+    url,
+    base64,
+    fileName,
+    fileSize: pdfBlob.size,
+  };
+}

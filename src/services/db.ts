@@ -1194,66 +1194,99 @@ class DatabaseService {
     const tasks = this.getTasks();
     const idx = tasks.findIndex((t) => t.id === task.id);
     let updated: Task[];
+    const isLeaderOrAdminUser = actor ? (actor.role === 'ADMIN' || actor.role === 'LEADER') : false;
+
+    // Workflow protection: If a non-leader tries to mark task as COMPLETED directly,
+    // intercept and set status to WAITING_APPROVAL so leader must approve!
+    let enforcedStatus = task.status;
+    let enforcedProgress = task.progress;
+
+    if (!isLeaderOrAdminUser && actor) {
+      if (enforcedStatus === 'COMPLETED' || enforcedProgress >= 100) {
+        enforcedStatus = 'WAITING_APPROVAL';
+      } else if (enforcedProgress > 0 && enforcedStatus === 'NOT_STARTED') {
+        enforcedStatus = 'IN_PROGRESS';
+      }
+    }
+
+    const taskToPersist: Task = {
+      ...task,
+      status: enforcedStatus,
+      progress: enforcedProgress,
+    };
+
     if (idx >= 0) {
       updated = [...tasks];
       const prev = tasks[idx];
-      updated[idx] = { ...task, updatedAt: new Date().toISOString() };
+      updated[idx] = { ...taskToPersist, updatedAt: new Date().toISOString() };
 
-      let actionDesc = `Cập nhật công việc: ${task.title} (Tiến độ: ${task.progress}%, Trạng thái: ${task.status})`;
-      if (prev.progress !== task.progress) {
-        actionDesc += ` | Tiến độ thay đổi từ ${prev.progress}% lên ${task.progress}%`;
+      let actionDesc = `Cập nhật công việc: ${taskToPersist.title} (Tiến độ: ${taskToPersist.progress}%, Trạng thái: ${taskToPersist.status})`;
+      if (prev.progress !== taskToPersist.progress) {
+        actionDesc += ` | Tiến độ: ${prev.progress}% -> ${taskToPersist.progress}%`;
       }
-      this.logAction('UPDATE', 'TASK', task.id, task.title, actionDesc, actor);
+      this.logAction('UPDATE', 'TASK', taskToPersist.id, taskToPersist.title, actionDesc, actor);
 
       // Notify if completed
-      if (task.status === 'COMPLETED' && prev.status !== 'COMPLETED' && task.createdById) {
+      if (taskToPersist.status === 'COMPLETED' && prev.status !== 'COMPLETED' && taskToPersist.createdById) {
         this.addNotification({
-          userId: task.createdById,
-          title: `Công việc đã hoàn thành: ${task.code}`,
-          message: `${this.getUserById(task.assigneeId)?.fullName} đã hoàn thành công việc "${task.title}".`,
-          type: 'STATUS_UPDATED',
+          userId: taskToPersist.createdById,
+          title: `Công việc đã nghiệm thu hoàn thành: ${taskToPersist.code}`,
+          message: `${this.getUserById(taskToPersist.assigneeId)?.fullName} đã hoàn thành công việc "${taskToPersist.title}".`,
+          type: 'TASK_APPROVED',
           linkType: 'TASK',
-          targetId: task.id,
+          targetId: taskToPersist.id,
         });
+      } else if (taskToPersist.status === 'WAITING_APPROVAL' && prev.status !== 'WAITING_APPROVAL') {
+        const leaderId = taskToPersist.creatorId || taskToPersist.createdById;
+        if (leaderId) {
+          this.addNotification({
+            userId: leaderId,
+            title: `📋 Trình duyệt nghiệm thu: ${taskToPersist.code}`,
+            message: `Cán bộ ${actor?.fullName || this.getUserById(taskToPersist.assigneeId)?.fullName} đã hoàn thành việc và trình Lãnh đạo phê duyệt nghiệm thu: "${taskToPersist.title}".`,
+            type: 'TASK_APPROVAL_REQUEST',
+            linkType: 'TASK',
+            targetId: taskToPersist.id,
+          });
+        }
       }
     } else {
-      updated = [{ ...task, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...tasks];
+      updated = [{ ...taskToPersist, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...tasks];
       this.logAction(
         'CREATE',
         'TASK',
-        task.id,
-        task.title,
-        `Giao nhiệm vụ mới mã ${task.code} cho ${this.getUserById(task.assigneeId)?.fullName || 'Cán bộ'} - Hạn chót: ${task.dueDate}`,
+        taskToPersist.id,
+        taskToPersist.title,
+        `Giao nhiệm vụ mới mã ${taskToPersist.code} cho ${this.getUserById(taskToPersist.assigneeId)?.fullName || 'Cán bộ'} - Hạn chót: ${taskToPersist.dueDate}`,
         actor
       );
 
       // Notify assignee
-      if (task.assigneeId) {
+      if (taskToPersist.assigneeId) {
         this.addNotification({
-          userId: task.assigneeId,
-          title: `Bạn được giao công việc mới: ${task.code}`,
-          message: `Nhiệm vụ: "${task.title}". Hạn hoàn thành: ${task.dueDate}.`,
+          userId: taskToPersist.assigneeId,
+          title: `Bạn được giao công việc mới: ${taskToPersist.code}`,
+          message: `Nhiệm vụ: "${taskToPersist.title}". Hạn hoàn thành: ${taskToPersist.dueDate}.`,
           type: 'NEW_TASK',
           linkType: 'TASK',
-          targetId: task.id,
+          targetId: taskToPersist.id,
         });
       }
     }
     this.setList(DB_STORAGE_KEYS.TASKS, updated);
-    this.apiCall('/api/tasks', 'POST', task);
-    firestoreSync.saveTask(task);
+    this.apiCall('/api/tasks', 'POST', taskToPersist);
+    firestoreSync.saveTask(taskToPersist);
 
-    if (task.attachments && task.attachments.length > 0) {
+    if (taskToPersist.attachments && taskToPersist.attachments.length > 0) {
       const existingAttachments = this.getAttachments();
       const updatedAttachments = [...existingAttachments];
 
-      for (const att of task.attachments) {
+      for (const att of taskToPersist.attachments) {
         const existingIdx = updatedAttachments.findIndex((a) => a.id === att.id);
         const attachmentToSave: AttachmentFile = {
           ...att,
-          relatedId: task.id,
+          relatedId: taskToPersist.id,
           category: 'HO_SO',
-          dossierId: task.dossierId || att.dossierId,
+          dossierId: taskToPersist.dossierId || att.dossierId,
         };
 
         if (existingIdx >= 0) {
@@ -1265,6 +1298,406 @@ class DatabaseService {
       }
       this.setList(DB_STORAGE_KEYS.ATTACHMENTS, updatedAttachments);
     }
+  }
+
+  /**
+   * Chuyên viên nộp báo cáo hoàn thành kèm tài liệu kết quả/minh chứng và trình Lãnh đạo phê duyệt nghiệm thu
+   */
+  public submitTaskForApproval(
+    taskId: string,
+    staff: User,
+    submissionNote?: string,
+    resultAttachments?: AttachmentFile[]
+  ): Task | undefined {
+    const tasks = this.getTasks();
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return undefined;
+
+    const note = submissionNote?.trim() || 'Báo cáo Lãnh đạo: Tôi đã hoàn thành toàn bộ các hạng mục công việc theo yêu cầu và kính trình Thủ trưởng xem xét, phê duyệt nghiệm thu.';
+    const now = new Date().toISOString();
+
+    // Merge attachments if provided
+    let finalAttachments = [...(task.attachments || [])];
+    if (resultAttachments && resultAttachments.length > 0) {
+      for (const resAtt of resultAttachments) {
+        if (!finalAttachments.some((a) => a.id === resAtt.id || (a.fileName === resAtt.fileName && a.fileSize === resAtt.fileSize))) {
+          finalAttachments.push({
+            ...resAtt,
+            relatedId: task.id,
+            dossierId: task.dossierId || resAtt.dossierId,
+            uploadedById: staff.id,
+            uploadedByName: staff.fullName,
+            uploadedAt: resAtt.uploadedAt || now,
+            category: 'CONG_VIEC',
+          });
+        }
+      }
+    }
+
+    const fileCount = finalAttachments.length;
+    const commentObj: TaskComment = {
+      id: `cm-sub-${Date.now()}`,
+      userId: staff.id,
+      userName: staff.fullName,
+      userAvatar: staff.avatar || '',
+      content: `📋 [TRÌNH BÁO CÁO NGHIỆM THU]: ${note}${fileCount > 0 ? ` (Kèm ${fileCount} tệp tài liệu kết quả/báo cáo)` : ''}`,
+      createdAt: now,
+      attachments: resultAttachments && resultAttachments.length > 0 ? resultAttachments : undefined,
+    };
+
+    const updatedTask: Task = {
+      ...task,
+      status: 'WAITING_APPROVAL',
+      progress: 100,
+      submissionNote: note,
+      submittedAt: now,
+      attachments: finalAttachments,
+      comments: [...(task.comments || []), commentObj],
+      updatedAt: now,
+    };
+
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    if (idx >= 0) {
+      tasks[idx] = updatedTask;
+      this.setList(DB_STORAGE_KEYS.TASKS, tasks);
+    }
+
+    // Persist new attachments to global attachments table & dossier
+    if (resultAttachments && resultAttachments.length > 0) {
+      const existingAtts = this.getAttachments();
+      const updatedAtts = [...existingAtts];
+      for (const att of resultAttachments) {
+        const attToSave: AttachmentFile = {
+          ...att,
+          relatedId: task.id,
+          category: 'HO_SO',
+          dossierId: task.dossierId || att.dossierId,
+          uploadedById: staff.id,
+          uploadedByName: staff.fullName,
+          uploadedAt: att.uploadedAt || now,
+        };
+        const eIdx = updatedAtts.findIndex((a) => a.id === att.id);
+        if (eIdx >= 0) {
+          updatedAtts[eIdx] = attToSave;
+        } else {
+          updatedAtts.unshift(attToSave);
+        }
+        this.apiCall('/api/attachments', 'POST', attToSave);
+      }
+      this.setList(DB_STORAGE_KEYS.ATTACHMENTS, updatedAtts);
+    }
+
+    this.logAction(
+      'STATUS_CHANGE',
+      'TASK',
+      task.id,
+      task.title,
+      `Cán bộ ${staff.fullName} nộp báo cáo hoàn thành (kèm ${fileCount} tài liệu kết quả) và trình Lãnh đạo nghiệm thu nhiệm vụ ${task.code}`,
+      staff
+    );
+
+    this.apiCall('/api/tasks', 'POST', updatedTask);
+    firestoreSync.saveTask(updatedTask);
+
+    // Notify Leader
+    const leaderId = task.creatorId || task.createdById;
+    if (leaderId) {
+      this.addNotification({
+        userId: leaderId,
+        title: `📋 Yêu cầu nghiệm thu nhiệm vụ: ${task.code}`,
+        message: `Đồng chí ${staff.fullName} đã báo cáo hoàn thành công việc "${task.title}" (kèm ${fileCount} tệp tài liệu kết quả) và kính trình Lãnh đạo thẩm định, phê duyệt nghiệm thu.`,
+        type: 'TASK_APPROVAL_REQUEST',
+        linkType: 'TASK',
+        targetId: task.id,
+      });
+    }
+
+    return updatedTask;
+  }
+
+  /**
+   * LÃNH ĐẠO phê duyệt & nghiệm thu công việc hoàn thành
+   */
+  public approveTaskCompletion(taskId: string, leader: User, feedback?: string): Task | undefined {
+    const tasks = this.getTasks();
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return undefined;
+
+    const now = new Date().toISOString();
+    const today = now.split('T')[0];
+    const praise = feedback?.trim() || 'Lãnh đạo đã xem xét kết quả, nhất trí nghiệm thu và đồng ý đóng nhiệm vụ.';
+
+    const commentObj: TaskComment = {
+      id: `cm-appr-${Date.now()}`,
+      userId: leader.id,
+      userName: leader.fullName,
+      userAvatar: leader.avatar || '',
+      content: `✅ [LÃNH ĐẠO PHÊ DUYỆT NGHIỆM THU]: ${praise}`,
+      createdAt: now,
+    };
+
+    const updatedTask: Task = {
+      ...task,
+      status: 'COMPLETED',
+      progress: 100,
+      completedDate: today,
+      approvedById: leader.id,
+      approvedAt: now,
+      leaderFeedback: praise,
+      comments: [...(task.comments || []), commentObj],
+      updatedAt: now,
+    };
+
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    if (idx >= 0) {
+      tasks[idx] = updatedTask;
+      this.setList(DB_STORAGE_KEYS.TASKS, tasks);
+    }
+
+    this.logAction(
+      'STATUS_CHANGE',
+      'TASK',
+      task.id,
+      task.title,
+      `Lãnh đạo ${leader.fullName} đã nghiệm thu và phê duyệt hoàn thành nhiệm vụ ${task.code}`,
+      leader
+    );
+
+    this.apiCall('/api/tasks', 'POST', updatedTask);
+    firestoreSync.saveTask(updatedTask);
+
+    // Notify Assignee & Co-assignees
+    const participantIds = [task.assigneeId, ...(task.coAssigneeIds || [])].filter((id) => id && id !== leader.id);
+    for (const pId of participantIds) {
+      this.addNotification({
+        userId: pId,
+        title: `🎉 Nhiệm vụ đã được Lãnh đạo phê duyệt: ${task.code}`,
+        message: `Lãnh đạo ${leader.fullName} đã chấp thuận và phê duyệt nghiệm thu nhiệm vụ "${task.title}". Nhận xét: "${praise}"`,
+        type: 'TASK_APPROVED',
+        linkType: 'TASK',
+        targetId: task.id,
+      });
+    }
+
+    // Auto-complete linked Incoming Document if all its tasks are now completed!
+    if (task.incomingDocId) {
+      const allTasks = this.getTasks();
+      const otherLinkedTasks = allTasks.filter(
+        (t) => t.id !== task.id && (t.incomingDocId === task.incomingDocId || t.linkedDocId === task.incomingDocId)
+      );
+      const allDone = otherLinkedTasks.every((t) => t.status === 'COMPLETED');
+      if (allDone) {
+        const inDoc = this.getIncomingDocById(task.incomingDocId);
+        if (inDoc && inDoc.status !== 'COMPLETED') {
+          this.saveIncomingDoc(
+            {
+              ...inDoc,
+              status: 'COMPLETED',
+              resultSummary: inDoc.resultSummary || `Đã hoàn thành toàn diện theo nhiệm vụ chỉ đạo [${task.code}]. Lãnh đạo đã nghiệm thu.`,
+            },
+            leader
+          );
+        }
+      }
+    }
+
+    // Auto update dossier if linked
+    if (task.dossierId) {
+      const dossier = this.getDossiers().find((d) => d.id === task.dossierId || d.code === task.dossierId);
+      if (dossier && dossier.status === 'OPEN') {
+        this.saveDossier({ ...dossier, status: 'IN_PROGRESS' }, leader);
+      }
+    }
+
+    return updatedTask;
+  }
+
+  /**
+   * LÃNH ĐẠO trả lại yêu cầu chỉnh sửa / bổ sung
+   */
+  public rejectTaskCompletion(taskId: string, leader: User, feedback: string): Task | undefined {
+    const tasks = this.getTasks();
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return undefined;
+
+    const now = new Date().toISOString();
+    const commentObj: TaskComment = {
+      id: `cm-rej-${Date.now()}`,
+      userId: leader.id,
+      userName: leader.fullName,
+      userAvatar: leader.avatar || '',
+      content: `⚠️ [LÃNH ĐẠO YÊU CẦU LÀM LẠI / BỔ SUNG]: ${feedback}`,
+      createdAt: now,
+    };
+
+    const updatedTask: Task = {
+      ...task,
+      status: 'IN_PROGRESS',
+      progress: Math.min(task.progress, 80), // Set back to 80% to indicate revision needed
+      leaderFeedback: feedback,
+      comments: [...(task.comments || []), commentObj],
+      updatedAt: now,
+    };
+
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    if (idx >= 0) {
+      tasks[idx] = updatedTask;
+      this.setList(DB_STORAGE_KEYS.TASKS, tasks);
+    }
+
+    this.logAction(
+      'STATUS_CHANGE',
+      'TASK',
+      task.id,
+      task.title,
+      `Lãnh đạo ${leader.fullName} yêu cầu chỉnh sửa / làm lại nhiệm vụ ${task.code}: "${feedback}"`,
+      leader
+    );
+
+    this.apiCall('/api/tasks', 'POST', updatedTask);
+    firestoreSync.saveTask(updatedTask);
+
+    // Notify Assignee
+    this.addNotification({
+      userId: task.assigneeId,
+      title: `⚠️ Yêu cầu bổ sung / hoàn thiện lại: ${task.code}`,
+      message: `Lãnh đạo ${leader.fullName} chưa chấp thuận nghiệm thu công việc "${task.title}". Lý do: "${feedback}". Vui lòng xử lý lại.`,
+      type: 'TASK_REJECTED',
+      linkType: 'TASK',
+      targetId: task.id,
+    });
+
+    return updatedTask;
+  }
+
+  /**
+   * Chuyên viên trình ký dự thảo Văn bản đi lên Lãnh đạo
+   */
+  public submitOutgoingDocForSign(docId: string, actor: User): OutgoingDocument | undefined {
+    const docs = this.getOutgoingDocs();
+    const doc = docs.find((d) => d.id === docId);
+    if (!doc) return undefined;
+
+    const updatedDoc: OutgoingDocument = {
+      ...doc,
+      status: 'REVIEWING',
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.saveOutgoingDoc(updatedDoc, actor);
+
+    // Notify Signer (Leader)
+    if (doc.signerId) {
+      this.addNotification({
+        userId: doc.signerId,
+        title: `🖊️ Trình ký dự thảo văn bản đi: ${doc.documentNumber}`,
+        message: `Chuyên viên ${actor.fullName} kính trình Lãnh đạo xem xét, phê duyệt & ký số văn bản "${doc.summary}".`,
+        type: 'DOC_SIGN_REQUEST',
+        linkType: 'OUTGOING_DOC',
+        targetId: doc.id,
+      });
+    }
+
+    return updatedDoc;
+  }
+
+  /**
+   * LÃNH ĐẠO phê duyệt & Ký số văn bản đi
+   */
+  public signOutgoingDoc(docId: string, leader: User, signerNote?: string): OutgoingDocument | undefined {
+    const docs = this.getOutgoingDocs();
+    const doc = docs.find((d) => d.id === docId);
+    if (!doc) return undefined;
+
+    const now = new Date().toISOString();
+    const updatedDoc: OutgoingDocument = {
+      ...doc,
+      status: 'SIGNED',
+      signedAt: now,
+      signerNote: signerNote || 'Đã kiểm tra thể thức và nội dung, phê duyệt ký số điện tử phát hành.',
+      updatedAt: now,
+    };
+
+    this.saveOutgoingDoc(updatedDoc, leader);
+
+    // Notify Clerk (Văn thư) to assign number and dispatch
+    const users = this.getUsers();
+    const clerks = users.filter((u) => u.role === 'CLERK');
+    clerks.forEach((clerk) => {
+      this.addNotification({
+        userId: clerk.id,
+        title: `✍️ Văn bản đi đã được Lãnh đạo ký số: ${doc.documentNumber}`,
+        message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Đề nghị Văn thư cấp số văn bản đi, đóng dấu và phát hành.`,
+        type: 'DOC_SIGNED',
+        linkType: 'OUTGOING_DOC',
+        targetId: doc.id,
+      });
+    });
+
+    // Also notify drafter
+    if (doc.drafterId && doc.drafterId !== leader.id) {
+      this.addNotification({
+        userId: doc.drafterId,
+        title: `✍️ Dự thảo văn bản đi đã được ký số: ${doc.documentNumber}`,
+        message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Chuyển Văn thư phát hành.`,
+        type: 'DOC_SIGNED',
+        linkType: 'OUTGOING_DOC',
+        targetId: doc.id,
+      });
+    }
+
+    return updatedDoc;
+  }
+
+  /**
+   * VĂN THƯ cấp số, đóng dấu và phát hành văn bản đi
+   */
+  public issueOutgoingDoc(docId: string, clerk: User, officialNumber?: string): OutgoingDocument | undefined {
+    const docs = this.getOutgoingDocs();
+    const doc = docs.find((d) => d.id === docId);
+    if (!doc) return undefined;
+
+    const now = new Date().toISOString();
+    const updatedDoc: OutgoingDocument = {
+      ...doc,
+      documentNumber: officialNumber?.trim() || doc.documentNumber,
+      status: 'ISSUED',
+      issuedAt: now,
+      clerkId: clerk.id,
+      updatedAt: now,
+    };
+
+    this.saveOutgoingDoc(updatedDoc, clerk);
+
+    // Notify Drafter & Signer
+    const recipients = [doc.drafterId, doc.signerId].filter((id) => id && id !== clerk.id);
+    recipients.forEach((uid) => {
+      this.addNotification({
+        userId: uid,
+        title: `📬 Văn bản đi đã phát hành chính thức: ${updatedDoc.documentNumber}`,
+        message: `Văn thư đã cấp số, đóng dấu và chuyển phát hành văn bản "${doc.summary}" đến ${doc.recipient}.`,
+        type: 'DOC_ISSUED',
+        linkType: 'OUTGOING_DOC',
+        targetId: doc.id,
+      });
+    });
+
+    // If replyToDocId: check if replying to an incoming document
+    if (doc.replyToDocId) {
+      const inDoc = this.getIncomingDocById(doc.replyToDocId);
+      if (inDoc && inDoc.status !== 'COMPLETED') {
+        this.saveIncomingDoc(
+          {
+            ...inDoc,
+            status: 'COMPLETED',
+            resultSummary: inDoc.resultSummary || `Đã phát hành văn bản trả lời số ${updatedDoc.documentNumber} gửi ${doc.recipient}.`,
+          },
+          clerk
+        );
+      }
+    }
+
+    return updatedDoc;
   }
 
   public deleteTask(id: string, actor?: User) {

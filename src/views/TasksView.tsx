@@ -4,6 +4,8 @@ import {
   User,
   Dossier,
   IncomingDocument,
+  OutgoingDocument,
+  AttachmentFile,
   TaskPriority,
   TaskStatus,
   SubTask,
@@ -44,10 +46,21 @@ import {
   Info,
   ExternalLink,
   Lock,
+  RotateCcw,
+  FileCheck2,
+  Award,
+  Upload,
+  Download,
+  Eye,
+  FileSpreadsheet,
+  FileCode,
+  FileUp,
 } from 'lucide-react';
 import { suggestTaskBreakdownWithAI } from '../services/aiService';
 import { dbService } from '../services/db';
 import { canAccessTask, canCommentOnTask, getTaskParticipants } from '../utils/permission';
+import { FilePreviewModal } from '../components/FilePreviewModal';
+import { generateTaskResultReportPdf } from '../utils/samplePdfGenerator';
 
 const getDeptString = (dept: any): string => {
   if (!dept) return '';
@@ -61,11 +74,13 @@ interface TasksViewProps {
   users: User[];
   dossiers: Dossier[];
   incomingDocs: IncomingDocument[];
+  outgoingDocs?: OutgoingDocument[];
   onSaveTask: (task: Task) => void;
   onDeleteTask: (id: string) => void;
   currentUser: User;
   filterMode?: 'ALL' | 'ASSIGNED_TO_ME' | 'DELEGATED_BY_ME';
   onOpenDossier: (dossierId: string) => void;
+  onDraftOutgoingDoc?: (task: Task) => void;
   initialSelectedTaskId?: string;
 }
 
@@ -74,11 +89,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
   users,
   dossiers,
   incomingDocs,
+  outgoingDocs = [],
   onSaveTask,
   onDeleteTask,
   currentUser,
   filterMode = 'ALL',
   onOpenDossier,
+  onDraftOutgoingDoc,
   initialSelectedTaskId,
 }) => {
   // Tabs for sub-filtering
@@ -132,6 +149,150 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [newComment, setNewComment] = useState('');
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+
+  // Administrative Workflow States (Reporting & Leader Approval)
+  const [showSubmitReportModal, setShowSubmitReportModal] = useState(false);
+  const [submissionNoteInput, setSubmissionNoteInput] = useState('');
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [leaderFeedbackInput, setLeaderFeedbackInput] = useState('');
+
+  // File preview & attachment states for Specialist Deliverables
+  const [previewFile, setPreviewFile] = useState<AttachmentFile | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const modalFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [reportSuccessNotice, setReportSuccessNotice] = useState<string | null>(null);
+
+  // Format readable file size
+  const formatFileSize = (bytes?: number): string => {
+    if (!bytes) return '0 KB';
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${Math.round(bytes / 1024)} KB`;
+  };
+
+  // Upload deliverables / attachments for this task
+  const handleFileUpload = (files: FileList | null) => {
+    if (!files || files.length === 0 || !selectedTask) return;
+    setIsUploadingFile(true);
+    const fileList = Array.from(files);
+    const now = new Date().toISOString();
+    let completedReads = 0;
+    const newAttachments: AttachmentFile[] = [];
+
+    fileList.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64Data = (e.target?.result as string) || '';
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
+        newAttachments.push({
+          id: `att-res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          name: file.name,
+          fileName: file.name,
+          fileSize: file.size,
+          size: formatFileSize(file.size),
+          fileType: ext,
+          fileUrl: base64Data,
+          category: 'CONG_VIEC',
+          relatedId: selectedTask.id,
+          dossierId: selectedTask.dossierId,
+          uploadedById: currentUser.id,
+          uploadedByName: currentUser.fullName,
+          uploadedAt: now,
+          tags: ['Tài liệu kết quả', 'Sản phẩm chuyên viên'],
+        });
+
+        completedReads++;
+        if (completedReads === fileList.length) {
+          const merged = [...(selectedTask.attachments || []), ...newAttachments];
+          const updatedTask: Task = {
+            ...selectedTask,
+            attachments: merged,
+            updatedAt: now,
+          };
+          setSelectedTask(updatedTask);
+          onSaveTask(updatedTask);
+          setIsUploadingFile(false);
+          setReportSuccessNotice(`Đã tải lên thành công ${newAttachments.length} tệp tài liệu kết quả.`);
+          setTimeout(() => setReportSuccessNotice(null), 4000);
+        }
+      };
+      reader.onerror = () => {
+        completedReads++;
+        if (completedReads === fileList.length) setIsUploadingFile(false);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // 1-Click Administrative Task Completion Report PDF generator
+  const handleGenerateReportPdf = () => {
+    if (!selectedTask) return;
+    try {
+      const report = generateTaskResultReportPdf(selectedTask, currentUser, submissionNoteInput || selectedTask.description);
+      const now = new Date().toISOString();
+      const newAtt: AttachmentFile = {
+        id: `att-bc-${Date.now()}`,
+        name: report.fileName,
+        fileName: report.fileName,
+        fileSize: report.fileSize,
+        size: formatFileSize(report.fileSize),
+        fileType: 'pdf',
+        fileUrl: report.base64,
+        category: 'CONG_VIEC',
+        relatedId: selectedTask.id,
+        dossierId: selectedTask.dossierId,
+        uploadedById: currentUser.id,
+        uploadedByName: currentUser.fullName,
+        uploadedAt: now,
+        tags: ['Báo cáo kết quả', 'Mẫu chuẩn NĐ 30'],
+      };
+
+      const merged = [...(selectedTask.attachments || []), newAtt];
+      const updatedTask: Task = {
+        ...selectedTask,
+        attachments: merged,
+        updatedAt: now,
+      };
+      setSelectedTask(updatedTask);
+      onSaveTask(updatedTask);
+      setReportSuccessNotice('Đã tạo thành công tệp PDF Báo cáo kết quả theo thể thức Nghị định 30!');
+      setTimeout(() => setReportSuccessNotice(null), 4000);
+    } catch (err) {
+      console.error('Failed to generate report PDF:', err);
+    }
+  };
+
+  // Remove attachment
+  const handleDeleteAttachment = (attId?: string) => {
+    if (!selectedTask || !attId) return;
+    const filtered = (selectedTask.attachments || []).filter((a) => a.id !== attId);
+    const updatedTask: Task = {
+      ...selectedTask,
+      attachments: filtered,
+      updatedAt: new Date().toISOString(),
+    };
+    setSelectedTask(updatedTask);
+    onSaveTask(updatedTask);
+  };
+
+  // Preview file modal
+  const handlePreviewAttachment = (att: AttachmentFile) => {
+    setPreviewFile(att);
+    setIsPreviewOpen(true);
+  };
+
+  // Download attachment
+  const handleDownloadAttachment = (att: AttachmentFile) => {
+    if (!att.fileUrl) return;
+    const a = document.createElement('a');
+    a.href = att.fileUrl;
+    a.download = att.fileName || att.name || 'tai-lieu-dinh-kem';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id || d.code === id);
@@ -324,7 +485,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     }
   };
 
-  // Toggle Subtask
+  // Toggle Subtask with automatic workflow update
   const handleToggleSubtask = (subTaskId: string) => {
     if (!selectedTask) return;
     const updatedSubTasks = (selectedTask.subTasks || []).map((st) =>
@@ -336,19 +497,77 @@ export const TasksView: React.FC<TasksViewProps> = ({
         ? Math.round((completedCount / updatedSubTasks.length) * 100)
         : selectedTask.progress;
 
+    const isLeader =
+      isLeaderOrAdmin ||
+      selectedTask.creatorId === currentUser?.id ||
+      selectedTask.createdById === currentUser?.id;
+
+    // Automatic status update based on actual progress of work done:
+    let nextStatus: TaskStatus = selectedTask.status;
+    if (newProgress === 100) {
+      // 100% does NOT jump to COMPLETED! Requires leader approval!
+      nextStatus = isLeader && selectedTask.status === 'COMPLETED' ? 'COMPLETED' : 'WAITING_APPROVAL';
+    } else if (newProgress > 0) {
+      nextStatus = selectedTask.status === 'COMPLETED' ? 'IN_PROGRESS' : 'IN_PROGRESS';
+    } else if (newProgress === 0 && selectedTask.status !== 'COMPLETED') {
+      nextStatus = 'NOT_STARTED';
+    }
+
     const updatedTask: Task = {
       ...selectedTask,
       subTasks: updatedSubTasks,
       progress: newProgress,
-      status:
-        newProgress === 100
-          ? 'COMPLETED'
-          : selectedTask.status === 'NOT_STARTED'
-          ? 'IN_PROGRESS'
-          : selectedTask.status,
+      status: nextStatus,
     };
     setSelectedTask(updatedTask);
     onSaveTask(updatedTask);
+  };
+
+  // Staff submits completion report to Leader
+  const handleSubmitReport = () => {
+    if (!selectedTask) return;
+    const note = submissionNoteInput.trim() || 'Báo cáo Lãnh đạo: Tôi đã hoàn thành toàn bộ các hạng mục công việc theo yêu cầu và kính trình Thủ trưởng xem xét, phê duyệt nghiệm thu.';
+    const updated = dbService.submitTaskForApproval(
+      selectedTask.id,
+      currentUser,
+      note,
+      selectedTask.attachments || []
+    );
+    if (updated) {
+      setSelectedTask(updated);
+      onSaveTask(updated);
+    }
+    setShowSubmitReportModal(false);
+    setSubmissionNoteInput('');
+  };
+
+  // Leader approves task completion
+  const handleApproveCompletion = () => {
+    if (!selectedTask) return;
+    const feedback = leaderFeedbackInput.trim() || 'Lãnh đạo đã xem xét kết quả, nhất trí nghiệm thu và đồng ý đóng nhiệm vụ.';
+    const updated = dbService.approveTaskCompletion(selectedTask.id, currentUser, feedback);
+    if (updated) {
+      setSelectedTask(updated);
+      onSaveTask(updated);
+    }
+    setShowApproveModal(false);
+    setLeaderFeedbackInput('');
+  };
+
+  // Leader rejects task completion and requests revision
+  const handleRejectCompletion = () => {
+    if (!selectedTask) return;
+    if (!leaderFeedbackInput.trim()) {
+      alert('Vui lòng nhập lý do hoặc nội dung chỉ đạo cần bổ sung / làm lại.');
+      return;
+    }
+    const updated = dbService.rejectTaskCompletion(selectedTask.id, currentUser, leaderFeedbackInput.trim());
+    if (updated) {
+      setSelectedTask(updated);
+      onSaveTask(updated);
+    }
+    setShowRejectModal(false);
+    setLeaderFeedbackInput('');
   };
 
   // Add subtask inside detail modal
@@ -1020,38 +1239,278 @@ export const TasksView: React.FC<TasksViewProps> = ({
               <>
                 {/* Content Body */}
                 <div className="space-y-5 text-xs flex-1">
-              {/* Badges & Status Selector */}
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                <div className="flex items-center gap-2">
-                  {getPriorityBadge(selectedTask.priority)}
-                  {getStatusBadge(selectedTask.status)}
+              {/* Stepper Progress & Status Flow */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                  <div className="flex items-center gap-2">
+                    {getPriorityBadge(selectedTask.priority)}
+                    {getStatusBadge(selectedTask.status)}
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    ⚡ Tiến trình tự động theo tiến độ công việc & phê duyệt thực tế
+                  </span>
                 </div>
 
-                {/* Quick Status Updater */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-slate-700">Trạng thái:</span>
-                  <select
-                    value={selectedTask.status}
-                    onChange={(e) => {
-                      const newStat = e.target.value as TaskStatus;
-                      const updated: Task = {
-                        ...selectedTask,
-                        status: newStat,
-                        progress: newStat === 'COMPLETED' ? 100 : selectedTask.progress,
-                      };
-                      setSelectedTask(updated);
-                      onSaveTask(updated);
-                    }}
-                    className="bg-white border border-slate-300 text-xs font-bold rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500/20"
-                  >
-                    <option value="NOT_STARTED">Chưa bắt đầu</option>
-                    <option value="IN_PROGRESS">Đang thực hiện</option>
-                    <option value="WAITING_APPROVAL">Chờ duyệt</option>
-                    <option value="COMPLETED">Đã hoàn thành</option>
-                    <option value="CANCELLED">Đã hủy</option>
-                  </select>
+                {/* 4-Step Visual Stepper */}
+                <div className="grid grid-cols-4 gap-1.5 text-center">
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
+                    selectedTask.status === 'NOT_STARTED'
+                      ? 'bg-slate-800 text-white border-slate-900 shadow-xs ring-2 ring-slate-400/40'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  }`}>
+                    <span>1. Phân công</span>
+                    <span className="text-[9px] font-normal opacity-80">Tiếp nhận việc</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
+                    selectedTask.status === 'IN_PROGRESS' || selectedTask.status === 'OVERDUE'
+                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400/40'
+                      : selectedTask.progress > 0
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-white text-slate-400 border-slate-200'
+                  }`}>
+                    <span>2. Đang làm</span>
+                    <span className="text-[9px] font-normal opacity-80">{selectedTask.progress}% hoàn thành</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
+                    selectedTask.status === 'WAITING_APPROVAL'
+                      ? 'bg-amber-500 text-white border-amber-600 shadow-xs ring-2 ring-amber-400/50 animate-pulse'
+                      : selectedTask.status === 'COMPLETED'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-white text-slate-400 border-slate-200'
+                  }`}>
+                    <span>3. Chờ duyệt</span>
+                    <span className="text-[9px] font-normal opacity-80">Trình Lãnh đạo</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 transition-all ${
+                    selectedTask.status === 'COMPLETED'
+                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-400/40'
+                      : 'bg-white text-slate-400 border-slate-200'
+                  }`}>
+                    <span>4. Nghiệm thu</span>
+                    <span className="text-[9px] font-normal opacity-80">Lãnh đạo chuẩn thuận</span>
+                  </div>
                 </div>
               </div>
+
+              {/* ACTION CALLOUT CARDS BASED ON WORKFLOW ROLES */}
+
+              {/* 1. LÃNH ĐẠO: Chờ nghiệm thu phê duyệt */}
+              {selectedTask.status === 'WAITING_APPROVAL' && (isLeaderOrAdmin || selectedTask.creatorId === currentUser?.id || selectedTask.createdById === currentUser?.id) && (
+                <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-2 border-amber-400 p-4 rounded-2xl shadow-sm space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>
+                      <div>
+                        <span className="font-black text-amber-950 text-xs uppercase tracking-wide block">
+                          📋 Báo Cáo Hoàn Thành Đang Chờ Lãnh Đạo Nghiệm Thu
+                        </span>
+                        <span className="text-[10px] text-amber-800">
+                          Cán bộ chủ trì đã gửi báo cáo kết quả. Đề nghị Thủ trưởng xem xét và phê duyệt đóng nhiệm vụ.
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-amber-900 bg-amber-200/80 font-black px-2.5 py-1 rounded-full whitespace-nowrap">
+                      Thẩm quyền Lãnh đạo
+                    </span>
+                  </div>
+
+                  <div className="bg-white/95 p-3 rounded-xl border border-amber-200 text-xs">
+                    <span className="font-bold text-amber-950 block mb-1">
+                      Nội dung báo cáo của cán bộ [{selectedAssignee?.fullName}]:
+                    </span>
+                    <p className="text-slate-800 italic leading-relaxed">
+                      "{selectedTask.submissionNote || 'Đã hoàn thành toàn bộ các nội dung công việc theo chỉ đạo và kính trình Thủ trưởng xem xét, phê duyệt nghiệm thu.'}"
+                    </p>
+                    {selectedTask.submittedAt && (
+                      <span className="text-[10px] text-slate-400 font-mono block mt-1.5">
+                        Thời điểm nộp: {new Date(selectedTask.submittedAt).toLocaleString('vi-VN')}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Danh sách tệp đính kèm kết quả do chuyên viên nộp để Lãnh đạo thẩm định */}
+                  <div className="bg-amber-100/60 p-3 rounded-xl border border-amber-300">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                        <Paperclip className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Tài liệu kết quả đính kèm nộp Lãnh đạo ({(selectedTask.attachments || []).length} tệp):</span>
+                      </span>
+                      {(!selectedTask.attachments || selectedTask.attachments.length === 0) && (
+                        <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                          Chưa đính kèm tệp
+                        </span>
+                      )}
+                    </div>
+
+                    {(!selectedTask.attachments || selectedTask.attachments.length === 0) ? (
+                      <p className="text-[11px] text-slate-500 italic">
+                        Cán bộ chưa đính kèm tệp kết quả nào vào báo cáo. Lãnh đạo có thể yêu cầu bổ sung tài liệu minh chứng trước khi nghiệm thu.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {selectedTask.attachments.map((att) => (
+                          <div
+                            key={att.id || att.fileName}
+                            className="bg-white p-2 rounded-lg border border-amber-200 flex items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                              <span className="font-bold text-slate-800 text-xs truncate" title={att.fileName || att.name}>
+                                {att.fileName || att.name}
+                              </span>
+                              <span className="text-[10px] text-slate-400 shrink-0">
+                                ({att.size || formatFileSize(att.fileSize)})
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handlePreviewAttachment(att)}
+                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] rounded-md cursor-pointer flex items-center gap-1 transition-colors"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Thẩm định tệp</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadAttachment(att)}
+                                className="p-1 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+                                title="Tải về"
+                              >
+                                <Download className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLeaderFeedbackInput('Lãnh đạo đã xem xét kết quả, nhất trí nghiệm thu và đồng ý đóng nhiệm vụ.');
+                        setShowApproveModal(true);
+                      }}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Chấp Thuận & Nghiệm Thu Hoàn Thành</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLeaderFeedbackInput('');
+                        setShowRejectModal(true);
+                      }}
+                      className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5 transition-all"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Yêu cầu bổ sung / Làm lại</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. CÁN BỘ: Thông báo đang chờ Lãnh đạo duyệt */}
+              {selectedTask.status === 'WAITING_APPROVAL' && !(isLeaderOrAdmin || selectedTask.creatorId === currentUser?.id || selectedTask.createdById === currentUser?.id) && (
+                <div className="bg-amber-50/90 border border-amber-300 p-4 rounded-2xl flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-amber-200 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                    <Clock className="w-4 h-4 animate-spin" />
+                  </div>
+                  <div className="flex-1 text-xs">
+                    <span className="font-bold text-amber-950 block mb-0.5 text-xs">
+                      Đã trình báo cáo hoàn thành lên Lãnh đạo
+                    </span>
+                    <p className="text-slate-600 leading-relaxed text-[11px]">
+                      Bạn đã hoàn tất công việc và gửi báo cáo (kèm {(selectedTask.attachments || []).length} tệp tài liệu kết quả). Nhiệm vụ đang chờ <strong>{selectedLeader?.fullName || 'Lãnh đạo đơn vị'}</strong> xem xét nghiệm thu. Bạn không thể tự ý đóng nhiệm vụ này.
+                    </p>
+                    {selectedTask.submissionNote && (
+                      <p className="mt-2 text-[11px] text-amber-900 bg-white/80 p-2 rounded-lg border border-amber-200 italic">
+                        "{selectedTask.submissionNote}"
+                      </p>
+                    )}
+                    {selectedTask.attachments && selectedTask.attachments.length > 0 && (
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {selectedTask.attachments.map((att) => (
+                          <button
+                            key={att.id || att.fileName}
+                            type="button"
+                            onClick={() => handlePreviewAttachment(att)}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-md border border-amber-300 text-[10px] font-medium"
+                          >
+                            <FileText className="w-3 h-3 text-amber-700" />
+                            <span className="truncate max-w-[150px]">{att.fileName || att.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. ĐÃ HOÀN THÀNH: Huy hiệu phê duyệt nghiệm thu */}
+              {selectedTask.status === 'COMPLETED' && (
+                <div className="bg-emerald-50 border-2 border-emerald-300 p-4 rounded-2xl flex items-start gap-3 shadow-xs">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-black text-emerald-950 text-xs uppercase tracking-wide">
+                        ✅ Nhiệm Vụ Đã Được Lãnh Đạo Nghiệm Thu & Đóng Hoàn Tất
+                      </span>
+                      {selectedTask.completedDate && (
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                          Ngày duyệt: {new Date(selectedTask.completedDate).toLocaleDateString('vi-VN')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-600 mt-1 leading-relaxed text-[11px]">
+                      Phê duyệt bởi: <strong>{getUser(selectedTask.approvedById)?.fullName || selectedLeader?.fullName || 'Lãnh đạo cơ quan'}</strong>
+                      {selectedTask.approvedAt && ` lúc ${new Date(selectedTask.approvedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}.
+                    </p>
+                    {selectedTask.leaderFeedback && (
+                      <div className="mt-2 p-2.5 bg-white/90 rounded-xl border border-emerald-200 text-emerald-900 font-medium text-[11px]">
+                        <span className="font-bold text-emerald-950 block mb-0.5">Ý kiến đánh giá của Lãnh đạo:</span>
+                        "{selectedTask.leaderFeedback}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. CÁN BỘ: Nút Báo cáo hoàn thành & Trình duyệt nghiệm thu */}
+              {selectedTask.status !== 'COMPLETED' && selectedTask.status !== 'WAITING_APPROVAL' && (
+                <div className="bg-indigo-50/70 border border-indigo-200 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                  <div className="max-w-md">
+                    <span className="font-bold text-indigo-950 text-xs block">
+                      Báo Cáo Nghiệm Thu & Trình Lãnh Đạo
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Khi cán bộ hoàn tất nhiệm vụ, nhấn nút này để gửi báo cáo kết quả lên Lãnh đạo phê duyệt nghiệm thu thực tế.
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubmissionNoteInput('Báo cáo Lãnh đạo: Tôi đã hoàn thành toàn bộ các hạng mục công việc theo yêu cầu và kính trình Thủ trưởng xem xét, phê duyệt nghiệm thu.');
+                      setShowSubmitReportModal(true);
+                    }}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all whitespace-nowrap"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Báo cáo hoàn thành & Trình duyệt</span>
+                  </button>
+                </div>
+              )}
 
               {/* Personnel Assignment Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -1186,7 +1645,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
               {/* Progress Slider */}
               <div className="bg-white p-4 rounded-2xl border border-slate-200">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-slate-700">Tiến độ thực tế</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-slate-700">Tiến độ thực hiện</span>
+                    <span className="text-[10px] text-slate-400">
+                      {selectedTask.status === 'COMPLETED' ? '(Đã hoàn thành)' : selectedTask.status === 'WAITING_APPROVAL' ? '(Chờ duyệt)' : '(Đang tiến hành)'}
+                    </span>
+                  </div>
                   <span className="text-sm font-black text-indigo-600">{selectedTask.progress}%</span>
                 </div>
                 <input
@@ -1197,21 +1661,32 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   value={selectedTask.progress}
                   onChange={(e) => {
                     const p = parseInt(e.target.value, 10);
+                    const isLeader = isLeaderOrAdmin || selectedTask.creatorId === currentUser?.id || selectedTask.createdById === currentUser?.id;
+                    let nextStatus: TaskStatus = selectedTask.status;
+
+                    if (p === 100) {
+                      nextStatus = isLeader && selectedTask.status === 'COMPLETED' ? 'COMPLETED' : 'WAITING_APPROVAL';
+                    } else if (p > 0) {
+                      nextStatus = selectedTask.status === 'COMPLETED' ? 'IN_PROGRESS' : 'IN_PROGRESS';
+                    } else if (p === 0 && selectedTask.status !== 'COMPLETED') {
+                      nextStatus = 'NOT_STARTED';
+                    }
+
                     const updated: Task = {
                       ...selectedTask,
                       progress: p,
-                      status:
-                        p === 100
-                          ? 'COMPLETED'
-                          : p > 0 && selectedTask.status === 'NOT_STARTED'
-                          ? 'IN_PROGRESS'
-                          : selectedTask.status,
+                      status: nextStatus,
                     };
                     setSelectedTask(updated);
                     onSaveTask(updated);
                   }}
                   className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                 />
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                  <span>0% Tiếp nhận</span>
+                  <span>50% Triển khai</span>
+                  <span>100% Trình nghiệm thu</span>
+                </div>
               </div>
 
               {/* Description */}
@@ -1280,6 +1755,243 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     Thêm
                   </button>
                 </div>
+              </div>
+
+              {/* HỒ SƠ & TÀI LIỆU KẾT QUẢ CÔNG VIỆC CỦA CHUYÊN VIÊN */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3.5 shadow-2xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                      <Paperclip className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-800 text-sm">Hồ Sơ & Tài Liệu Kết Quả Công Việc</span>
+                        <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
+                          {(selectedTask.attachments || []).length} tệp
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500">
+                        Chuyên viên tải lên tài liệu kết quả, bảng tính, biên bản, file scan hoặc tạo dự thảo báo cáo nghiệm thu
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Specialist action buttons */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Hidden file input */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      multiple
+                      onChange={(e) => handleFileUpload(e.target.files)}
+                      className="hidden"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingFile}
+                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-indigo-200"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingFile ? 'Đang tải...' : 'Tải lên tệp kết quả'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateReportPdf}
+                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-amber-200"
+                      title="Tự động tạo tệp PDF Báo cáo kết quả chuẩn Nghị định 30/2020/NĐ-CP"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Tạo Báo cáo kết quả PDF (Mẫu chuẩn)</span>
+                    </button>
+
+                    {onDraftOutgoingDoc && (
+                      <button
+                        type="button"
+                        onClick={() => onDraftOutgoingDoc(selectedTask)}
+                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-blue-200"
+                        title="Soạn thảo dự thảo Văn bản đi để trả lời hoặc báo cáo lên cấp trên"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Soạn văn bản đi trả lời</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Success notice if just created */}
+                {reportSuccessNotice && (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{reportSuccessNotice}</span>
+                  </div>
+                )}
+
+                {/* Attachments List */}
+                {(!selectedTask.attachments || selectedTask.attachments.length === 0) ? (
+                  <div className="p-6 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center space-y-2">
+                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+                      <Paperclip className="w-5 h-5" />
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium">Chưa có tài liệu đính kèm nào được tải lên cho nhiệm vụ này.</p>
+                    <p className="text-[11px] text-slate-400">
+                      Khuyến nghị: Chuyên viên bấm nút <strong>"Tải lên tệp kết quả"</strong> hoặc <strong>"Tạo Báo cáo kết quả PDF (Mẫu chuẩn)"</strong> để chuẩn bị hồ sơ nghiệm thu nộp Lãnh đạo thẩm định.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {selectedTask.attachments.map((att) => {
+                      const ext = (att.fileType || att.fileName?.split('.').pop() || '').toLowerCase();
+                      const isPdf = ext === 'pdf' || att.fileUrl?.startsWith('data:application/pdf');
+                      const isExcel = ['xls', 'xlsx', 'csv'].includes(ext);
+                      const isWord = ['doc', 'docx'].includes(ext);
+                      const isImg = ['png', 'jpg', 'jpeg', 'webp'].includes(ext) || att.fileUrl?.startsWith('data:image/');
+
+                      return (
+                        <div
+                          key={att.id || att.fileName}
+                          className="p-3 bg-slate-50/80 hover:bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3 transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                                isPdf
+                                  ? 'bg-rose-100 text-rose-600'
+                                  : isExcel
+                                  ? 'bg-emerald-100 text-emerald-600'
+                                  : isWord
+                                  ? 'bg-blue-100 text-blue-600'
+                                  : isImg
+                                  ? 'bg-purple-100 text-purple-600'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {isPdf ? (
+                                <FileText className="w-4 h-4" />
+                              ) : isExcel ? (
+                                <FileSpreadsheet className="w-4 h-4" />
+                              ) : isWord ? (
+                                <FileText className="w-4 h-4" />
+                              ) : (
+                                <FileCode className="w-4 h-4" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="font-bold text-slate-800 text-xs truncate block" title={att.fileName || att.name}>
+                                {att.fileName || att.name || 'Tài liệu'}
+                              </span>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                                <span>{att.size || formatFileSize(att.fileSize)}</span>
+                                <span>&bull;</span>
+                                <span className="truncate">{att.uploadedByName || 'Chuyên viên'}</span>
+                                {att.uploadedAt && (
+                                  <>
+                                    <span>&bull;</span>
+                                    <span>{new Date(att.uploadedAt).toLocaleDateString('vi-VN')}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handlePreviewAttachment(att)}
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg cursor-pointer transition-colors"
+                              title="Xem trước tài liệu"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadAttachment(att)}
+                              className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
+                              title="Tải tệp về máy"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            {selectedTask.status !== 'COMPLETED' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAttachment(att.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                                title="Xóa tài liệu"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Linked Outgoing Documents if any */}
+                {outgoingDocs && outgoingDocs.length > 0 && (() => {
+                  const linkedOutgoing = outgoingDocs.filter(
+                    (od) =>
+                      (od.replyToDocId && selectedTask.incomingDocId && od.replyToDocId === selectedTask.incomingDocId) ||
+                      (od.dossierId && selectedTask.dossierId && od.dossierId === selectedTask.dossierId)
+                  );
+                  if (linkedOutgoing.length === 0) return null;
+
+                  return (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                        Văn Bản Đi Đã Soạn Thảo Cho Hồ Sơ / Nhiệm Vụ Này ({linkedOutgoing.length})
+                      </span>
+                      <div className="space-y-1.5">
+                        {linkedOutgoing.map((od) => (
+                          <div
+                            key={od.id}
+                            className="p-2.5 bg-blue-50/60 border border-blue-200 rounded-xl flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-blue-900">{od.documentNumber || '[Dự thảo]'}</span>
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                    od.status === 'ISSUED'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : od.status === 'SIGNED'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : od.status === 'REVIEWING'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-slate-100 text-slate-600'
+                                  }`}
+                                >
+                                  {od.status === 'ISSUED'
+                                    ? 'ĐÃ PHÁT HÀNH'
+                                    : od.status === 'SIGNED'
+                                    ? 'ĐÃ KÝ SỐ'
+                                    : od.status === 'REVIEWING'
+                                    ? 'CHỜ LÃNH ĐẠO KÝ'
+                                    : 'BẢN DỰ THẢO'}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-slate-600 truncate block mt-0.5">{od.summary || od.title}</span>
+                            </div>
+
+                            {od.attachments && od.attachments.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handlePreviewAttachment(od.attachments[0])}
+                                className="px-2.5 py-1 bg-white hover:bg-blue-100 text-blue-700 font-bold rounded-lg border border-blue-200 text-[11px] cursor-pointer whitespace-nowrap"
+                              >
+                                Xem tệp VB Đi
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* 2-WAY INTERACTIVE CHAT & DIRECTIVES SECTION */}
@@ -1774,18 +2486,35 @@ export const TasksView: React.FC<TasksViewProps> = ({
               {/* Status & Dossier */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Trạng thái</label>
-                  <select
-                    value={editingTask.status || 'IN_PROGRESS'}
-                    onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value as TaskStatus })}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
-                  >
-                    <option value="NOT_STARTED">Chưa bắt đầu</option>
-                    <option value="IN_PROGRESS">Đang thực hiện</option>
-                    <option value="WAITING_APPROVAL">Chờ duyệt</option>
-                    <option value="COMPLETED">Đã hoàn thành</option>
-                    <option value="CANCELLED">Đã hủy</option>
-                  </select>
+                  <label className="block font-bold text-slate-700 mb-1">Trạng thái công việc</label>
+                  {isLeaderOrAdmin || editingTask.creatorId === currentUser?.id || editingTask.createdById === currentUser?.id ? (
+                    <select
+                      value={editingTask.status || 'IN_PROGRESS'}
+                      onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value as TaskStatus })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold"
+                    >
+                      <option value="NOT_STARTED">Chưa bắt đầu</option>
+                      <option value="IN_PROGRESS">Đang thực hiện</option>
+                      <option value="WAITING_APPROVAL">Chờ Lãnh đạo duyệt</option>
+                      <option value="COMPLETED">Đã hoàn thành (Lãnh đạo nghiệm thu)</option>
+                      <option value="CANCELLED">Đã hủy</option>
+                    </select>
+                  ) : (
+                    <div className="p-2.5 bg-slate-100 rounded-lg border border-slate-200">
+                      <span className="font-bold text-slate-800 text-xs block">
+                        {editingTask.status === 'COMPLETED'
+                          ? 'Đã hoàn thành (Đã nghiệm thu)'
+                          : editingTask.status === 'WAITING_APPROVAL'
+                          ? 'Chờ duyệt nghiệm thu'
+                          : editingTask.status === 'NOT_STARTED'
+                          ? 'Chưa bắt đầu'
+                          : 'Đang thực hiện'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">
+                        * Cán bộ không tự ý hoàn thành nhiệm vụ. Trạng thái tự cập nhật theo tiến trình và do Lãnh đạo phê duyệt nghiệm thu thực tế.
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1845,6 +2574,372 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal 1: Cán bộ nộp báo cáo hoàn thành & Trình Lãnh đạo duyệt */}
+      {showSubmitReportModal && selectedTask && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                  <Send className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    Báo Cáo Hoàn Thành & Trình Lãnh Đạo Nghiệm Thu
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Nhiệm vụ: [{selectedTask.code}] {selectedTask.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSubmitReportModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-4 text-xs custom-scrollbar">
+              <div className="bg-indigo-50/70 p-3 rounded-xl border border-indigo-100 text-[11px] text-indigo-900 leading-relaxed">
+                Sau khi gửi báo cáo, trạng thái nhiệm vụ sẽ chuyển thành <strong>"Chờ Lãnh đạo duyệt"</strong>. Lãnh đạo giao việc ({selectedLeader?.fullName || 'Thủ trưởng'}) sẽ nhận được thông báo kèm toàn bộ tài liệu để thẩm định nghiệm thu thực tế.
+              </div>
+
+              {/* Text note input */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Nội dung tóm tắt kết quả xử lý & kiến nghị <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={submissionNoteInput}
+                  onChange={(e) => setSubmissionNoteInput(e.target.value)}
+                  placeholder="Mô tả cụ thể kết quả đã hoàn thành, các số liệu đầu ra, đề xuất nghiệm thu..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                />
+              </div>
+
+              {/* Specialist Deliverables Attachments Section */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Paperclip className="w-4 h-4 text-indigo-600" />
+                    <span className="font-bold text-slate-800 text-xs">
+                      Hồ sơ & Tài liệu kết quả nộp kèm ({(selectedTask.attachments || []).length} tệp)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="file"
+                      ref={modalFileInputRef}
+                      multiple
+                      onChange={(e) => handleFileUpload(e.target.files)}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => modalFileInputRef.current?.click()}
+                      disabled={isUploadingFile}
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 text-[11px] cursor-pointer flex items-center gap-1"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>{isUploadingFile ? 'Đang tải...' : 'Đính kèm tệp mới'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateReportPdf}
+                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-lg border border-amber-200 text-[11px] cursor-pointer flex items-center gap-1"
+                      title="Tạo nhanh Báo cáo kết quả PDF chuẩn mẫu"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-600" />
+                      <span>Tạo Báo cáo PDF</span>
+                    </button>
+                  </div>
+                </div>
+
+                {(!selectedTask.attachments || selectedTask.attachments.length === 0) ? (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-center space-y-1">
+                    <p className="text-[11px] text-amber-900 font-semibold">
+                      ⚠️ Lưu ý: Chưa có tài liệu đính kèm nào được chọn.
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      Theo quy trình hành chính thực tế, chuyên viên nên đính kèm ít nhất 01 tệp Báo cáo kết quả (PDF/Word) hoặc file minh chứng để Lãnh đạo thẩm định.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                    {selectedTask.attachments.map((att) => (
+                      <div
+                        key={att.id || att.fileName}
+                        className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                          <span className="font-bold text-slate-800 truncate" title={att.fileName || att.name}>
+                            {att.fileName || att.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            ({att.size || formatFileSize(att.fileSize)})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handlePreviewAttachment(att)}
+                            className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                            title="Xem trước"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAttachment(att.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                            title="Xóa"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 flex items-center justify-end gap-2.5 bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => setShowSubmitReportModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitReport}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Nộp Báo Cáo & Trình Lãnh Đạo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Lãnh đạo phê duyệt nghiệm thu hoàn thành */}
+      {showApproveModal && selectedTask && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-emerald-300 w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-emerald-50/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    Phê Duyệt Nghiệm Thu Hoàn Thành
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Nhiệm vụ: [{selectedTask.code}] {selectedTask.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowApproveModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 overflow-y-auto space-y-3.5 text-xs custom-scrollbar">
+              <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-[11px] text-emerald-950 leading-relaxed">
+                Nhiệm vụ sẽ chính thức chuyển sang trạng thái <strong>"Đã hoàn thành"</strong>, hệ thống tự động ghi nhận ngày nghiệm thu và đồng bộ trạng thái Văn bản đến / Hồ sơ liên quan.
+              </div>
+
+              {/* Staff submission note */}
+              {selectedTask.submissionNote && (
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <span className="font-bold text-slate-600 block text-[10px] uppercase">
+                    Báo cáo của cán bộ ({selectedAssignee?.fullName || 'Chuyên viên'}):
+                  </span>
+                  <p className="text-slate-800 italic mt-0.5 leading-relaxed">"{selectedTask.submissionNote}"</p>
+                </div>
+              )}
+
+              {/* Deliverables to review */}
+              <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200 space-y-2">
+                <span className="font-bold text-amber-950 text-xs block">
+                  Tài liệu kết quả do chuyên viên nộp ({(selectedTask.attachments || []).length} tệp):
+                </span>
+
+                {(!selectedTask.attachments || selectedTask.attachments.length === 0) ? (
+                  <p className="text-[11px] text-slate-500 italic">
+                    Chuyên viên không đính kèm tệp kết quả nào.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+                    {selectedTask.attachments.map((att) => (
+                      <div
+                        key={att.id || att.fileName}
+                        className="bg-white p-2 rounded-lg border border-amber-200 flex items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                          <span className="font-bold text-slate-800 text-xs truncate" title={att.fileName || att.name}>
+                            {att.fileName || att.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            ({att.size || formatFileSize(att.fileSize)})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handlePreviewAttachment(att)}
+                            className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] rounded cursor-pointer flex items-center gap-1"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>Xem tài liệu</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadAttachment(att)}
+                            className="p-1 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+                            title="Tải về"
+                          >
+                            <Download className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Leader feedback input */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Ý kiến đánh giá / Nhận xét của Lãnh đạo
+                </label>
+                <textarea
+                  rows={3}
+                  value={leaderFeedbackInput}
+                  onChange={(e) => setLeaderFeedbackInput(e.target.value)}
+                  placeholder="Nhập ý kiến đánh giá chất lượng hoàn thành hoặc chỉ đạo lưu trữ..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20 font-medium"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 flex items-center justify-end gap-2.5 bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => setShowApproveModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleApproveCompletion}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Xác Nhận Phê Duyệt Nghiệm Thu</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Lãnh đạo yêu cầu bổ sung / làm lại */}
+      {showRejectModal && selectedTask && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-rose-300 w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                  <RotateCcw className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    Yêu Cầu Chỉnh Sửa / Bổ Sung Nhiệm Vụ
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Trả lại nhiệm vụ: [{selectedTask.code}] {selectedTask.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="bg-rose-50 p-3 rounded-xl border border-rose-200 text-[11px] text-rose-950 leading-relaxed">
+                Nhiệm vụ sẽ được trả về trạng thái <strong>"Đang thực hiện"</strong>. Cán bộ chủ trì sẽ nhận thông báo chỉ đạo để chỉnh sửa và nộp lại báo cáo.
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Nội dung chỉ đạo / Lý do yêu cầu chỉnh sửa <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={leaderFeedbackInput}
+                  onChange={(e) => setLeaderFeedbackInput(e.target.value)}
+                  placeholder="Ghi rõ các nội dung cần sửa đổi, bổ sung số liệu, hoặc tài liệu cần nộp lại..."
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-rose-500/20 font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowRejectModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleRejectCompletion}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Xác Nhận Trả Lại Yêu Cầu</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global File Preview Modal for Deliverables & Reports */}
+      <FilePreviewModal
+        file={previewFile}
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+      />
     </div>
   );
 };
