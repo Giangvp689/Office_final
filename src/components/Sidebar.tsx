@@ -271,49 +271,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <div className="space-y-0.5">
             <button
-              id="nav-my-tasks"
-              onClick={() => onSelectSection('MY_ASSIGNED_TASKS')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'MY_ASSIGNED_TASKS'
+              id="nav-tasks"
+              onClick={() => onSelectSection('ALL_TASKS')}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
+                currentSection === 'ALL_TASKS' || currentSection === 'MY_ASSIGNED_TASKS' || currentSection === 'MY_DELEGATED_TASKS'
                   ? 'bg-indigo-50 text-indigo-700 font-bold'
                   : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               <div className="flex items-center gap-3">
-                <CheckSquare className="w-4 h-4 text-emerald-600" />
-                <span>Việc Được Giao</span>
+                <CheckSquare className="w-4 h-4 text-indigo-600" />
+                <span>Điều Hành Công Việc</span>
               </div>
-              {counts.myTasks > 0 && (
-                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  {counts.myTasks}
-                </span>
-              )}
-            </button>
-
-            <button
-              id="nav-delegated-tasks"
-              onClick={() => onSelectSection('MY_DELEGATED_TASKS')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'MY_DELEGATED_TASKS'
-                  ? 'bg-indigo-50 text-indigo-700 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <UserCheck className="w-4 h-4 text-blue-600" />
-              <span>Việc Tôi Đã Giao Đi</span>
-            </button>
-
-            <button
-              id="nav-all-tasks"
-              onClick={() => onSelectSection('ALL_TASKS')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'ALL_TASKS'
-                  ? 'bg-indigo-50 text-indigo-700 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <CheckSquare className="w-4 h-4 text-indigo-600" />
-              <span>Tất Cả Công Việc</span>
+              <div className="flex items-center gap-1.5">
+                {counts.myTasks > 0 && (
+                  <span
+                    className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    title="Nhiệm vụ được giao cho bạn"
+                  >
+                    {counts.myTasks} việc
+                  </span>
+                )}
+              </div>
             </button>
           </div>
         </div>
