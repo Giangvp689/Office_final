@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { draftOutgoingDocWithAI } from '../services/aiService';
 import { FilePreviewModal } from '../components/FilePreviewModal';
-import { canAccessOutgoingDoc, isLeaderOrAdmin, isClerk } from '../utils/permission';
+import { canAccessOutgoingDoc, isLeaderOrAdmin, isClerk, canSignOutgoingDoc, canIssueOutgoingDoc } from '../utils/permission';
 import { dbService } from '../services/db';
 
 interface OutgoingDocsViewProps {
@@ -53,6 +53,7 @@ interface OutgoingDocsViewProps {
   onDeleteDoc: (id: string) => void;
   currentUser: User;
   onOpenDossier: (dossierId: string) => void;
+  onOpenTaskDetail?: (taskId: string) => void;
   initialSelectedDocId?: string;
   tasks?: Task[];
   masterData?: MasterData;
@@ -197,7 +198,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   const handleOpenAddModal = () => {
     setEditingDoc({
       id: 'vbdi-' + Date.now(),
-      documentNumber: `${docs.length + 105}/UBND-VP`,
+      documentNumber: dbService.generateDraftOutgoingDocNumber(),
       releaseDate: new Date().toISOString().split('T')[0],
       docType: 'Công văn',
       recipient: 'Ủy Ban Nhân Dân Tỉnh',
@@ -1059,17 +1060,17 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                       </span>
                     </div>
 
-                    {isLeaderOrAdmin(currentUser) || selectedDoc.signerId === currentUser?.id ? (
+                    {canSignOutgoingDoc(selectedDoc, currentUser) ? (
                       <div className="flex flex-wrap items-center gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => {
                             setActionDialog({
                               type: 'SIGN',
-                              title: 'Phê Duyệt & Ký Số Điện Tử',
-                              description: 'Xác nhận ký số điện tử để phê duyệt ban hành văn bản đi.',
-                              inputLabel: 'Ý kiến phê duyệt / Ghi chú ký số:',
-                              inputValue: 'Đã xem xét và đồng ý ký số duyệt ban hành.',
+                              title: 'Phê Duyệt & Ký Số Điện Tử (Lãnh Đạo)',
+                              description: 'Xác nhận ký số điện tử để phê duyệt ban hành văn bản đi. Sau khi ký, văn bản sẽ chuyển sang Văn thư cơ quan để cấp số phát hành.',
+                              inputLabel: 'Ý kiến phê duyệt / Bút phê ký số:',
+                              inputValue: 'Đã kiểm tra nội dung và thể thức, đồng ý ký số duyệt ban hành.',
                             });
                           }}
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
@@ -1097,7 +1098,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                       </div>
                     ) : (
                       <p className="text-[11px] text-purple-900 italic">
-                        Dự thảo đã được gửi tới Lãnh đạo <strong>{getUser(selectedDoc.signerId)?.fullName}</strong>. Vui lòng chờ Thủ trưởng kiểm tra và ký số.
+                        Dự thảo đã được gửi tới Lãnh đạo <strong>{getUser(selectedDoc.signerId)?.fullName || 'Thủ trưởng đơn vị'}</strong>. Vui lòng chờ Lãnh đạo kiểm tra và ký số.
                       </p>
                     )}
                   </div>
@@ -1110,7 +1111,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                         <span className="font-bold text-indigo-950 text-xs">
-                          Văn bản đã được Lãnh đạo ký số &bull; Chờ Văn thư phát hành
+                          Văn bản đã được Lãnh đạo ký số &bull; Chờ Văn thư cấp số & phát hành
                         </span>
                       </div>
                       {selectedDoc.signedAt && (
@@ -1120,32 +1121,50 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                       )}
                     </div>
 
-                    {isClerk(currentUser) || isLeaderOrAdmin(currentUser) ? (
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                        <span className="text-[11px] text-slate-600">
-                          Văn thư kiểm tra thể thức, đóng dấu số và chuyển phát hành chính thức:
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActionDialog({
-                              type: 'ISSUE',
-                              title: 'Cấp Số, Đóng Dấu & Phát Hành Đi',
-                              description: 'Văn thư vào sổ cấp số văn bản đi chính thức và chuyển phát hành.',
-                              inputLabel: 'Số văn bản đi chính thức vào sổ:',
-                              inputValue: selectedDoc.documentNumber || '',
-                            });
-                          }}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          <span>Cấp Số, Đóng Dấu & Phát Hành Đi</span>
-                        </button>
+                    {canIssueOutgoingDoc(currentUser) ? (
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-center gap-2 text-emerald-800 text-[11px] bg-emerald-100/70 p-2 rounded-lg border border-emerald-200">
+                          <FileCheck className="w-4 h-4 shrink-0 text-emerald-700" />
+                          <span>
+                            <strong>Nghiệp vụ Văn thư (NĐ 30/2020/NĐ-CP):</strong> Kiểm tra thể thức văn bản, lấy số thứ tự từ Sổ văn bản đi năm {new Date().getFullYear()}, đóng dấu cơ quan và chuyển phát hành.
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[11px] text-slate-600">
+                            Thực hiện thủ tục cấp số chính thức và phát hành:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const suggestedNumber = selectedDoc.documentNumber.startsWith('DT-')
+                                ? dbService.generateNextOutgoingDocNumber(selectedDoc.docType)
+                                : selectedDoc.documentNumber;
+                              setActionDialog({
+                                type: 'ISSUE',
+                                title: 'Vào Sổ Văn Bản Đi, Cấp Số & Phát Hành',
+                                description: 'Văn thư kiểm tra thể thức văn bản, vào Sổ đăng ký văn bản đi và chuyển phát hành chính thức.',
+                                inputLabel: 'Số văn bản đi chính thức cấp từ Sổ đi:',
+                                inputValue: suggestedNumber,
+                              });
+                            }}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Vào Sổ, Cấp Số Đi & Phát Hành</span>
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <p className="text-[11px] text-indigo-900 italic">
-                        Lãnh đạo đã ký số điện tử hoàn tất. Đang chuyển Văn thư cơ quan vào sổ, đóng dấu và phát hành văn bản.
-                      </p>
+                      <div className="bg-white/80 p-3 rounded-xl border border-indigo-100 space-y-1">
+                        <p className="text-[11px] text-indigo-950 font-medium">
+                          {currentUser.role === 'LEADER'
+                            ? '✅ Lãnh đạo đã hoàn tất việc Ký số điện tử ban hành. Theo Nghị định 30/2020/NĐ-CP, Lãnh đạo không tự cấp số phát hành; văn bản đã được chuyển đến Văn thư cơ quan để vào Sổ văn bản đi, cấp số chính thức và đóng dấu phát hành.'
+                            : 'Đang chờ Văn thư cơ quan vào Sổ văn bản đi, cấp số chính thức và đóng dấu/ký số cơ quan để phát hành.'}
+                        </p>
+                        <p className="text-[10px] text-slate-400 italic">
+                          (Thẩm quyền cấp số và phát hành thuộc về Văn thư cơ quan theo Điều 15, Điều 18, Điều 19 Nghị định 30/2020/NĐ-CP)
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}

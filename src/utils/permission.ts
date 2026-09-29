@@ -24,6 +24,56 @@ export function isClerk(user?: User | null): boolean {
 }
 
 /**
+ * Kiểm tra xem người dùng có phải Lãnh đạo hay không.
+ */
+export function isLeader(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'LEADER';
+}
+
+/**
+ * QUY CHẾ VĂN THƯ NGHỊ ĐỊNH 30/2020/NĐ-CP:
+ * Thẩm quyền Ký số / Phê duyệt văn bản đi:
+ * - Chỉ Lãnh đạo cơ quan (LEADER) hoặc Người ký được chỉ định đích danh (signerId)
+ *   hoặc Quản trị viên (ADMIN) mới có quyền Ký số.
+ * - Chuyên viên không được ký duyệt.
+ */
+export function canSignOutgoingDoc(doc?: OutgoingDocument | null, user?: User | null): boolean {
+  if (!doc || !user) return false;
+  if (user.role === 'ADMIN' || user.role === 'LEADER') return true;
+  return doc.signerId === user.id;
+}
+
+/**
+ * QUY CHẾ VĂN THƯ NGHỊ ĐỊNH 30/2020/NĐ-CP:
+ * Thẩm quyền Cấp số, Đóng dấu & Phát hành văn bản đi:
+ * - DUY NHẤT VĂN THƯ (CLERK) hoặc Quản trị hệ thống (ADMIN) mới có thẩm quyền này.
+ * - LÃNH ĐẠO KHÔNG ĐƯỢC TỰ Ý CẤP SỐ VÀ PHÁT HÀNH ĐI MÀ KHÔNG QUA VĂN THƯ!
+ */
+export function canIssueOutgoingDoc(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'CLERK' || user.role === 'ADMIN';
+}
+
+/**
+ * Thẩm quyền Tiếp nhận & Vào Sổ Văn bản Đến:
+ * - Văn thư cơ quan (CLERK) hoặc ADMIN phụ trách tiếp nhận tài liệu và vào sổ đến.
+ */
+export function canRegisterIncomingDoc(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'CLERK' || user.role === 'ADMIN';
+}
+
+/**
+ * Thẩm quyền Chỉ đạo & Giao việc từ Văn bản Đến:
+ * - Lãnh đạo cơ quan / đơn vị (LEADER) hoặc ADMIN ghi ý kiến chỉ đạo và giao việc.
+ */
+export function canDirectIncomingDoc(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'LEADER' || user.role === 'ADMIN';
+}
+
+/**
  * ==========================================
  * 1. QUYỀN TRUY CẬP NHIỆM VỤ (TASK PERMISSION)
  * ==========================================

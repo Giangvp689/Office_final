@@ -148,7 +148,7 @@ export const App: React.FC = () => {
     const summaryText = `Dự thảo Báo cáo / Công văn trả lời thực hiện nhiệm vụ [${task.code}]: ${task.title}`;
     const newOutgoingDoc: OutgoingDocument = {
       id: `out-${Date.now()}`,
-      documentNumber: `DT-${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
+      documentNumber: db.generateDraftOutgoingDocNumber(),
       summary: summaryText,
       title: summaryText,
       releaseDate: new Date().toISOString().split('T')[0],
@@ -163,6 +163,32 @@ export const App: React.FC = () => {
       dossierId: task.dossierId || '',
       replyToDocId: task.incomingDocId || '',
       attachments: task.attachments || [],
+      createdById: currentUser.id,
+      createdAt: new Date().toISOString(),
+    };
+    db.saveOutgoingDoc(newOutgoingDoc, currentUser);
+    setActiveTarget({ type: 'OUTGOING_DOC', id: newOutgoingDoc.id, timestamp: Date.now() });
+    setCurrentSection('OUTGOING_DOCS');
+  };
+
+  const handleDraftOutgoingDocFromIncomingDoc = (doc: IncomingDocument) => {
+    const leaderUser = users.find((u) => u.role === 'LEADER') || users.find((u) => u.role === 'ADMIN') || currentUser;
+    const summaryText = `Dự thảo Công văn trả lời / Báo cáo văn bản đến [${doc.documentNumber}]: ${doc.summary}`;
+    const newOutgoingDoc: OutgoingDocument = {
+      id: `out-${Date.now()}`,
+      documentNumber: db.generateDraftOutgoingDocNumber(),
+      summary: summaryText,
+      title: summaryText,
+      releaseDate: new Date().toISOString().split('T')[0],
+      docType: 'Công văn',
+      department: (currentUser.department as any) || 'Phòng Chuyên Môn',
+      drafterId: currentUser.id,
+      signerId: doc.leaderId || leaderUser.id,
+      recipient: doc.issuingAuthority || 'Cơ quan gửi đến',
+      status: 'DRAFT',
+      dossierId: doc.dossierId || '',
+      replyToDocId: doc.id,
+      attachments: doc.attachments || [],
       createdById: currentUser.id,
       createdAt: new Date().toISOString(),
     };
@@ -269,6 +295,7 @@ export const App: React.FC = () => {
               masterData={masterData}
               onSaveDoc={(doc) => db.saveIncomingDoc(doc, currentUser)}
               onDeleteDoc={(id) => db.deleteIncomingDoc(id, currentUser)}
+              onDraftOutgoingDoc={handleDraftOutgoingDocFromIncomingDoc}
               onCreateTaskFromDoc={(doc) => {
                 const newTaskId = 'task-' + Date.now();
                 db.saveTask(

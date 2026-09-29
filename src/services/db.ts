@@ -1082,6 +1082,120 @@ class DatabaseService {
     firestoreSync.deleteIncomingDoc(id);
   }
 
+  /**
+   * LÃNH ĐẠO phê duyệt bút phê chỉ đạo và giao việc từ Văn bản đến
+   * Theo NĐ 30/2020/NĐ-CP: Tự động khởi tạo Nhiệm vụ (Task) gắn với Hồ sơ vụ việc (Dossier) và phân công cán bộ
+   */
+  public leaderAssignIncomingDoc(
+    docId: string,
+    leader: User,
+    assignment: {
+      assigneeId: string;
+      coAssigneeIds?: string[];
+      dueDate: string;
+      directive: string;
+      dossierId?: string;
+    }
+  ): { doc: IncomingDocument; task: Task } | undefined {
+    const docs = this.getIncomingDocs();
+    const doc = docs.find((d) => d.id === docId);
+    if (!doc) return undefined;
+
+    const now = new Date().toISOString();
+    const assignee = this.getUserById(assignment.assigneeId);
+    const assigneeName = assignee?.fullName || 'Cán bộ';
+
+    // 1. Tự động tạo Nhiệm vụ mới liên kết chặt chẽ
+    const taskCode = `CV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    const newTask: Task = {
+      id: `task-${Date.now()}`,
+      code: taskCode,
+      title: `Thực hiện chỉ đạo VB [${doc.documentNumber}]: ${doc.summary.slice(0, 80)}`,
+      description: `[Ý KIẾN CHỈ ĐẠO CỦA LÃNH ĐẠO ${leader.fullName}]:\n${assignment.directive}\n\n[Trích yếu văn bản đến]: ${doc.summary}\n[Cơ quan gửi]: ${doc.issuingAuthority}\n[Số ký hiệu đến]: ${doc.documentNumber}`,
+      incomingDocId: doc.id,
+      linkedDocId: doc.id,
+      docTypeRelation: 'INCOMING',
+      dossierId: assignment.dossierId || doc.dossierId,
+      creatorId: leader.id,
+      createdById: leader.id,
+      assigneeId: assignment.assigneeId,
+      coAssigneeIds: assignment.coAssigneeIds || [],
+      priority: doc.urgency === 'HOA_TOC' || doc.urgency === 'THUONG_KHAN' ? 'URGENT' : doc.urgency === 'KHAN' ? 'HIGH' : 'MEDIUM',
+      startDate: now.split('T')[0],
+      dueDate: assignment.dueDate || doc.dueDate,
+      progress: 0,
+      status: 'IN_PROGRESS',
+      attachments: doc.attachments || [],
+      comments: [
+        {
+          id: `cm-assign-${Date.now()}`,
+          userId: leader.id,
+          userName: leader.fullName,
+          userAvatar: leader.avatar || '',
+          content: `📌 [BÚT PHÊ CHỈ ĐẠO CỦA LÃNH ĐẠO]: ${assignment.directive}. Giao đồng chí ${assigneeName} chủ trì triển khai theo đúng thời hạn.`,
+          createdAt: now,
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.saveTask(newTask, leader);
+
+    // 2. Cập nhật Văn bản đến
+    const updatedDoc: IncomingDocument = {
+      ...doc,
+      status: 'PROCESSING',
+      assigneeId: assignment.assigneeId,
+      coAssigneeIds: assignment.coAssigneeIds || [],
+      dueDate: assignment.dueDate || doc.dueDate,
+      leaderDirective: assignment.directive,
+      leaderId: leader.id,
+      assignedAt: now,
+      dossierId: assignment.dossierId || doc.dossierId,
+      linkedTaskIds: Array.from(new Set([...(doc.linkedTaskIds || []), newTask.id])),
+      updatedAt: now,
+    };
+
+    this.saveIncomingDoc(updatedDoc, leader);
+
+    // 3. Nếu có hồ sơ vụ việc, kích hoạt trạng thái mở/đang thực hiện
+    if (updatedDoc.dossierId) {
+      const dossiers = this.getDossiers();
+      const targetDossier = dossiers.find((d) => d.id === updatedDoc.dossierId || d.code === updatedDoc.dossierId);
+      if (targetDossier && targetDossier.status === 'OPEN') {
+        this.saveDossier({ ...targetDossier, status: 'IN_PROGRESS' }, leader);
+      }
+    }
+
+    // 4. Gửi thông báo đến Cán bộ chủ trì & phối hợp
+    this.addNotification({
+      userId: assignment.assigneeId,
+      title: `⚡ Lãnh đạo giao việc xử lý VB đến: ${doc.documentNumber}`,
+      message: `Lãnh đạo ${leader.fullName} đã chỉ đạo: "${assignment.directive}". Bạn được giao chủ trì nhiệm vụ [${taskCode}]. Hạn chót: ${assignment.dueDate || doc.dueDate}.`,
+      type: 'DOC_ASSIGNED',
+      linkType: 'TASK',
+      targetId: newTask.id,
+    });
+
+    if (assignment.coAssigneeIds) {
+      for (const coId of assignment.coAssigneeIds) {
+        if (coId && coId !== assignment.assigneeId) {
+          this.addNotification({
+            userId: coId,
+            title: `👥 Phối hợp xử lý VB đến: ${doc.documentNumber}`,
+            message: `Lãnh đạo ${leader.fullName} phân công bạn phối hợp cùng ${assigneeName} thực hiện nhiệm vụ [${taskCode}].`,
+            type: 'DOC_ASSIGNED',
+            linkType: 'TASK',
+            targetId: newTask.id,
+          });
+        }
+      }
+    }
+
+    return { doc: updatedDoc, task: newTask };
+  }
+
   // --- Outgoing Documents (Văn bản đi) ---
   public getOutgoingDocs(): OutgoingDocument[] {
     return this.getList<OutgoingDocument>(DB_STORAGE_KEYS.OUTGOING_DOCS, INITIAL_OUTGOING_DOCS);
@@ -1605,32 +1719,83 @@ class DatabaseService {
   }
 
   /**
-   * LÃNH ĐẠO phê duyệt & Ký số văn bản đi
+   * Sinh số thứ tự tiếp theo cho Sổ văn bản đi theo Nghị định 30/2020/NĐ-CP
+   */
+  public generateNextOutgoingDocNumber(docType: string = 'Công văn'): string {
+    const currentYear = new Date().getFullYear();
+    const docs = this.getOutgoingDocs();
+    const typeMap: Record<string, string> = {
+      'Công văn': 'CV-VP',
+      'Tờ trình': 'TTr-VP',
+      'Báo cáo': 'BC-VP',
+      'Quyết định': 'QĐ-UBND',
+      'Thông báo': 'TB-VP',
+      'Kế hoạch': 'KH-UBND',
+      'Giấy mời': 'GM-VP',
+      'Chỉ thị': 'CT-UBND',
+    };
+    const suffix = typeMap[docType] || 'CV-VP';
+
+    // Đếm các văn bản đã phát hành chính thức trong năm hiện tại
+    const issuedDocs = docs.filter((d) => d.status === 'ISSUED' || d.status === 'SENT');
+    let maxSeq = 0;
+    for (const d of issuedDocs) {
+      const match = d.documentNumber.match(/^(\d+)\//);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxSeq) maxSeq = n;
+      }
+    }
+    const nextSeq = maxSeq > 0 ? maxSeq + 1 : issuedDocs.length + 1;
+    return `${nextSeq}/${suffix}`;
+  }
+
+  /**
+   * Sinh mã dự thảo cho văn bản đi khi đang soạn thảo
+   */
+  public generateDraftOutgoingDocNumber(): string {
+    const currentYear = new Date().getFullYear();
+    const docs = this.getOutgoingDocs();
+    const drafts = docs.filter((d) => d.status === 'DRAFT' || d.status === 'REVIEWING' || d.status === 'SIGNED');
+    const seq = drafts.length + 1;
+    return `DT-${currentYear}/${String(seq).padStart(2, '0')}`;
+  }
+
+  /**
+   * LÃNH ĐẠO phê duyệt & Ký số văn bản đi (theo NĐ 30/2020/NĐ-CP)
+   * Lưu ý: Lãnh đạo chỉ KÝ DUYỆT, sau đó văn bản chuyển sang Văn thư chờ cấp số và phát hành.
    */
   public signOutgoingDoc(docId: string, leader: User, signerNote?: string): OutgoingDocument | undefined {
     const docs = this.getOutgoingDocs();
     const doc = docs.find((d) => d.id === docId);
     if (!doc) return undefined;
 
+    // Kiểm tra thẩm quyền ký
+    const canSign = leader.role === 'ADMIN' || leader.role === 'LEADER' || doc.signerId === leader.id;
+    if (!canSign) {
+      console.warn('Người dùng không có thẩm quyền ký duyệt văn bản này.');
+      return undefined;
+    }
+
     const now = new Date().toISOString();
     const updatedDoc: OutgoingDocument = {
       ...doc,
       status: 'SIGNED',
       signedAt: now,
-      signerNote: signerNote || 'Đã kiểm tra thể thức và nội dung, phê duyệt ký số điện tử phát hành.',
+      signerNote: signerNote || 'Đã kiểm tra thể thức và nội dung, phê duyệt ký số điện tử ban hành.',
       updatedAt: now,
     };
 
     this.saveOutgoingDoc(updatedDoc, leader);
 
-    // Notify Clerk (Văn thư) to assign number and dispatch
+    // Notify Clerk (Văn thư) to assign official number and dispatch
     const users = this.getUsers();
     const clerks = users.filter((u) => u.role === 'CLERK');
     clerks.forEach((clerk) => {
       this.addNotification({
         userId: clerk.id,
-        title: `✍️ Văn bản đi đã được Lãnh đạo ký số: ${doc.documentNumber}`,
-        message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Đề nghị Văn thư cấp số văn bản đi, đóng dấu và phát hành.`,
+        title: `✍️ Dự thảo văn bản đi đã được Lãnh đạo ký số: ${doc.documentNumber}`,
+        message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Đề nghị Văn thư kiểm tra thể thức, cấp số văn bản đi, đóng dấu và phát hành.`,
         type: 'DOC_SIGNED',
         linkType: 'OUTGOING_DOC',
         targetId: doc.id,
@@ -1641,8 +1806,8 @@ class DatabaseService {
     if (doc.drafterId && doc.drafterId !== leader.id) {
       this.addNotification({
         userId: doc.drafterId,
-        title: `✍️ Dự thảo văn bản đi đã được ký số: ${doc.documentNumber}`,
-        message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Chuyển Văn thư phát hành.`,
+        title: `✍️ Dự thảo văn bản đi đã được Lãnh đạo ký số: ${doc.documentNumber}`,
+        message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Văn bản đã chuyển sang Văn thư để cấp số phát hành.`,
         type: 'DOC_SIGNED',
         linkType: 'OUTGOING_DOC',
         targetId: doc.id,
@@ -1653,17 +1818,26 @@ class DatabaseService {
   }
 
   /**
-   * VĂN THƯ cấp số, đóng dấu và phát hành văn bản đi
+   * VĂN THƯ kiểm tra thể thức, cấp số, đóng dấu và phát hành văn bản đi (theo NĐ 30/2020/NĐ-CP)
+   * DUY NHẤT VĂN THƯ HOẶC QUẢN TRỊ VIÊN MỚI ĐƯỢC THỰC HIỆN BƯỚC NÀY.
    */
   public issueOutgoingDoc(docId: string, clerk: User, officialNumber?: string): OutgoingDocument | undefined {
+    // Ràng buộc quy định văn thư: Lãnh đạo và nhân viên thông thường KHÔNG ĐƯỢC tự ý cấp số phát hành
+    if (clerk.role !== 'CLERK' && clerk.role !== 'ADMIN') {
+      console.warn('Vi phạm quy chế văn thư NĐ 30/2020/NĐ-CP: Chỉ Văn thư cơ quan hoặc Quản trị viên mới có thẩm quyền cấp số và phát hành văn bản đi.');
+      return undefined;
+    }
+
     const docs = this.getOutgoingDocs();
     const doc = docs.find((d) => d.id === docId);
     if (!doc) return undefined;
 
     const now = new Date().toISOString();
+    const assignedNumber = officialNumber?.trim() || (doc.documentNumber.startsWith('DT-') ? this.generateNextOutgoingDocNumber(doc.docType) : doc.documentNumber);
+
     const updatedDoc: OutgoingDocument = {
       ...doc,
-      documentNumber: officialNumber?.trim() || doc.documentNumber,
+      documentNumber: assignedNumber,
       status: 'ISSUED',
       issuedAt: now,
       clerkId: clerk.id,
@@ -1678,7 +1852,7 @@ class DatabaseService {
       this.addNotification({
         userId: uid,
         title: `📬 Văn bản đi đã phát hành chính thức: ${updatedDoc.documentNumber}`,
-        message: `Văn thư đã cấp số, đóng dấu và chuyển phát hành văn bản "${doc.summary}" đến ${doc.recipient}.`,
+        message: `Văn thư cơ quan đã cấp số chính thức ${updatedDoc.documentNumber}, đóng dấu và chuyển phát hành văn bản "${doc.summary}" đến ${doc.recipient}.`,
         type: 'DOC_ISSUED',
         linkType: 'OUTGOING_DOC',
         targetId: doc.id,

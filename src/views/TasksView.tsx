@@ -80,8 +80,11 @@ interface TasksViewProps {
   currentUser: User;
   filterMode?: 'ALL' | 'ASSIGNED_TO_ME' | 'DELEGATED_BY_ME';
   onOpenDossier: (dossierId: string) => void;
+  onOpenIncomingDoc?: (docId: string) => void;
   onDraftOutgoingDoc?: (task: Task) => void;
   initialSelectedTaskId?: string;
+  initialSubTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL';
+  targetTimestamp?: number;
 }
 
 export const TasksView: React.FC<TasksViewProps> = ({
@@ -95,8 +98,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
   currentUser,
   filterMode = 'ALL',
   onOpenDossier,
+  onOpenIncomingDoc,
   onDraftOutgoingDoc,
   initialSelectedTaskId,
+  initialSubTarget,
+  targetTimestamp,
 }) => {
   // Tabs for sub-filtering
   const [activeTab, setActiveTab] = useState<'ALL' | 'ASSIGNED_TO_ME' | 'DELEGATED_BY_ME'>(filterMode);

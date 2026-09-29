@@ -48,7 +48,8 @@ import { summarizeDocumentWithAI, classifyDocumentWithAI } from '../services/aiS
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { SamplePdfModal } from '../components/SamplePdfModal';
-import { canAccessIncomingDoc, isLeaderOrAdmin, isClerk } from '../utils/permission';
+import { canAccessIncomingDoc, isLeaderOrAdmin, isClerk, canRegisterIncomingDoc, canDirectIncomingDoc } from '../utils/permission';
+import { dbService } from '../services/db';
 
 interface IncomingDocsViewProps {
   docs: IncomingDocument[];
@@ -58,8 +59,10 @@ interface IncomingDocsViewProps {
   onSaveDoc: (doc: IncomingDocument) => void;
   onDeleteDoc: (id: string) => void;
   onCreateTaskFromDoc: (doc: IncomingDocument) => void;
+  onDraftOutgoingDoc?: (doc: IncomingDocument) => void;
   currentUser: User;
   onOpenDossier: (dossierId: string) => void;
+  onOpenTaskDetail?: (taskId: string) => void;
   initialSelectedDocId?: string;
   masterData?: MasterData;
 }
@@ -72,6 +75,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   onSaveDoc,
   onDeleteDoc,
   onCreateTaskFromDoc,
+  onDraftOutgoingDoc,
   currentUser,
   onOpenDossier,
   initialSelectedDocId,
@@ -87,6 +91,49 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [myRoleFilter, setMyRoleFilter] = useState<'ALL' | 'PRIMARY' | 'COOPERATE'>('ALL');
 
   const [selectedDoc, setSelectedDoc] = useState<IncomingDocument | null>(null);
+
+  // Leader Directive & Direct Assignment State (Nghị định 30/2020/NĐ-CP)
+  const [isDirectingOpen, setIsDirectingOpen] = useState(false);
+  const [leaderDirectiveText, setLeaderDirectiveText] = useState('');
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
+  const [selectedCoAssigneeIds, setSelectedCoAssigneeIds] = useState<string[]>([]);
+  const [selectedDueDate, setSelectedDueDate] = useState('');
+  const [selectedDossierId, setSelectedDossierId] = useState('');
+  const [assignmentNotice, setAssignmentNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedDoc) {
+      setLeaderDirectiveText(selectedDoc.leaderDirective || '');
+      setSelectedAssigneeId(selectedDoc.assigneeId || '');
+      setSelectedCoAssigneeIds(selectedDoc.coAssigneeIds || []);
+      setSelectedDueDate(selectedDoc.dueDate || '');
+      setSelectedDossierId(selectedDoc.dossierId || (dossiers[0]?.id || ''));
+      setIsDirectingOpen(selectedDoc.status === 'PENDING_ASSIGN');
+      setAssignmentNotice(null);
+    }
+  }, [selectedDoc, dossiers]);
+
+  const handleConfirmLeaderDirective = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDoc || !selectedAssigneeId || !leaderDirectiveText.trim()) {
+      alert('Vui lòng nhập đầy đủ ý kiến chỉ đạo và chọn cán bộ chủ trì xử lý.');
+      return;
+    }
+    const result = dbService.leaderAssignIncomingDoc(selectedDoc.id, currentUser, {
+      assigneeId: selectedAssigneeId,
+      coAssigneeIds: selectedCoAssigneeIds,
+      dueDate: selectedDueDate || selectedDoc.dueDate,
+      directive: leaderDirectiveText.trim(),
+      dossierId: selectedDossierId || selectedDoc.dossierId,
+    });
+    if (result) {
+      setSelectedDoc(result.doc);
+      onSaveDoc(result.doc);
+      setIsDirectingOpen(false);
+      setAssignmentNotice(`Đã phê duyệt bút phê chỉ đạo và khởi tạo nhiệm vụ [${result.task.code}] cho ${getUser(selectedAssigneeId)?.fullName || 'cán bộ'}!`);
+      setTimeout(() => setAssignmentNotice(null), 5000);
+    }
+  };
 
   // Authority suggestions from masterData + existing docs
   const authorityList = useMemo(() => {
@@ -546,13 +593,20 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
             <Download className="w-4 h-4 text-amber-700" />
             <span>Kho Tệp Mẫu</span>
           </button>
-          <button
-            onClick={handleOpenAddModal}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tiếp Nhận Văn Bản Mới</span>
-          </button>
+          {canRegisterIncomingDoc(currentUser) ? (
+            <button
+              onClick={handleOpenAddModal}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Tiếp Nhận & Vào Sổ Đến</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-100/90 text-slate-600 rounded-xl border border-slate-200 text-xs font-medium">
+              <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+              <span>Sổ Văn bản Đến do Văn thư quản lý</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -960,7 +1014,203 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </div>
               </div>
 
-              {/* Assignee & Dossier */}
+              {/* WORKFLOW STEPPER FOR INCOMING DOCUMENTS (NĐ 30/2020/NĐ-CP) */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Quy Trình Tiếp Nhận & Điều Phối Văn Bản Đến
+                  </span>
+                  <span className="text-[10px] text-indigo-600 font-semibold">Theo NĐ 30/2020/NĐ-CP</span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5 text-center">
+                  <div className="p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 bg-emerald-50 text-emerald-800 border-emerald-200">
+                    <span>1. Vào sổ đến</span>
+                    <span className="text-[9px] font-normal opacity-80">Văn thư scan & số</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 ${
+                    selectedDoc.status === 'PENDING_ASSIGN'
+                      ? 'bg-purple-600 text-white border-purple-700 ring-2 ring-purple-400/40 animate-pulse'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  }`}>
+                    <span>2. Bút phê & Giao việc</span>
+                    <span className="text-[9px] font-normal opacity-80">Lãnh đạo chỉ đạo</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 ${
+                    selectedDoc.status === 'PROCESSING'
+                      ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-400/40'
+                      : selectedDoc.status === 'COMPLETED'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-white text-slate-400 border-slate-200'
+                  }`}>
+                    <span>3. Thực thi</span>
+                    <span className="text-[9px] font-normal opacity-80">Chuyên viên xử lý</span>
+                  </div>
+
+                  <div className={`p-2 rounded-xl border text-[10px] font-bold flex flex-col items-center gap-1 ${
+                    selectedDoc.status === 'COMPLETED'
+                      ? 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-400/40'
+                      : 'bg-white text-slate-400 border-slate-200'
+                  }`}>
+                    <span>4. Báo cáo / Trả lời</span>
+                    <span className="text-[9px] font-normal opacity-80">Văn bản đi & Hồ sơ</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Assignment Notice Toast */}
+              {assignmentNotice && (
+                <div className="p-3 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>{assignmentNotice}</span>
+                </div>
+              )}
+
+              {/* LEADER DIRECTIVE & ASSIGNMENT PANEL */}
+              {canDirectIncomingDoc(currentUser) && (isDirectingOpen || !selectedDoc.assigneeId) ? (
+                <form onSubmit={handleConfirmLeaderDirective} className="bg-purple-50/90 border-2 border-purple-300 p-4 rounded-2xl space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-purple-200">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-700" />
+                      <span className="font-bold text-purple-950 text-xs uppercase tracking-wide">
+                        LÃNH ĐẠO BÚT PHÊ CHỈ ĐẠO & GIAO VIỆC
+                      </span>
+                    </div>
+                    {selectedDoc.assigneeId && (
+                      <button
+                        type="button"
+                        onClick={() => setIsDirectingOpen(false)}
+                        className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                      >
+                        Đóng
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-purple-950 text-xs mb-1">
+                      Ý kiến chỉ đạo của Lãnh đạo (Bút phê) <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      required
+                      rows={2}
+                      value={leaderDirectiveText}
+                      onChange={(e) => setLeaderDirectiveText(e.target.value)}
+                      placeholder="Ghi rõ yêu cầu chỉ đạo: Giao đơn vị/cán bộ nào chủ trì, hướng xử lý, thời hạn tham mưu hoặc văn bản trả lời..."
+                      className="w-full p-2.5 bg-white border border-purple-200 rounded-xl text-xs text-slate-800 font-medium focus:ring-2 focus:ring-purple-400 outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 text-xs mb-1">
+                        Chỉ định Cán bộ Chủ trì <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={selectedAssigneeId}
+                        onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-semibold text-slate-800 cursor-pointer outline-none"
+                      >
+                        <option value="">-- Chọn cán bộ chủ trì --</option>
+                        {users.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.fullName} ({u.role} - {u.department || 'Phòng Chuyên Môn'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 text-xs mb-1">
+                        Hạn chót giải quyết <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={selectedDueDate}
+                        onChange={(e) => setSelectedDueDate(e.target.value)}
+                        className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-bold text-rose-600 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 text-xs mb-1">
+                      Lưu trữ xuyên suốt vào Hồ Sơ Vụ Việc (Dossier)
+                    </label>
+                    <select
+                      value={selectedDossierId}
+                      onChange={(e) => setSelectedDossierId(e.target.value)}
+                      className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-medium text-slate-800 cursor-pointer outline-none"
+                    >
+                      <option value="">-- Chọn hoặc liên kết hồ sơ vụ việc --</option>
+                      {dossiers.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.code} - {d.title.slice(0, 40)}...
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end gap-2">
+                    {selectedDoc.assigneeId && (
+                      <button
+                        type="button"
+                        onClick={() => setIsDirectingOpen(false)}
+                        className="px-3 py-2 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-50 cursor-pointer"
+                      >
+                        Hủy
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-purple-700 hover:bg-purple-800 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>Phê Duyệt Bút Phê & Tự Động Giao Việc (Tạo Task)</span>
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Leader Directive Card (When already assigned or viewing as staff) */
+                selectedDoc.leaderDirective && (
+                  <div className="bg-amber-50/90 border border-amber-200 p-4 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between pb-1 border-b border-amber-200/80">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-600"></span>
+                        <span className="font-bold text-amber-950 text-xs uppercase tracking-wide">
+                          Bút Phê Chỉ Đạo Của Lãnh Đạo
+                        </span>
+                      </div>
+                      {canDirectIncomingDoc(currentUser) && (
+                        <button
+                          type="button"
+                          onClick={() => setIsDirectingOpen(true)}
+                          className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
+                        >
+                          Chỉnh sửa chỉ đạo / Giao lại
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs font-serif font-medium text-slate-800 leading-relaxed italic bg-white/70 p-3 rounded-xl border border-amber-200/60">
+                      &ldquo;{selectedDoc.leaderDirective}&rdquo;
+                    </p>
+                    <div className="flex items-center justify-between text-[11px] text-amber-900 pt-1">
+                      <span>Lãnh đạo chỉ đạo: <strong>{getUser(selectedDoc.leaderId)?.fullName || 'Thủ trưởng đơn vị'}</strong></span>
+                      {selectedDoc.assignedAt && (
+                        <span className="font-mono text-slate-500">
+                          {new Date(selectedDoc.assignedAt).toLocaleDateString('vi-VN')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              )}
+
+              {/* Assignee & Dossier Info */}
               <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">
@@ -983,7 +1233,20 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <span className="text-slate-400 italic text-xs">Chưa phân công</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-amber-700 bg-amber-50 px-2 py-1 rounded text-xs font-semibold border border-amber-200">
+                        Chờ Lãnh đạo cho ý kiến chỉ đạo & phân công
+                      </span>
+                      {canDirectIncomingDoc(currentUser) && (
+                        <button
+                          type="button"
+                          onClick={() => setIsDirectingOpen(true)}
+                          className="px-3 py-1 bg-purple-600 text-white font-bold text-xs rounded-lg cursor-pointer"
+                        >
+                          Giao việc ngay
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -1010,18 +1273,6 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   </div>
                 )}
               </div>
-
-              {/* Result Summary */}
-              {selectedDoc.resultSummary && (
-                <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200">
-                  <span className="text-[10px] font-bold text-emerald-800 uppercase block mb-1">
-                    Kết quả xử lý & Ý kiến chỉ đạo
-                  </span>
-                  <p className="text-xs text-slate-700 leading-relaxed">
-                    {selectedDoc.resultSummary}
-                  </p>
-                </div>
-              )}
 
               {/* Attachments / Scanned Files Section */}
               <div className="space-y-3">
@@ -1117,43 +1368,63 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
             </div>
 
             {/* Bottom Actions */}
-            <div className="pt-6 border-t border-slate-100 flex items-center gap-3 mt-6">
-              <button
-                type="button"
-                onClick={() => {
-                  const doc = selectedDoc;
-                  setSelectedDoc(null);
-                  onCreateTaskFromDoc(doc);
-                }}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-              >
-                <CheckSquare className="w-4 h-4" />
-                <span>Giao việc từ văn bản này</span>
-              </button>
+            <div className="pt-6 border-t border-slate-100 flex flex-wrap items-center gap-3 mt-6">
+              {/* Leader Directive Trigger */}
+              {canDirectIncomingDoc(currentUser) && (
+                <button
+                  type="button"
+                  onClick={() => setIsDirectingOpen(true)}
+                  className="bg-purple-700 hover:bg-purple-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Bút phê & Giao việc</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  const doc = selectedDoc;
-                  setSelectedDoc(null);
-                  handleOpenEditModal(doc);
-                }}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
-              >
-                Sửa thông tin
-              </button>
+              {/* Staff: Draft Outgoing Doc Reply / Report */}
+              {onDraftOutgoingDoc && (selectedDoc.assigneeId === currentUser.id || isLeaderOrAdmin(currentUser)) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const doc = selectedDoc;
+                    setSelectedDoc(null);
+                    onDraftOutgoingDoc(doc);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>Soạn Dự Thảo VB Đi Trả Lời</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteTargetDoc(selectedDoc);
-                }}
-                className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors border border-rose-200"
-                title="Xóa văn bản này"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Xóa VB</span>
-              </button>
+              {/* Edit incoming doc metadata (Clerk or Leader) */}
+              {(canRegisterIncomingDoc(currentUser) || isLeaderOrAdmin(currentUser)) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const doc = selectedDoc;
+                    setSelectedDoc(null);
+                    handleOpenEditModal(doc);
+                  }}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                >
+                  Sửa thông tin
+                </button>
+              )}
+
+              {(canRegisterIncomingDoc(currentUser) || isLeaderOrAdmin(currentUser)) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteTargetDoc(selectedDoc);
+                  }}
+                  className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors border border-rose-200"
+                  title="Xóa văn bản này"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Xóa VB</span>
+                </button>
+              )}
             </div>
               </>
             )}
