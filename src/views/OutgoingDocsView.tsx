@@ -160,6 +160,17 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
   const [deleteTargetDoc, setDeleteTargetDoc] = useState<OutgoingDocument | null>(null);
   const [deleteToastMessage, setDeleteToastMessage] = useState<string | null>(null);
 
+  // Form & In-App Action Dialog States
+  const [formError, setFormError] = useState<string | null>(null);
+  const [actionDialog, setActionDialog] = useState<{
+    type: 'SIGN' | 'REJECT' | 'ISSUE';
+    title: string;
+    description: string;
+    inputLabel: string;
+    inputValue: string;
+    error?: string;
+  } | null>(null);
+
   const getUser = (id?: string) => users.find((u) => u.id === id);
   const getDossier = (id?: string) => dossiers.find((d) => d.id === id);
 
@@ -199,6 +210,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
       attachments: [],
       createdById: currentUser?.id || users[0]?.id || '',
     });
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -207,6 +219,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
       ...doc,
       attachments: doc.attachments || [],
     });
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -302,10 +315,11 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingDoc || !editingDoc.documentNumber || !editingDoc.summary) {
-      alert('Vui lòng nhập đầy đủ Số văn bản đi và Trích yếu nội dung.');
+    if (!editingDoc || !editingDoc.documentNumber?.trim() || !editingDoc.summary?.trim()) {
+      setFormError('Vui lòng nhập đầy đủ Số văn bản đi và Trích yếu nội dung.');
       return;
     }
+    setFormError(null);
 
     const docToSave: OutgoingDocument = {
       id: editingDoc.id || 'vbdi-' + Date.now(),
@@ -333,6 +347,40 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
     if (selectedDoc && selectedDoc.id === docToSave.id) {
       setSelectedDoc(docToSave);
     }
+  };
+
+  const handleConfirmActionDialog = () => {
+    if (!actionDialog || !selectedDoc) return;
+    const value = actionDialog.inputValue.trim();
+
+    if (actionDialog.type === 'SIGN') {
+      const updated = dbService.signOutgoingDoc(selectedDoc.id, currentUser, value || 'Đã xem xét và đồng ý ký số duyệt ban hành.');
+      if (updated) {
+        setSelectedDoc(updated);
+        onSaveDoc(updated);
+      }
+    } else if (actionDialog.type === 'REJECT') {
+      if (!value) {
+        setActionDialog((prev) => (prev ? { ...prev, error: 'Vui lòng nhập lý do yêu cầu sửa đổi dự thảo' } : null));
+        return;
+      }
+      const updated: OutgoingDocument = {
+        ...selectedDoc,
+        status: 'DRAFT',
+        summary: `${selectedDoc.summary} [Lãnh đạo yêu cầu sửa: ${value}]`,
+        updatedAt: new Date().toISOString(),
+      };
+      dbService.saveOutgoingDoc(updated, currentUser);
+      setSelectedDoc(updated);
+      onSaveDoc(updated);
+    } else if (actionDialog.type === 'ISSUE') {
+      const updated = dbService.issueOutgoingDoc(selectedDoc.id, currentUser, value || selectedDoc.documentNumber);
+      if (updated) {
+        setSelectedDoc(updated);
+        onSaveDoc(updated);
+      }
+    }
+    setActionDialog(null);
   };
 
   // AI Draft Generator Handler
@@ -1016,14 +1064,13 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            const note = prompt('Nhập ý kiến phê duyệt / xác nhận ký số điện tử:', 'Đã xem xét và đồng ý ký số duyệt ban hành.');
-                            if (note !== null) {
-                              const updated = dbService.signOutgoingDoc(selectedDoc.id, currentUser, note);
-                              if (updated) {
-                                setSelectedDoc(updated);
-                                onSaveDoc(updated);
-                              }
-                            }
+                            setActionDialog({
+                              type: 'SIGN',
+                              title: 'Phê Duyệt & Ký Số Điện Tử',
+                              description: 'Xác nhận ký số điện tử để phê duyệt ban hành văn bản đi.',
+                              inputLabel: 'Ý kiến phê duyệt / Ghi chú ký số:',
+                              inputValue: 'Đã xem xét và đồng ý ký số duyệt ban hành.',
+                            });
                           }}
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
                         >
@@ -1034,18 +1081,13 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            const reason = prompt('Nhập lý do trả lại yêu cầu sửa đổi dự thảo:');
-                            if (reason) {
-                              const updated: OutgoingDocument = {
-                                ...selectedDoc,
-                                status: 'DRAFT',
-                                summary: `${selectedDoc.summary} [Lãnh đạo yêu cầu sửa: ${reason}]`,
-                                updatedAt: new Date().toISOString(),
-                              };
-                              dbService.saveOutgoingDoc(updated, currentUser);
-                              setSelectedDoc(updated);
-                              onSaveDoc(updated);
-                            }
+                            setActionDialog({
+                              type: 'REJECT',
+                              title: 'Yêu Cầu Sửa Đổi Dự Thảo',
+                              description: 'Trả lại văn bản về trạng thái Dự thảo để chuyên viên hoàn thiện.',
+                              inputLabel: 'Lý do yêu cầu sửa đổi nội dung:',
+                              inputValue: '',
+                            });
                           }}
                           className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl cursor-pointer flex items-center gap-1.5"
                         >
@@ -1086,14 +1128,13 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            const newNum = prompt('Nhập Số văn bản đi chính thức vào sổ:', selectedDoc.documentNumber);
-                            if (newNum !== null) {
-                              const updated = dbService.issueOutgoingDoc(selectedDoc.id, currentUser, newNum);
-                              if (updated) {
-                                setSelectedDoc(updated);
-                                onSaveDoc(updated);
-                              }
-                            }
+                            setActionDialog({
+                              type: 'ISSUE',
+                              title: 'Cấp Số, Đóng Dấu & Phát Hành Đi',
+                              description: 'Văn thư vào sổ cấp số văn bản đi chính thức và chuyển phát hành.',
+                              inputLabel: 'Số văn bản đi chính thức vào sổ:',
+                              inputValue: selectedDoc.documentNumber || '',
+                            });
                           }}
                           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
                         >
@@ -1191,6 +1232,13 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
             </div>
 
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
+              {formError && (
+                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-700 font-semibold flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                  <span>{formError}</span>
+                </div>
+              )}
+
               {/* AI Draft Assist Banner */}
               <div className="bg-linear-to-r from-purple-50 to-indigo-50 p-4 rounded-xl border border-purple-100 space-y-2">
                 <div className="flex items-center justify-between">
@@ -1627,6 +1675,90 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Xác nhận xóa</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Dialog Modal for Sign, Reject, Issue */}
+      {actionDialog && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm">
+                  {actionDialog.title}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {actionDialog.description}
+                </p>
+              </div>
+              <button
+                onClick={() => setActionDialog(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              {actionDialog.error && (
+                <div className="p-2.5 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-700 font-semibold">
+                  {actionDialog.error}
+                </div>
+              )}
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  {actionDialog.inputLabel}
+                </label>
+                {actionDialog.type === 'REJECT' ? (
+                  <textarea
+                    rows={3}
+                    autoFocus
+                    value={actionDialog.inputValue}
+                    onChange={(e) =>
+                      setActionDialog((prev) => (prev ? { ...prev, inputValue: e.target.value, error: undefined } : null))
+                    }
+                    placeholder="Ghi rõ nội dung cần điều chỉnh, bổ sung..."
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-rose-500/20 font-medium"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    autoFocus
+                    value={actionDialog.inputValue}
+                    onChange={(e) =>
+                      setActionDialog((prev) => (prev ? { ...prev, inputValue: e.target.value, error: undefined } : null))
+                    }
+                    onKeyDown={(e) => e.key === 'Enter' && handleConfirmActionDialog()}
+                    placeholder="Nhập nội dung..."
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setActionDialog(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmActionDialog}
+                className={`px-5 py-2 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer flex items-center gap-1.5 transition-all ${
+                  actionDialog.type === 'REJECT'
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Xác nhận</span>
               </button>
             </div>
           </div>

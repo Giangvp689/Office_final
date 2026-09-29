@@ -250,6 +250,7 @@ export interface SystemNotification {
     | 'WARNING';
   linkType?: 'TASK' | 'INCOMING_DOC' | 'OUTGOING_DOC' | 'DOSSIER';
   targetId?: string;
+  subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL';
   isRead?: boolean;
   createdAt?: string;
 }

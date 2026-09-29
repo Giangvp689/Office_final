@@ -844,10 +844,10 @@ app.post('/api/tasks', async (req, res) => {
     const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `INSERT INTO tasks 
-        (id, code, title, description, dossier_id, incoming_doc_id, linked_doc_id, doc_type_relation, creator_id, created_by_id, assignee_id, co_assignee_ids, priority, start_date, due_date, progress, status, completed_date, result_notes, sub_tasks, comments, remind_days_before) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, code, title, description, dossier_id, incoming_doc_id, linked_doc_id, doc_type_relation, creator_id, created_by_id, assignee_id, co_assignee_ids, priority, start_date, due_date, progress, status, completed_date, result_notes, sub_tasks, comments, remind_days_before, submission_note, submitted_at, approved_by_id, approved_at, leader_feedback, attachments) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
-        code=VALUES(code), title=VALUES(title), description=VALUES(description), dossier_id=VALUES(dossier_id), incoming_doc_id=VALUES(incoming_doc_id), linked_doc_id=VALUES(linked_doc_id), doc_type_relation=VALUES(doc_type_relation), creator_id=VALUES(creator_id), created_by_id=VALUES(created_by_id), assignee_id=VALUES(assignee_id), co_assignee_ids=VALUES(co_assignee_ids), priority=VALUES(priority), start_date=VALUES(start_date), due_date=VALUES(due_date), progress=VALUES(progress), status=VALUES(status), completed_date=VALUES(completed_date), result_notes=VALUES(result_notes), sub_tasks=VALUES(sub_tasks), comments=VALUES(comments), remind_days_before=VALUES(remind_days_before)`,
+        code=VALUES(code), title=VALUES(title), description=VALUES(description), dossier_id=VALUES(dossier_id), incoming_doc_id=VALUES(incoming_doc_id), linked_doc_id=VALUES(linked_doc_id), doc_type_relation=VALUES(doc_type_relation), creator_id=VALUES(creator_id), created_by_id=VALUES(created_by_id), assignee_id=VALUES(assignee_id), co_assignee_ids=VALUES(co_assignee_ids), priority=VALUES(priority), start_date=VALUES(start_date), due_date=VALUES(due_date), progress=VALUES(progress), status=VALUES(status), completed_date=VALUES(completed_date), result_notes=VALUES(result_notes), sub_tasks=VALUES(sub_tasks), comments=VALUES(comments), remind_days_before=VALUES(remind_days_before), submission_note=VALUES(submission_note), submitted_at=VALUES(submitted_at), approved_by_id=VALUES(approved_by_id), approved_at=VALUES(approved_at), leader_feedback=VALUES(leader_feedback), attachments=VALUES(attachments)`,
         [
           t.id,
           t.code,
@@ -871,6 +871,12 @@ app.post('/api/tasks', async (req, res) => {
           JSON.stringify(t.subTasks || []),
           JSON.stringify(t.comments || []),
           t.remindDaysBefore || 1,
+          t.submissionNote || null,
+          t.submittedAt || null,
+          t.approvedById || null,
+          t.approvedAt || null,
+          t.leaderFeedback || null,
+          JSON.stringify(t.attachments || []),
         ]
       );
     });
@@ -893,7 +899,7 @@ app.put('/api/tasks/:id', async (req, res) => {
     const dbResult = await safeDbRun(async (pool) => {
       await pool.query(
         `UPDATE tasks SET 
-        code=?, title=?, description=?, dossier_id=?, incoming_doc_id=?, linked_doc_id=?, doc_type_relation=?, creator_id=?, created_by_id=?, assignee_id=?, co_assignee_ids=?, priority=?, start_date=?, due_date=?, progress=?, status=?, completed_date=?, result_notes=?, sub_tasks=?, comments=?, remind_days_before=?
+        code=?, title=?, description=?, dossier_id=?, incoming_doc_id=?, linked_doc_id=?, doc_type_relation=?, creator_id=?, created_by_id=?, assignee_id=?, co_assignee_ids=?, priority=?, start_date=?, due_date=?, progress=?, status=?, completed_date=?, result_notes=?, sub_tasks=?, comments=?, remind_days_before=?, submission_note=?, submitted_at=?, approved_by_id=?, approved_at=?, leader_feedback=?, attachments=?
         WHERE id=?`,
         [
           t.code,
@@ -917,6 +923,12 @@ app.put('/api/tasks/:id', async (req, res) => {
           JSON.stringify(t.subTasks || []),
           JSON.stringify(t.comments || []),
           t.remindDaysBefore || 1,
+          t.submissionNote || null,
+          t.submittedAt || null,
+          t.approvedById || null,
+          t.approvedAt || null,
+          t.leaderFeedback || null,
+          JSON.stringify(t.attachments || []),
           id,
         ]
       );
@@ -924,6 +936,194 @@ app.put('/api/tasks/:id', async (req, res) => {
     res.json({ success: true, task: t, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {
     res.json({ success: true, task: req.body });
+  }
+});
+
+// Endpoint: Chuyên viên nộp báo cáo hoàn thành & trình Lãnh đạo nghiệm thu
+app.post('/api/tasks/:id/submit-approval', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { submissionNote, staff, attachments } = req.body;
+    const store = loadStore();
+    const task = (store.tasks || []).find((t: any) => t.id === id);
+    if (!task) return res.status(404).json({ success: false, error: 'Không tìm thấy nhiệm vụ' });
+
+    const now = new Date().toISOString();
+    const note = submissionNote?.trim() || 'Báo cáo Lãnh đạo: Tôi đã hoàn thành toàn bộ các hạng mục công việc theo yêu cầu và kính trình Thủ trưởng xem xét, phê duyệt nghiệm thu.';
+    const finalAttachments = Array.isArray(attachments) && attachments.length > 0 ? attachments : (task.attachments || []);
+
+    const commentObj = {
+      id: `cm-sub-${Date.now()}`,
+      userId: staff?.id || task.assigneeId,
+      userName: staff?.fullName || 'Chuyên viên phụ trách',
+      userAvatar: staff?.avatar || '',
+      content: `📋 [TRÌNH BÁO CÁO NGHIỆM THU]: ${note}${finalAttachments.length > 0 ? ` (Kèm ${finalAttachments.length} tệp tài liệu kết quả/báo cáo)` : ''}`,
+      createdAt: now,
+    };
+
+    task.status = 'WAITING_APPROVAL';
+    task.progress = 100;
+    task.submissionNote = note;
+    task.submittedAt = now;
+    task.attachments = finalAttachments;
+    task.comments = [...(task.comments || []), commentObj];
+    task.updatedAt = now;
+
+    // Save attachments to global store
+    if (Array.isArray(finalAttachments)) {
+      for (const att of finalAttachments) {
+        if (!store.attachments.some((a: any) => a.id === att.id)) {
+          store.attachments.unshift(att);
+        }
+      }
+    }
+
+    // Leader recipient
+    const leaderId = task.creatorId || task.createdById || 'usr-01';
+    const notifObj = {
+      id: `notif-appr-${Date.now()}`,
+      userId: leaderId,
+      title: `📋 Yêu cầu nghiệm thu nhiệm vụ: [${task.code}]`,
+      message: `Đồng chí ${staff?.fullName || 'Chuyên viên'} đã nộp báo cáo hoàn thành công việc "${task.title}". Kính trình Lãnh đạo xem xét và phê duyệt nghiệm thu.`,
+      type: 'TASK_APPROVAL_REQUEST',
+      linkType: 'TASK',
+      targetId: task.id,
+      isRead: false,
+      createdAt: now,
+    };
+    store.notifications = [notifObj, ...(store.notifications || [])];
+    saveStore(store);
+
+    await safeDbRun(async (pool) => {
+      await pool.query(
+        `UPDATE tasks SET status='WAITING_APPROVAL', progress=100, submission_note=?, submitted_at=?, attachments=?, comments=? WHERE id=?`,
+        [note, now, JSON.stringify(finalAttachments), JSON.stringify(task.comments), id]
+      );
+      await pool.query(
+        `INSERT INTO notifications (id, user_id, title, message, type, link_type, target_id, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+        [notifObj.id, notifObj.userId, notifObj.title, notifObj.message, notifObj.type, notifObj.linkType, notifObj.targetId]
+      );
+    });
+
+    res.json({ success: true, task });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint: Lãnh đạo phê duyệt nghiệm thu hoàn thành
+app.post('/api/tasks/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { leader, feedback } = req.body;
+    const store = loadStore();
+    const task = (store.tasks || []).find((t: any) => t.id === id);
+    if (!task) return res.status(404).json({ success: false, error: 'Không tìm thấy nhiệm vụ' });
+
+    const now = new Date().toISOString();
+    const today = now.split('T')[0];
+    const praise = feedback?.trim() || 'Lãnh đạo đã xem xét kết quả, nhất trí nghiệm thu và đồng ý đóng nhiệm vụ.';
+
+    const commentObj = {
+      id: `cm-appr-${Date.now()}`,
+      userId: leader?.id || 'usr-01',
+      userName: leader?.fullName || 'Lãnh đạo đơn vị',
+      userAvatar: leader?.avatar || '',
+      content: `✅ [LÃNH ĐẠO PHÊ DUYỆT NGHIỆM THU]: ${praise}`,
+      createdAt: now,
+    };
+
+    task.status = 'COMPLETED';
+    task.progress = 100;
+    task.completedDate = today;
+    task.approvedById = leader?.id || '';
+    task.approvedAt = now;
+    task.leaderFeedback = praise;
+    task.comments = [...(task.comments || []), commentObj];
+    task.updatedAt = now;
+
+    // Send notifications to assignees
+    const participantIds = [task.assigneeId, ...(task.coAssigneeIds || [])].filter((uid) => uid && uid !== leader?.id);
+    for (const pId of participantIds) {
+      store.notifications.unshift({
+        id: `notif-done-${Date.now()}-${pId}`,
+        userId: pId,
+        title: `🎉 Nhiệm vụ đã được Lãnh đạo phê duyệt: [${task.code}]`,
+        message: `Lãnh đạo ${leader?.fullName || 'Thủ trưởng'} đã nghiệm thu hoàn thành nhiệm vụ "${task.title}". Nhận xét: "${praise}"`,
+        type: 'TASK_APPROVED',
+        linkType: 'TASK',
+        targetId: task.id,
+        isRead: false,
+        createdAt: now,
+      });
+    }
+
+    saveStore(store);
+
+    await safeDbRun(async (pool) => {
+      await pool.query(
+        `UPDATE tasks SET status='COMPLETED', progress=100, completed_date=?, approved_by_id=?, approved_at=?, leader_feedback=?, comments=? WHERE id=?`,
+        [today, leader?.id || null, now, praise, JSON.stringify(task.comments), id]
+      );
+    });
+
+    res.json({ success: true, task });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint: Lãnh đạo yêu cầu bổ sung / làm lại
+app.post('/api/tasks/:id/reject', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { leader, feedback } = req.body;
+    const store = loadStore();
+    const task = (store.tasks || []).find((t: any) => t.id === id);
+    if (!task) return res.status(404).json({ success: false, error: 'Không tìm thấy nhiệm vụ' });
+
+    const now = new Date().toISOString();
+    const commentObj = {
+      id: `cm-rej-${Date.now()}`,
+      userId: leader?.id || 'usr-01',
+      userName: leader?.fullName || 'Lãnh đạo đơn vị',
+      userAvatar: leader?.avatar || '',
+      content: `⚠️ [LÃNH ĐẠO YÊU CẦU LÀM LẠI / BỔ SUNG]: ${feedback}`,
+      createdAt: now,
+    };
+
+    task.status = 'IN_PROGRESS';
+    task.progress = Math.min(task.progress || 80, 80);
+    task.leaderFeedback = feedback;
+    task.comments = [...(task.comments || []), commentObj];
+    task.updatedAt = now;
+
+    if (task.assigneeId) {
+      store.notifications.unshift({
+        id: `notif-rej-${Date.now()}`,
+        userId: task.assigneeId,
+        title: `⚠️ Yêu cầu bổ sung / hoàn thiện lại: [${task.code}]`,
+        message: `Lãnh đạo ${leader?.fullName || 'Thủ trưởng'} yêu cầu hoàn thiện lại nhiệm vụ "${task.title}". Lý do: "${feedback}".`,
+        type: 'TASK_REJECTED',
+        linkType: 'TASK',
+        targetId: task.id,
+        isRead: false,
+        createdAt: now,
+      });
+    }
+
+    saveStore(store);
+
+    await safeDbRun(async (pool) => {
+      await pool.query(
+        `UPDATE tasks SET status='IN_PROGRESS', progress=?, leader_feedback=?, comments=? WHERE id=?`,
+        [task.progress, feedback, JSON.stringify(task.comments), id]
+      );
+    });
+
+    res.json({ success: true, task });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -961,6 +1161,29 @@ app.post('/api/tasks/:id/comments', async (req, res) => {
       task.comments.push(comment);
     }
     updatedComments = task.comments;
+
+    // Generate targeted notifications for participants except the commenter
+    const senderId = comment.userId;
+    const participantIds = [task.assigneeId, task.creatorId, task.createdById, ...(Array.isArray(task.coAssigneeIds) ? task.coAssigneeIds : [])]
+      .filter((uid: any) => Boolean(uid && uid !== senderId));
+    const uniqueRecipients = Array.from(new Set(participantIds));
+    const nowTime = new Date().toISOString();
+
+    for (const rId of uniqueRecipients) {
+      store.notifications = store.notifications || [];
+      store.notifications.unshift({
+        id: `notif-chat-${Date.now()}-${rId}`,
+        userId: rId,
+        title: `💬 Tin nhắn mới [${task.code}] từ ${comment.userName}`,
+        message: `${comment.userName}: "${(comment.content || '').slice(0, 90)}${(comment.content || '').length > 90 ? '...' : ''}"`,
+        type: 'TASK_COMMENT',
+        linkType: 'TASK',
+        targetId: task.id,
+        isRead: false,
+        createdAt: nowTime,
+      });
+    }
+
     saveStore(store);
 
     const dbResult = await safeDbRun(async (pool) => {
@@ -978,6 +1201,15 @@ app.post('/api/tasks/:id/comments', async (req, res) => {
         currentComments.push(comment);
       }
       await pool.query('UPDATE tasks SET comments = ? WHERE id = ?', [JSON.stringify(currentComments), id]);
+
+      for (const rId of uniqueRecipients) {
+        try {
+          await pool.query(
+            `INSERT INTO notifications (id, user_id, title, message, type, link_type, target_id, is_read, created_at) VALUES (?, ?, ?, ?, 'TASK_COMMENT', 'TASK', ?, 0, NOW())`,
+            [`notif-chat-${Date.now()}-${rId}`, rId, `💬 Tin nhắn mới [${task.code}] từ ${comment.userName}`, `${comment.userName}: "${(comment.content || '').slice(0, 90)}"`, task.id]
+          );
+        } catch {}
+      }
     });
 
     res.json({ success: true, comment, comments: updatedComments, fromDb: dbResult.fromDb });

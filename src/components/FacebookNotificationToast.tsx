@@ -5,7 +5,7 @@ import { Bell, X, ArrowRight, MessageSquare, FileText, CheckSquare, Clock, Alert
 interface FacebookNotificationToastProps {
   notifications: SystemNotification[];
   onMarkAsRead: (id: string) => void;
-  onNavigate: (type: string, id: string) => void;
+  onNavigate: (type: string, id: string, subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL') => void;
 }
 
 export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps> = ({
@@ -65,7 +65,8 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
       recordDismissed(activeNotif.id);
       onMarkAsRead(activeNotif.id);
       if (activeNotif.linkType && activeNotif.targetId) {
-        onNavigate(activeNotif.linkType, activeNotif.targetId);
+        const subTarget = activeNotif.subTarget || (activeNotif.type === 'TASK_COMMENT' ? 'COMMENTS' : activeNotif.type === 'TASK_APPROVAL_REQUEST' ? 'APPROVAL' : undefined);
+        onNavigate(activeNotif.linkType, activeNotif.targetId, subTarget);
       }
     }
     setActiveNotif(null);

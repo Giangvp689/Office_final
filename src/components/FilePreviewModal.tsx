@@ -45,21 +45,16 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({ file, isOpen
 
   const handleOpenNewTab = () => {
     if (!file.fileUrl) return;
-    const newWindow = window.open();
-    if (newWindow) {
-      newWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head><title>${file.fileName || 'Xem Tài Liệu'}</title></head>
-          <body style="margin:0;background:#1e293b;display:flex;align-items:center;justify-content:center;height:100vh;">
-            ${
-              isImage
-                ? `<img src="${file.fileUrl}" style="max-width:100%;max-height:100%;object-fit:contain;" />`
-                : `<iframe src="${file.fileUrl}" style="width:100%;height:100%;border:none;"></iframe>`
-            }
-          </body>
-        </html>
-      `);
+    try {
+      const a = document.createElement('a');
+      a.href = file.fileUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      handleDownload();
     }
   };
 

@@ -51,6 +51,7 @@ export const App: React.FC = () => {
     type: 'TASK' | 'INCOMING_DOC' | 'OUTGOING_DOC' | 'DOSSIER';
     id: string;
     timestamp: number;
+    subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL';
   } | null>(null);
 
   // Core Data from db
@@ -64,6 +65,12 @@ export const App: React.FC = () => {
   const [masterData, setMasterData] = useState<MasterData>(() => db.getMasterData());
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => db.getAuditLogs());
   const [notifications, setNotifications] = useState<SystemNotification[]>(() => db.getNotifications());
+
+  // Filter notifications specifically for the current authenticated user (or general broadcast)
+  const userNotifications = useMemo(() => {
+    if (!currentUser) return [];
+    return notifications.filter((n) => !n.userId || n.userId === currentUser.id);
+  }, [notifications, currentUser]);
 
   // Reload data on changes
   const reloadData = () => {
@@ -101,10 +108,10 @@ export const App: React.FC = () => {
     const overdue = tasks.filter(
       (t) => (t.status === 'OVERDUE' || t.dueDate < today) && t.status !== 'COMPLETED' && t.status !== 'CANCELLED'
     ).length;
-    const unreadNotifs = notifications.filter((n) => !n.isRead).length;
+    const unreadNotifs = userNotifications.filter((n) => !n.isRead).length;
 
     return { incoming, outgoing, myTasks, overdue, reminders: unreadNotifs };
-  }, [incomingDocs, outgoingDocs, tasks, currentUser, notifications]);
+  }, [incomingDocs, outgoingDocs, tasks, currentUser, userNotifications]);
 
   // If user is not authenticated, show modern Login view
   if (!isAuthenticated) {
@@ -119,7 +126,7 @@ export const App: React.FC = () => {
   }
 
   // Notification target click (Facebook-style deep linking)
-  const handleSelectNotificationTarget = (type?: string, id?: string) => {
+  const handleSelectNotificationTarget = (type?: string, id?: string, subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL') => {
     if (!id || !type) return;
     const normalizedType = type.toUpperCase() as 'TASK' | 'INCOMING_DOC' | 'OUTGOING_DOC' | 'DOSSIER';
     
@@ -133,7 +140,7 @@ export const App: React.FC = () => {
       setCurrentSection('DOSSIERS');
     }
     
-    setActiveTarget({ type: normalizedType, id, timestamp: Date.now() });
+    setActiveTarget({ type: normalizedType, id, timestamp: Date.now(), subTarget });
   };
 
   const handleDraftOutgoingDocFromTask = (task: Task) => {
@@ -215,9 +222,9 @@ export const App: React.FC = () => {
             setShowUserProfileModal(true);
           }}
           onOpenDatabaseCenter={() => setShowDatabaseCenterModal(true)}
-          notifications={notifications}
+          notifications={userNotifications}
           onMarkNotificationAsRead={(id) => db.markNotificationAsRead(id)}
-          onMarkAllAsRead={() => db.markAllNotificationsAsRead()}
+          onMarkAllAsRead={() => db.markAllNotificationsAsRead(currentUser.id)}
           onSelectNotificationTarget={handleSelectNotificationTarget}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -303,10 +310,18 @@ export const App: React.FC = () => {
                   currentUser
                 );
 
+                setActiveTarget({ type: 'TASK', id: newTaskId, timestamp: Date.now() });
                 setCurrentSection('ALL_TASKS');
               }}
               currentUser={currentUser}
-              onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              onOpenDossier={(dId) => {
+                setActiveTarget({ type: 'DOSSIER', id: dId, timestamp: Date.now() });
+                setCurrentSection('DOSSIERS');
+              }}
+              onOpenTaskDetail={(taskId) => {
+                setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
+                setCurrentSection('ALL_TASKS');
+              }}
               initialSelectedDocId={activeTarget?.type === 'INCOMING_DOC' ? activeTarget.id : undefined}
             />
           )}
@@ -322,7 +337,14 @@ export const App: React.FC = () => {
               onSaveDoc={(doc) => db.saveOutgoingDoc(doc, currentUser)}
               onDeleteDoc={(id) => db.deleteOutgoingDoc(id, currentUser)}
               currentUser={currentUser}
-              onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              onOpenDossier={(dId) => {
+                setActiveTarget({ type: 'DOSSIER', id: dId, timestamp: Date.now() });
+                setCurrentSection('DOSSIERS');
+              }}
+              onOpenTaskDetail={(taskId) => {
+                setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
+                setCurrentSection('ALL_TASKS');
+              }}
               initialSelectedDocId={activeTarget?.type === 'OUTGOING_DOC' ? activeTarget.id : undefined}
             />
           )}
@@ -338,9 +360,18 @@ export const App: React.FC = () => {
               onDeleteTask={(id) => db.deleteTask(id, currentUser)}
               currentUser={currentUser}
               filterMode="ALL"
-              onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              onOpenDossier={(dId) => {
+                setActiveTarget({ type: 'DOSSIER', id: dId, timestamp: Date.now() });
+                setCurrentSection('DOSSIERS');
+              }}
+              onOpenIncomingDoc={(docId) => {
+                setActiveTarget({ type: 'INCOMING_DOC', id: docId, timestamp: Date.now() });
+                setCurrentSection('INCOMING_DOCS');
+              }}
               onDraftOutgoingDoc={handleDraftOutgoingDocFromTask}
               initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
+              initialSubTarget={activeTarget?.type === 'TASK' ? activeTarget.subTarget : undefined}
+              targetTimestamp={activeTarget?.timestamp}
             />
           )}
 
@@ -355,9 +386,18 @@ export const App: React.FC = () => {
               onDeleteTask={(id) => db.deleteTask(id, currentUser)}
               currentUser={currentUser}
               filterMode="ASSIGNED_TO_ME"
-              onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              onOpenDossier={(dId) => {
+                setActiveTarget({ type: 'DOSSIER', id: dId, timestamp: Date.now() });
+                setCurrentSection('DOSSIERS');
+              }}
+              onOpenIncomingDoc={(docId) => {
+                setActiveTarget({ type: 'INCOMING_DOC', id: docId, timestamp: Date.now() });
+                setCurrentSection('INCOMING_DOCS');
+              }}
               onDraftOutgoingDoc={handleDraftOutgoingDocFromTask}
               initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
+              initialSubTarget={activeTarget?.type === 'TASK' ? activeTarget.subTarget : undefined}
+              targetTimestamp={activeTarget?.timestamp}
             />
           )}
 
@@ -372,9 +412,18 @@ export const App: React.FC = () => {
               onDeleteTask={(id) => db.deleteTask(id, currentUser)}
               currentUser={currentUser}
               filterMode="DELEGATED_BY_ME"
-              onOpenDossier={() => setCurrentSection('DOSSIERS')}
+              onOpenDossier={(dId) => {
+                setActiveTarget({ type: 'DOSSIER', id: dId, timestamp: Date.now() });
+                setCurrentSection('DOSSIERS');
+              }}
+              onOpenIncomingDoc={(docId) => {
+                setActiveTarget({ type: 'INCOMING_DOC', id: docId, timestamp: Date.now() });
+                setCurrentSection('INCOMING_DOCS');
+              }}
               onDraftOutgoingDoc={handleDraftOutgoingDocFromTask}
               initialSelectedTaskId={activeTarget?.type === 'TASK' ? activeTarget.id : undefined}
+              initialSubTarget={activeTarget?.type === 'TASK' ? activeTarget.subTarget : undefined}
+              targetTimestamp={activeTarget?.timestamp}
             />
           )}
 
@@ -389,9 +438,20 @@ export const App: React.FC = () => {
               onSaveDossier={(dossier) => db.saveDossier(dossier, currentUser)}
               onDeleteDossier={(id) => db.deleteDossier(id, currentUser)}
               currentUser={currentUser}
-              onOpenTaskDetail={() => setCurrentSection('ALL_TASKS')}
-              onOpenIncomingDocDetail={() => setCurrentSection('INCOMING_DOCS')}
+              onOpenTaskDetail={(taskId) => {
+                setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
+                setCurrentSection('ALL_TASKS');
+              }}
+              onOpenIncomingDocDetail={(docId) => {
+                setActiveTarget({ type: 'INCOMING_DOC', id: docId, timestamp: Date.now() });
+                setCurrentSection('INCOMING_DOCS');
+              }}
+              onOpenOutgoingDocDetail={(docId) => {
+                setActiveTarget({ type: 'OUTGOING_DOC', id: docId, timestamp: Date.now() });
+                setCurrentSection('OUTGOING_DOCS');
+              }}
               initialDossierId={activeTarget?.type === 'DOSSIER' ? activeTarget.id : undefined}
+              targetTimestamp={activeTarget?.timestamp}
             />
           )}
 
@@ -417,8 +477,14 @@ export const App: React.FC = () => {
               tasks={tasks}
               incomingDocs={incomingDocs}
               users={users}
-              onOpenTaskDetail={() => setCurrentSection('ALL_TASKS')}
-              onOpenIncomingDocDetail={() => setCurrentSection('INCOMING_DOCS')}
+              onOpenTaskDetail={(taskId) => {
+                if (taskId) setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
+                setCurrentSection('ALL_TASKS');
+              }}
+              onOpenIncomingDocDetail={(docId) => {
+                if (docId) setActiveTarget({ type: 'INCOMING_DOC', id: docId, timestamp: Date.now() });
+                setCurrentSection('INCOMING_DOCS');
+              }}
               onCreateNotification={(title, message, userId) => {
                 db.addNotification({
                   title,
@@ -439,7 +505,10 @@ export const App: React.FC = () => {
               onSaveUser={(user) => db.saveUser(user, currentUser)}
               onDeleteUser={(id) => db.deleteUser(id, currentUser)}
               currentUser={currentUser}
-              onOpenTaskDetail={() => setCurrentSection('ALL_TASKS')}
+              onOpenTaskDetail={(taskId) => {
+                if (taskId) setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
+                setCurrentSection('ALL_TASKS');
+              }}
             />
           )}
 
@@ -509,7 +578,7 @@ export const App: React.FC = () => {
 
       {/* Facebook-style Live Interactive Notification Toast */}
       <FacebookNotificationToast
-        notifications={notifications}
+        notifications={userNotifications}
         onMarkAsRead={(id) => db.markNotificationAsRead(id)}
         onNavigate={handleSelectNotificationTarget}
       />

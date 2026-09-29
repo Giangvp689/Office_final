@@ -53,6 +53,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
   const [editingUser, setEditingUser] = useState<Partial<User>>({});
   const [isCustomDept, setIsCustomDept] = useState(false);
   const [isCustomPos, setIsCustomPos] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -126,6 +127,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
       bio: '',
     });
     setIsModalOpen(true);
+    setFormError(null);
   };
 
   // Open modal to EDIT an EXISTING user
@@ -140,6 +142,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
       status: u.status || 'ACTIVE',
     });
     setIsModalOpen(true);
+    setFormError(null);
   };
 
   // Process avatar upload from computer (Base64 DataURL saved directly into MySQL)
@@ -161,10 +164,11 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser.fullName || !editingUser.email) {
-      alert('Vui lòng nhập Họ tên và Email của cán bộ.');
+    if (!editingUser.fullName?.trim() || !editingUser.email?.trim()) {
+      setFormError('Vui lòng nhập đầy đủ Họ tên và Email của cán bộ.');
       return;
     }
+    setFormError(null);
 
     const username =
       editingUser.username?.trim() ||
@@ -616,6 +620,13 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
 
             {/* Modal Body Form */}
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs custom-scrollbar">
+              {formError && (
+                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-700 font-semibold flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                  <span>{formError}</span>
+                </div>
+              )}
+
               {/* Photo & Avatar Section */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center gap-4">
                 <div className="relative group shrink-0">

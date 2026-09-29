@@ -39,7 +39,9 @@ interface DossiersViewProps {
   currentUser: User;
   onOpenTaskDetail: (id: string) => void;
   onOpenIncomingDocDetail: (id: string) => void;
+  onOpenOutgoingDocDetail?: (id: string) => void;
   initialDossierId?: string;
+  targetTimestamp?: number;
   masterData?: MasterData;
 }
 
@@ -54,7 +56,9 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   currentUser,
   onOpenTaskDetail,
   onOpenIncomingDocDetail,
+  onOpenOutgoingDocDetail,
   initialDossierId,
+  targetTimestamp,
   masterData,
 }) => {
   const [search, setSearch] = useState('');
@@ -90,10 +94,12 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
     return dossiers.filter((d) => canAccessDossier(d, currentUser, tasks, incomingDocs, outgoingDocs));
   }, [dossiers, isSuperUser, dossierScope, tasks, incomingDocs, outgoingDocs, currentUser]);
 
-  // Auto open dossier if navigated from notification
+  // Auto open dossier if navigated from notification or linked item
   React.useEffect(() => {
     if (initialDossierId) {
-      const target = accessibleDossiers.find(
+      const target = dossiers.find(
+        (d) => d.id === initialDossierId || d.code === initialDossierId
+      ) || accessibleDossiers.find(
         (d) => d.id === initialDossierId || d.code === initialDossierId
       );
       if (target) {
@@ -102,7 +108,7 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
         setFilterStatus('ALL');
       }
     }
-  }, [initialDossierId, accessibleDossiers]);
+  }, [initialDossierId, targetTimestamp, dossiers, accessibleDossiers]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDossier, setEditingDossier] = useState<Partial<Dossier> | null>(null);
 

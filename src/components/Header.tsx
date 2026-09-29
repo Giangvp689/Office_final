@@ -18,7 +18,7 @@ interface HeaderProps {
   notifications: SystemNotification[];
   onMarkNotificationAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
-  onSelectNotificationTarget: (type?: string, id?: string) => void;
+  onSelectNotificationTarget: (type?: string, id?: string, subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL') => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
 }
@@ -196,7 +196,8 @@ export const Header: React.FC<HeaderProps> = ({
                       onClick={() => {
                         onMarkNotificationAsRead(n.id);
                         if (n.linkType && n.targetId) {
-                          onSelectNotificationTarget(n.linkType, n.targetId);
+                          const subTarget = n.subTarget || (n.type === 'TASK_COMMENT' ? 'COMMENTS' : n.type === 'TASK_APPROVAL_REQUEST' ? 'APPROVAL' : undefined);
+                          onSelectNotificationTarget(n.linkType, n.targetId, subTarget);
                           setShowNotifPanel(false);
                         }
                       }}

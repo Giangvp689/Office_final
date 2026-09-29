@@ -1397,14 +1397,15 @@ class DatabaseService {
     );
 
     this.apiCall('/api/tasks', 'POST', updatedTask);
+    this.apiCall(`/api/tasks/${taskId}/submit-approval`, 'POST', { submissionNote: note, staff, attachments: finalAttachments });
     firestoreSync.saveTask(updatedTask);
 
-    // Notify Leader
-    const leaderId = task.creatorId || task.createdById;
-    if (leaderId) {
+    // Notify Leader / Creator
+    const leaderId = task.creatorId || task.createdById || 'usr-01';
+    if (leaderId && leaderId !== staff.id) {
       this.addNotification({
         userId: leaderId,
-        title: `📋 Yêu cầu nghiệm thu nhiệm vụ: ${task.code}`,
+        title: `📋 Yêu cầu nghiệm thu nhiệm vụ: [${task.code}]`,
         message: `Đồng chí ${staff.fullName} đã báo cáo hoàn thành công việc "${task.title}" (kèm ${fileCount} tệp tài liệu kết quả) và kính trình Lãnh đạo thẩm định, phê duyệt nghiệm thu.`,
         type: 'TASK_APPROVAL_REQUEST',
         linkType: 'TASK',
@@ -1464,6 +1465,7 @@ class DatabaseService {
     );
 
     this.apiCall('/api/tasks', 'POST', updatedTask);
+    this.apiCall(`/api/tasks/${taskId}/approve`, 'POST', { leader, feedback: praise });
     firestoreSync.saveTask(updatedTask);
 
     // Notify Assignee & Co-assignees
@@ -1471,7 +1473,7 @@ class DatabaseService {
     for (const pId of participantIds) {
       this.addNotification({
         userId: pId,
-        title: `🎉 Nhiệm vụ đã được Lãnh đạo phê duyệt: ${task.code}`,
+        title: `🎉 Nhiệm vụ đã được Lãnh đạo phê duyệt: [${task.code}]`,
         message: `Lãnh đạo ${leader.fullName} đã chấp thuận và phê duyệt nghiệm thu nhiệm vụ "${task.title}". Nhận xét: "${praise}"`,
         type: 'TASK_APPROVED',
         linkType: 'TASK',
@@ -1555,12 +1557,13 @@ class DatabaseService {
     );
 
     this.apiCall('/api/tasks', 'POST', updatedTask);
+    this.apiCall(`/api/tasks/${taskId}/reject`, 'POST', { leader, feedback });
     firestoreSync.saveTask(updatedTask);
 
     // Notify Assignee
     this.addNotification({
       userId: task.assigneeId,
-      title: `⚠️ Yêu cầu bổ sung / hoàn thiện lại: ${task.code}`,
+      title: `⚠️ Yêu cầu bổ sung / hoàn thiện lại: [${task.code}]`,
       message: `Lãnh đạo ${leader.fullName} chưa chấp thuận nghiệm thu công việc "${task.title}". Lý do: "${feedback}". Vui lòng xử lý lại.`,
       type: 'TASK_REJECTED',
       linkType: 'TASK',
@@ -1737,14 +1740,16 @@ class DatabaseService {
 
     this.apiCall(`/api/tasks/${taskId}/comments`, 'POST', comment);
 
-    // Notify recipient (Lãnh đạo hoặc Người thực hiện)
+    // Notify all participants except the sender
     const senderId = comment.userId;
-    const recipientId = senderId === task.assigneeId ? (task.creatorId || task.createdById) : task.assigneeId;
+    const allParticipants = [task.assigneeId, task.creatorId, task.createdById, ...(task.coAssigneeIds || [])]
+      .filter((uid): uid is string => Boolean(uid && uid !== senderId));
+    const uniqueRecipients = Array.from(new Set(allParticipants));
 
-    if (recipientId && recipientId !== senderId) {
+    for (const recipientId of uniqueRecipients) {
       this.addNotification({
         userId: recipientId,
-        title: `Ý kiến trao đổi mới [${task.code}]`,
+        title: `💬 Ý kiến trao đổi mới [${task.code}]`,
         message: `${comment.userName}: "${comment.content.slice(0, 90)}${comment.content.length > 90 ? '...' : ''}"`,
         type: 'STATUS_UPDATED',
         linkType: 'TASK',

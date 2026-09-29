@@ -156,6 +156,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [leaderFeedbackInput, setLeaderFeedbackInput] = useState('');
+  const [rejectModalError, setRejectModalError] = useState<string | null>(null);
 
   // File preview & attachment states for Specialist Deliverables
   const [previewFile, setPreviewFile] = useState<AttachmentFile | null>(null);
@@ -558,7 +559,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const handleRejectCompletion = () => {
     if (!selectedTask) return;
     if (!leaderFeedbackInput.trim()) {
-      alert('Vui lòng nhập lý do hoặc nội dung chỉ đạo cần bổ sung / làm lại.');
+      setRejectModalError('Vui lòng nhập lý do hoặc nội dung chỉ đạo cần bổ sung / làm lại.');
       return;
     }
     const updated = dbService.rejectTaskCompletion(selectedTask.id, currentUser, leaderFeedbackInput.trim());
@@ -568,6 +569,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
     }
     setShowRejectModal(false);
     setLeaderFeedbackInput('');
+    setRejectModalError(null);
   };
 
   // Add subtask inside detail modal
@@ -593,7 +595,6 @@ export const TasksView: React.FC<TasksViewProps> = ({
     if (!selectedTask || !textToSend.trim()) return;
 
     if (!canCommentOnTask(selectedTask, currentUser)) {
-      alert('Bạn không thuộc danh sách nhân sự tham gia xử lý nhiệm vụ này nên không thể gửi ý kiến trao đổi.');
       return;
     }
 
@@ -2897,6 +2898,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
               <div className="bg-rose-50 p-3 rounded-xl border border-rose-200 text-[11px] text-rose-950 leading-relaxed">
                 Nhiệm vụ sẽ được trả về trạng thái <strong>"Đang thực hiện"</strong>. Cán bộ chủ trì sẽ nhận thông báo chỉ đạo để chỉnh sửa và nộp lại báo cáo.
               </div>
+
+              {rejectModalError && (
+                <div className="p-2.5 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-700 font-semibold">
+                  {rejectModalError}
+                </div>
+              )}
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
