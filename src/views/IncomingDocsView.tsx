@@ -48,7 +48,7 @@ import { summarizeDocumentWithAI, classifyDocumentWithAI } from '../services/aiS
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { SamplePdfModal } from '../components/SamplePdfModal';
-import { canAccessIncomingDoc, isLeaderOrAdmin, isClerk, canRegisterIncomingDoc, canDirectIncomingDoc } from '../utils/permission';
+import { canAccessIncomingDoc, isLeaderOrAdmin, isClerk, canRegisterIncomingDoc, canDirectIncomingDoc, getAssignableStaffUsers } from '../utils/permission';
 import { dbService } from '../services/db';
 
 interface IncomingDocsViewProps {
@@ -119,6 +119,11 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       alert('Vui lòng nhập đầy đủ ý kiến chỉ đạo và chọn cán bộ chủ trì xử lý.');
       return;
     }
+    const chosenUser = getUser(selectedAssigneeId);
+    if (chosenUser && chosenUser.role === 'CLERK') {
+      alert('Theo quy định quản lý văn bản hành chính (Nghị định 30/2020/NĐ-CP), Văn thư chỉ phụ trách văn bưu, sổ sách và phát hành; không thể là cán bộ chủ trì thụ lý văn bản chuyên môn. Vui lòng phân công cho Chuyên viên các phòng ban!');
+      return;
+    }
     const result = dbService.leaderAssignIncomingDoc(selectedDoc.id, currentUser, {
       assigneeId: selectedAssigneeId,
       coAssigneeIds: selectedCoAssigneeIds,
@@ -173,6 +178,9 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
     }
     return docs.filter((d) => canAccessIncomingDoc(d, currentUser, tasks));
   }, [docs, isSuperUser, docScope, currentUser, tasks]);
+
+  // Cán bộ Chuyên viên đủ điều kiện nhận nhiệm vụ (Loại bỏ Văn thư CLERK theo NĐ 30/2020/NĐ-CP)
+  const assignableStaffList = useMemo(() => getAssignableStaffUsers(users), [users]);
 
   // Auto open document if navigated from notification
   useEffect(() => {
@@ -1114,10 +1122,10 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         onChange={(e) => setSelectedAssigneeId(e.target.value)}
                         className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-semibold text-slate-800 cursor-pointer outline-none"
                       >
-                        <option value="">-- Chọn cán bộ chủ trì --</option>
-                        {users.map((u) => (
+                        <option value="">-- Chọn chuyên viên chủ trì (Loại trừ Văn thư) --</option>
+                        {assignableStaffList.map((u) => (
                           <option key={u.id} value={u.id}>
-                            {u.fullName} ({u.role} - {u.department || 'Phòng Chuyên Môn'})
+                            {u.fullName} ({u.position || u.role} - {u.department || 'Phòng Chuyên Môn'})
                           </option>
                         ))}
                       </select>
@@ -1823,17 +1831,17 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Cán bộ chủ trì xử lý
+                    Cán bộ chuyên môn chủ trì xử lý (Loại trừ Văn thư)
                   </label>
                   <select
                     value={editingDoc.assigneeId || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, assigneeId: e.target.value })}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium cursor-pointer"
                   >
-                    <option value="">-- Chọn cán bộ phụ trách --</option>
-                    {users.map((u) => (
+                    <option value="">-- Chọn cán bộ chuyên môn phụ trách --</option>
+                    {assignableStaffList.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.role || 'STAFF'})
+                        {u.fullName} ({u.position || u.role || 'STAFF'}) - {u.department || 'Phòng Chuyên Môn'}
                       </option>
                     ))}
                   </select>

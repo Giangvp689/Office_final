@@ -58,7 +58,18 @@ import {
 } from 'lucide-react';
 import { suggestTaskBreakdownWithAI } from '../services/aiService';
 import { dbService } from '../services/db';
-import { canAccessTask, canCommentOnTask, getTaskParticipants } from '../utils/permission';
+import {
+  canAccessTask,
+  canCommentOnTask,
+  getTaskParticipants,
+  canCreateOrAssignTask,
+  canUserBeAssignedTask,
+  getAssignableStaffUsers,
+  getLeaderUsers,
+  canApproveTaskCompletion,
+  canSubmitTaskForApproval,
+  isClerk,
+} from '../utils/permission';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { generateTaskResultReportPdf } from '../utils/samplePdfGenerator';
 
@@ -145,6 +156,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Partial<Task> | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Danh sách Cán bộ Chuyên viên đủ điều kiện nhận nhiệm vụ (Loại trừ Văn thư CLERK)
+  const assignableStaffList = useMemo(() => getAssignableStaffUsers(users), [users]);
+  // Danh sách Lãnh đạo có thẩm quyền giao việc & phê duyệt nghiệm thu
+  const leaderUsersList = useMemo(() => getLeaderUsers(users), [users]);
 
   // AI Task Breakdown State
   const [showAiBreakdown, setShowAiBreakdown] = useState(false);
@@ -422,6 +438,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
       setFormError('⚠️ Vui lòng nhập Tên nhiệm vụ hoặc Mô tả công việc để lưu.');
       return;
     }
+
+    const targetAssigneeId = editingTask.assigneeId || currentUser?.id || '';
+    const chosenAssignee = users.find((u) => u.id === targetAssigneeId);
+    if (chosenAssignee && chosenAssignee.role === 'CLERK') {
+      setFormError('⚠️ Theo quy chuẩn quản lý văn bản hành chính (Nghị định 30/2020/NĐ-CP), Văn thư chỉ phụ trách công tác văn thư, lưu trữ và cấp số; không thể là cán bộ chủ trì thực hiện nhiệm vụ chuyên môn. Vui lòng chọn Chuyên viên chuyên môn!');
+      return;
+    }
+
     setFormError(null);
 
     const taskToSave: Task = {
@@ -759,14 +783,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </button>
           </div>
 
-          <button
-            id="add-task-btn"
-            onClick={handleOpenAddModal}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Giao nhiệm vụ mới</span>
-          </button>
+          {canCreateOrAssignTask(currentUser) && (
+            <button
+              id="add-task-btn"
+              onClick={handleOpenAddModal}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Giao nhiệm vụ mới</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -2342,65 +2368,44 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800"
                   >
                     <optgroup label="--- Ban Giám Đốc & Lãnh Đạo Đơn Vị ---">
-                      {users
-                        .filter(
-                          (u) =>
-                            u?.role === 'LEADER' ||
-                            u?.role === 'ADMIN' ||
-                            u?.position?.includes('Giám Đốc') ||
-                            u?.position?.includes('Trưởng Phòng') ||
-                            u?.position?.includes('Chánh Văn Phòng')
-                        )
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>
-                            👑 {u.fullName} - {u.position || u.role || 'Lãnh đạo'} ({getDeptString(u.department)})
-                          </option>
-                        ))}
-                    </optgroup>
-                    <optgroup label="--- Chuyên Viên & Cán Bộ Khác ---">
-                      {users
-                        .filter(
-                          (u) =>
-                            u?.role !== 'LEADER' &&
-                            u?.role !== 'ADMIN' &&
-                            !u?.position?.includes('Giám Đốc') &&
-                            !u?.position?.includes('Trưởng Phòng') &&
-                            !u?.position?.includes('Chánh Văn Phòng')
-                        )
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.fullName} - {u.position || u.role || 'Chuyên viên'} ({getDeptString(u.department)})
-                          </option>
-                        ))}
+                      {leaderUsersList.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          👑 {u.fullName} - {u.position || u.role || 'Lãnh đạo'} ({getDeptString(u.department)})
+                        </option>
+                      ))}
                     </optgroup>
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-bold text-indigo-800 mb-1">
-                    ⭐ Người thực hiện chính (Chủ trì) <span className="text-rose-500">*</span>
+                    ⭐ Chuyên viên chủ trì thực hiện <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={editingTask.assigneeId || ''}
                     onChange={(e) => setEditingTask({ ...editingTask, assigneeId: e.target.value })}
                     className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-900"
                   >
-                    {users.map((u) => (
+                    <option value="">-- Chọn chuyên viên chủ trì (Loại trừ Văn thư) --</option>
+                    {assignableStaffList.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.fullName} ({u.position || u.role || 'Chuyên viên'}) - {getDeptString(u.department)}
                       </option>
                     ))}
                   </select>
+                  <span className="text-[10px] text-slate-500 block mt-1">
+                    * Theo NĐ 30/2020/NĐ-CP: Văn thư không đảm nhiệm giải quyết nhiệm vụ chuyên môn.
+                  </span>
                 </div>
               </div>
 
               {/* Co-assignees selection */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1.5">
-                  🤝 Cán bộ phối hợp thực hiện (Chọn nhiều)
+                  🤝 Cán bộ chuyên môn phối hợp thực hiện (Chọn nhiều)
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 max-h-36 overflow-y-auto custom-scrollbar">
-                  {users
+                  {assignableStaffList
                     .filter((u) => u.id !== editingTask.assigneeId)
                     .map((u) => {
                       const isChecked = (editingTask.coAssigneeIds || []).includes(u.id);

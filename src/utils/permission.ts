@@ -32,6 +32,95 @@ export function isLeader(user?: User | null): boolean {
 }
 
 /**
+ * Kiểm tra xem người dùng có phải Chuyên viên hay không.
+ */
+export function isStaff(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'STAFF';
+}
+
+/**
+ * QUY CHẾ VĂN HÀNH CHÍNH & VĂN THƯ NGHỊ ĐỊNH 30/2020/NĐ-CP:
+ * Thẩm quyền Khởi tạo & Giao việc (Nhiệm vụ - Task):
+ * - CHỈ LÃNH ĐẠO (LEADER) hoặc Quản trị viên (ADMIN) mới có thẩm quyền phân công và giao việc cho cán bộ.
+ * - Chuyên viên và Văn thư không được tự ý giao việc cho nhân sự khác.
+ */
+export function canCreateOrAssignTask(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'ADMIN' || user.role === 'LEADER';
+}
+
+/**
+ * QUY CHẾ ĐIỀU HÀNH CÔNG VIỆC:
+ * Kiểm tra xem một người dùng có thể là ĐỐI TƯỢNG ĐƯỢC GIAO NHIỆM VỤ CHUYÊN MÔN hay không.
+ * - VĂN THƯ (CLERK) TUYỆT ĐỐI KHÔNG BỊ GIAO VIỆC CHUYÊN MÔN: Văn thư chỉ làm nhiệm vụ văn bưu,
+ *   vào sổ đến, cấp số đi, đóng dấu, lưu trữ kho.
+ * - Chỉ Cán bộ Chuyên viên (STAFF) hoặc Lãnh đạo phòng ban (LEADER) mới là đối tượng thụ lý giải quyết văn bản/công việc.
+ */
+export function canUserBeAssignedTask(user?: User | null): boolean {
+  if (!user) return false;
+  if (user.role === 'CLERK') return false; // Tuyệt đối cấm giao việc chuyên môn cho văn thư
+  return user.role === 'STAFF' || user.role === 'LEADER';
+}
+
+/**
+ * Lọc danh sách nhân sự có thể làm Cán bộ Chủ trì hoặc Phối hợp giải quyết công việc.
+ * - Loại bỏ hoàn toàn tài khoản Văn thư (CLERK).
+ * - Ưu tiên các Chuyên viên (STAFF) của các phòng ban chuyên môn.
+ */
+export function getAssignableStaffUsers(users: User[] = []): User[] {
+  if (!Array.isArray(users)) return [];
+  return users.filter(
+    (u) => u && u.status !== 'INACTIVE' && u.role !== 'CLERK' && (u.role === 'STAFF' || u.role === 'LEADER')
+  );
+}
+
+/**
+ * Lọc danh sách CHUYÊN VIÊN CHUYÊN MÔN thuần túy (STAFF only)
+ */
+export function getSpecialistStaffOnly(users: User[] = []): User[] {
+  if (!Array.isArray(users)) return [];
+  return users.filter((u) => u && u.status !== 'INACTIVE' && u.role === 'STAFF');
+}
+
+/**
+ * Lọc danh sách LÃNH ĐẠO có thẩm quyền chỉ đạo, ký số văn bản và phê duyệt nghiệm thu nhiệm vụ.
+ */
+export function getLeaderUsers(users: User[] = []): User[] {
+  if (!Array.isArray(users)) return [];
+  return users.filter((u) => u && u.status !== 'INACTIVE' && (u.role === 'LEADER' || u.role === 'ADMIN'));
+}
+
+/**
+ * Thẩm quyền Phê duyệt Nghiệm thu công việc:
+ * - Chỉ Lãnh đạo (LEADER) hoặc Quản trị viên (ADMIN) mới có thẩm quyền nghiệm thu và đóng nhiệm vụ.
+ */
+export function canApproveTaskCompletion(user?: User | null): boolean {
+  return isLeaderOrAdmin(user);
+}
+
+/**
+ * Thẩm quyền sử dụng Phân Loại Văn Bản AI (Classification Studio & Tiếp nhận số hóa):
+ * - Chỉ dành cho Văn thư (CLERK) khi tiếp nhận số hóa và vào sổ,
+ *   Lãnh đạo cơ quan (LEADER) khi thẩm định phân luồng văn bản,
+ *   và Quản trị viên (ADMIN).
+ * - Chuyên viên (STAFF) KHÔNG thực hiện phân loại đầu vào mà chỉ nhận nhiệm vụ chuyên môn.
+ */
+export function canAccessClassificationStudio(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'CLERK' || user.role === 'LEADER' || user.role === 'ADMIN';
+}
+
+/**
+ * Thẩm quyền Nộp báo cáo trình nghiệm thu:
+ * - Chuyên viên chủ trì hoặc phối hợp thực hiện nhiệm vụ.
+ */
+export function canSubmitTaskForApproval(task?: Task | null, user?: User | null): boolean {
+  if (!task || !user) return false;
+  return task.assigneeId === user.id || (Array.isArray(task.coAssigneeIds) && task.coAssigneeIds.includes(user.id));
+}
+
+/**
  * QUY CHẾ VĂN THƯ NGHỊ ĐỊNH 30/2020/NĐ-CP:
  * Thẩm quyền Ký số / Phê duyệt văn bản đi:
  * - Chỉ Lãnh đạo cơ quan (LEADER) hoặc Người ký được chỉ định đích danh (signerId)

@@ -215,8 +215,8 @@ function classifyDocumentHeuristic(text: string, title?: string, departments?: a
 
   const primaryDepartment = domainDeptMap[primaryDomain] || 'Văn phòng Cơ quan';
   const matchedStaff = (availableStaff || []).find((s: any) => 
-    typeof s === 'object' && s.department && (s.department.includes(primaryDepartment) || primaryDepartment.includes(s.department))
-  );
+    typeof s === 'object' && s.department && s.role !== 'CLERK' && !String(s.position || '').includes('Văn Thư') && (s.department.includes(primaryDepartment) || primaryDepartment.includes(s.department))
+  ) || (availableStaff || []).find((s: any) => typeof s === 'object' && s.role !== 'CLERK' && !String(s.position || '').includes('Văn Thư'));
 
   const docNumberMatch = (text + ' ' + (title || '')).match(/Số:?\s*([0-9]+\/[A-Z0-9\-\/]+)/i);
   const documentNumber = docNumberMatch ? docNumberMatch[1] : `${Math.floor(Math.random() * 200) + 10}/UBND-VP`;
@@ -1839,7 +1839,7 @@ YÊU CẦU: Trả về duy nhất định dạng JSON thuần túy (không bọc
   "dispatchRecommendation": {
     "primaryDepartment": "Tên phòng ban phù hợp nhất từ danh sách phòng ban",
     "cooperatingDepartments": ["Phòng phối hợp 1", "Phòng phối hợp 2"],
-    "suggestedAssigneeName": "Tên chuyên viên phù hợp nhất từ danh sách cán bộ",
+    "suggestedAssigneeName": "Tên Chuyên viên (STAFF) phù hợp nhất từ danh sách cán bộ (TUYỆT ĐỐI KHÔNG phân công cho Văn thư CLERK vì Văn thư không phụ trách giải quyết chuyên môn)",
     "suggestedDueDate": "YYYY-MM-DD (dự đoán thời hạn hoàn thành phù hợp tính từ hôm nay)",
     "suggestedDossierCode": "HS-2025-XXX-01 (Mã hồ sơ gợi ý chuẩn)",
     "suggestedDossierTitle": "Tên hồ sơ vụ việc đề xuất",

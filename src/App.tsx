@@ -33,6 +33,8 @@ import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { DatabaseCenterModal } from './components/DatabaseCenterModal';
 import { FacebookNotificationToast } from './components/FacebookNotificationToast';
+import { Lock } from 'lucide-react';
+import { canAccessClassificationStudio } from './utils/permission';
 
 export const App: React.FC = () => {
   // Authentication State
@@ -274,16 +276,36 @@ export const App: React.FC = () => {
           )}
 
           {currentSection === 'CLASSIFIER_STUDIO' && (
-            <ClassificationStudioView
-              users={users}
-              dossiers={dossiers}
-              incomingDocs={incomingDocs}
-              currentUser={currentUser}
-              onSaveIncomingDoc={(doc) => db.saveIncomingDoc(doc, currentUser)}
-              onSaveDossier={(dos) => db.saveDossier(dos, currentUser)}
-              onSaveTask={(task) => db.saveTask(task, currentUser)}
-              onNavigateSection={(sec) => setCurrentSection(sec)}
-            />
+            canAccessClassificationStudio(currentUser) ? (
+              <ClassificationStudioView
+                users={users}
+                dossiers={dossiers}
+                incomingDocs={incomingDocs}
+                currentUser={currentUser}
+                onSaveIncomingDoc={(doc) => db.saveIncomingDoc(doc, currentUser)}
+                onSaveDossier={(dos) => db.saveDossier(dos, currentUser)}
+                onSaveTask={(task) => db.saveTask(task, currentUser)}
+                onNavigateSection={(sec) => setCurrentSection(sec)}
+              />
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 my-auto">
+                <div className="w-16 h-16 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center mb-4 shadow-xs">
+                  <Lock className="w-8 h-8" />
+                </div>
+                <h3 className="text-base font-bold text-slate-800 mb-2">
+                  Phân Hệ Dành Riêng Cho Văn Thư & Lãnh Đạo Cơ Quan
+                </h3>
+                <p className="text-xs text-slate-600 max-w-md leading-relaxed mb-6">
+                  Theo quy định Nghị định 30/2020/NĐ-CP, phân hệ OCR và Phân loại văn bản đầu vào dành riêng cho Văn thư (tiếp nhận & vào sổ văn bản đến) và Lãnh đạo (thẩm định phân luồng). Chuyên viên tập trung theo dõi và thực thi các nhiệm vụ được giao.
+                </p>
+                <button
+                  onClick={() => setCurrentSection('ALL_TASKS')}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                >
+                  Chuyển Đến Bàn Làm Việc Nhiệm Vụ
+                </button>
+              </div>
+            )
           )}
 
           {currentSection === 'INCOMING_DOCS' && (

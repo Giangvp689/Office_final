@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { draftOutgoingDocWithAI } from '../services/aiService';
 import { FilePreviewModal } from '../components/FilePreviewModal';
-import { canAccessOutgoingDoc, isLeaderOrAdmin, isClerk, canSignOutgoingDoc, canIssueOutgoingDoc } from '../utils/permission';
+import { canAccessOutgoingDoc, isLeaderOrAdmin, isClerk, canSignOutgoingDoc, canIssueOutgoingDoc, getLeaderUsers } from '../utils/permission';
 import { dbService } from '../services/db';
 
 interface OutgoingDocsViewProps {
@@ -119,6 +119,9 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
     }
     return docs.filter((d) => canAccessOutgoingDoc(d, currentUser, dossiers));
   }, [docs, isSuperUser, docScope, currentUser, dossiers]);
+
+  // Danh sách Lãnh đạo có thẩm quyền ký duyệt văn bản đi (NĐ 30/2020/NĐ-CP)
+  const leaderUsersList = useMemo(() => getLeaderUsers(users), [users]);
 
   // Auto open document if navigated from notification
   useEffect(() => {
@@ -1543,15 +1546,18 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Lãnh đạo ký duyệt</label>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    👑 Lãnh đạo ký duyệt (Ký số)
+                  </label>
                   <select
                     value={editingDoc.signerId || ''}
                     onChange={(e) => setEditingDoc({ ...editingDoc, signerId: e.target.value })}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer font-bold"
                   >
-                    {users.map((u) => (
+                    <option value="">-- Chọn Lãnh đạo ký duyệt --</option>
+                    {leaderUsersList.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.role || 'LEADER'})
+                        👑 {u.fullName} ({u.position || u.role || 'LEADER'}) - {u.department || 'Ban Lãnh Đạo'}
                       </option>
                     ))}
                   </select>

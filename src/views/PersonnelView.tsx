@@ -713,10 +713,10 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                       onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as UserRole })}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
                     >
-                      <option value="STAFF">Chuyên viên xử lý nhiệm vụ</option>
-                      <option value="LEADER">Lãnh đạo cơ quan (Ký duyệt, chỉ đạo)</option>
-                      <option value="CLERK">Văn thư lưu trữ (Tiếp nhận & Vào sổ)</option>
-                      <option value="ADMIN">Quản trị hệ thống cấp cao</option>
+                      <option value="STAFF">Chuyên viên chuyên môn (Thụ lý văn bản, thực thi nhiệm vụ, soạn thảo dự thảo VB đi)</option>
+                      <option value="LEADER">Lãnh đạo cơ quan (Chỉ đạo giao việc, phê duyệt nghiệm thu, ký số VB đi)</option>
+                      <option value="CLERK">Văn thư cơ quan (Tiếp nhận vào sổ VB đến; Cấp số, đóng dấu & phát hành VB đi)</option>
+                      <option value="ADMIN">Quản trị hệ thống (Toàn quyền quản trị danh mục, người dùng & CSDL)</option>
                     </select>
                   ) : (
                     <input

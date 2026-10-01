@@ -233,13 +233,27 @@ export function classifyDocumentLocally(options: {
     summary = `${matchedDocType} V/v ${vveMatch[1].trim()}`;
   }
 
-  // Assignee matching
-  let suggestedAssignee = 'Nguyễn Văn An';
-  if (topDomain.domain.includes('Tài chính')) suggestedAssignee = 'Phạm Minh Tuấn (Chuyên viên TCKT)';
-  else if (topDomain.domain.includes('Tổ chức')) suggestedAssignee = 'Trần Thị Bích (Trưởng phòng TCCB)';
-  else if (topDomain.domain.includes('Kỹ thuật')) suggestedAssignee = 'Lê Hoàng Nam (Chuyên viên CNTT)';
-  else if (topDomain.domain.includes('Pháp chế')) suggestedAssignee = 'Hoàng Thu Trang (Chuyên viên Pháp chế)';
-  else if (topDomain.domain.includes('Hành chính')) suggestedAssignee = 'Nguyễn Văn An (Chánh Văn phòng)';
+  // Assignee matching: Always select a specialist STAFF, never CLERK
+  const primaryDept = topDomain.department || 'Văn phòng Cơ quan';
+  const nonClerkStaff = (options.availableStaff || []).filter((s: any) =>
+    typeof s === 'object' ? s.role !== 'CLERK' && !String(s.position || '').toLowerCase().includes('văn thư') : !String(s).toLowerCase().includes('văn thư')
+  );
+  const matchedAvailable = nonClerkStaff.find((s: any) => {
+    const dept = typeof s === 'object' ? s.department || '' : '';
+    return dept && (dept.includes(primaryDept) || primaryDept.includes(dept));
+  });
+
+  let suggestedAssignee = matchedAvailable
+    ? (typeof matchedAvailable === 'object' ? `${matchedAvailable.fullName} (${matchedAvailable.position || 'Chuyên viên'})` : matchedAvailable)
+    : 'Chuyên viên phụ trách chuyên môn';
+
+  if (!matchedAvailable) {
+    if (topDomain.domain.includes('Tài chính')) suggestedAssignee = 'Phạm Minh Tuấn (Chuyên viên TCKT)';
+    else if (topDomain.domain.includes('Tổ chức')) suggestedAssignee = 'Hoàng Thu Trang (Chuyên viên TCCB)';
+    else if (topDomain.domain.includes('Kỹ thuật')) suggestedAssignee = 'Lê Hoàng Nam (Chuyên viên CNTT)';
+    else if (topDomain.domain.includes('Pháp chế')) suggestedAssignee = 'Vũ Đức Thịnh (Chuyên viên Pháp chế)';
+    else if (topDomain.domain.includes('Hành chính')) suggestedAssignee = 'Nguyễn Văn An (Chuyên viên Tổng hợp)';
+  }
 
   const suggestedDueDate = new Date(
     Date.now() + (urgency === 'HOA_TOC' ? 1 : urgency === 'KHAN' ? 3 : 7) * 86400000

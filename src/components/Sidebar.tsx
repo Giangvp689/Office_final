@@ -21,6 +21,7 @@ import {
   Database,
 } from 'lucide-react';
 import { User, Role } from '../types';
+import { canAccessClassificationStudio } from '../utils/permission';
 
 export type NavSection =
   | 'DASHBOARD'
@@ -110,19 +111,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Primary Action Buttons */}
       <div className="p-3 border-b border-slate-100 space-y-2">
-        <button
-          id="btn-nav-classifier-studio"
-          onClick={() => onSelectSection('CLASSIFIER_STUDIO')}
-          className={`w-full text-xs font-bold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 border cursor-pointer ${
-            currentSection === 'CLASSIFIER_STUDIO'
-              ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white border-indigo-700 shadow-md shadow-indigo-200 ring-2 ring-indigo-200'
-              : 'bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white border-transparent shadow-xs'
-          }`}
-        >
-          <BrainCircuit className="w-4 h-4 text-white animate-pulse" />
-          <span className="truncate">Phân Loại Văn Bản (AI)</span>
-          <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded font-black">CỐT LÕI</span>
-        </button>
+        {canAccessClassificationStudio(currentUser) && (
+          <button
+            id="btn-nav-classifier-studio"
+            onClick={() => onSelectSection('CLASSIFIER_STUDIO')}
+            className={`w-full text-xs font-bold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2 border cursor-pointer ${
+              currentSection === 'CLASSIFIER_STUDIO'
+                ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white border-indigo-700 shadow-md shadow-indigo-200 ring-2 ring-indigo-200'
+                : 'bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white border-transparent shadow-xs'
+            }`}
+          >
+            <BrainCircuit className="w-4 h-4 text-white animate-pulse" />
+            <span className="truncate">Phân Loại Văn Bản (AI)</span>
+            <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded font-black">CỐT LÕI</span>
+          </button>
+        )}
 
         <button
           id="btn-nav-ai"

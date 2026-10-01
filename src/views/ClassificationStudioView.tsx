@@ -346,12 +346,16 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       'Ban Quản lý Dự án & Đầu tư',
     ];
 
-    const staffList = users.map((u) => ({
-      id: u.id,
-      fullName: u.fullName,
-      position: u.position || u.role || 'Chuyên viên',
-      department: u.department,
-    }));
+    // Chỉ gửi danh sách Cán bộ Chuyên môn (STAFF) cho AI đề xuất phân công (loại trừ Văn thư CLERK theo NĐ 30/2020/NĐ-CP)
+    const staffList = users
+      .filter((u) => u.role === 'STAFF')
+      .map((u) => ({
+        id: u.id,
+        fullName: u.fullName,
+        position: u.position || u.role || 'Chuyên viên',
+        department: u.department,
+        role: u.role,
+      }));
 
     if (mode === 'LOCAL_FAST') {
       // Instant execution (< 50ms)
@@ -419,9 +423,10 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
 
     const matchedAssignee = users.find(
       (u) =>
-        u.fullName.toLowerCase().includes(classificationResult.dispatchRecommendation.suggestedAssigneeName?.toLowerCase() || '') ||
-        u.department?.toLowerCase().includes(classificationResult.dispatchRecommendation.primaryDepartment.toLowerCase())
-    ) || users[0];
+        u.role === 'STAFF' &&
+        (u.fullName.toLowerCase().includes(classificationResult.dispatchRecommendation.suggestedAssigneeName?.toLowerCase() || '') ||
+        u.department?.toLowerCase().includes(classificationResult.dispatchRecommendation.primaryDepartment.toLowerCase()))
+    ) || users.find((u) => u.role === 'STAFF') || users.find((u) => u.role !== 'CLERK') || users[0];
 
     const matchedDossier = dossiers.find(
       (d) =>
@@ -510,9 +515,10 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     };
     onSaveDossier(newDos);
 
-    const fallbackAssignee = users[0] || currentUser;
+    const fallbackAssignee = users.find((u) => u.role === 'STAFF') || users.find((u) => u.role !== 'CLERK') || users[0];
     const matchedAssignee = users.find(
       (u) =>
+        u.role === 'STAFF' &&
         u?.fullName?.toLowerCase().includes(classificationResult.dispatchRecommendation.suggestedAssigneeName?.toLowerCase() || '')
     ) || fallbackAssignee;
     const assigneeName = matchedAssignee?.fullName || currentUser?.fullName || 'Cán bộ phụ trách';

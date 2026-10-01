@@ -1103,6 +1103,10 @@ class DatabaseService {
 
     const now = new Date().toISOString();
     const assignee = this.getUserById(assignment.assigneeId);
+    if (assignee && assignee.role === 'CLERK') {
+      console.warn('[Quy chế Hành chính]: Văn thư không thể là cán bộ chủ trì thụ lý văn bản chuyên môn.');
+      return undefined;
+    }
     const assigneeName = assignee?.fullName || 'Cán bộ';
 
     // 1. Tự động tạo Nhiệm vụ mới liên kết chặt chẽ
