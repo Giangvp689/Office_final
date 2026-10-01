@@ -119,11 +119,6 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       alert('Vui lòng nhập đầy đủ ý kiến chỉ đạo và chọn cán bộ chủ trì xử lý.');
       return;
     }
-    const chosenUser = getUser(selectedAssigneeId);
-    if (chosenUser && chosenUser.role === 'CLERK') {
-      alert('Theo quy định quản lý văn bản hành chính (Nghị định 30/2020/NĐ-CP), Văn thư chỉ phụ trách văn bưu, sổ sách và phát hành; không thể là cán bộ chủ trì thụ lý văn bản chuyên môn. Vui lòng phân công cho Chuyên viên các phòng ban!');
-      return;
-    }
     const result = dbService.leaderAssignIncomingDoc(selectedDoc.id, currentUser, {
       assigneeId: selectedAssigneeId,
       coAssigneeIds: selectedCoAssigneeIds,

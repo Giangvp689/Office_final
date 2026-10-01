@@ -40,6 +40,26 @@ export function isStaff(user?: User | null): boolean {
 }
 
 /**
+ * Thẩm quyền Đôn đốc & Nhắc việc tiến độ cho chuyên viên:
+ * - Chỉ LÃNH ĐẠO (LEADER) hoặc Quản trị hệ thống (ADMIN) mới có thẩm quyền đôn đốc, nhắc việc cán bộ chuyên viên.
+ * - Tuyệt đối Văn thư (CLERK) và Chuyên viên (STAFF) KHÔNG có quyền đôn đốc nhắc việc.
+ */
+export function canNudgeOrRemindStaff(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'LEADER' || user.role === 'ADMIN';
+}
+
+/**
+ * Thẩm quyền tải / làm mới toàn bộ dữ liệu từ CSDL MySQL & CSDL hệ thống:
+ * - Chỉ LÃNH ĐẠO (LEADER) hoặc Quản trị viên (ADMIN) mới có thẩm quyền nạp lại toàn bộ CSDL.
+ * - Chuyên viên và Văn thư không được tự ý thực hiện thao tác nạp lại toàn bộ dữ liệu CSDL.
+ */
+export function canReloadDatabase(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'LEADER' || user.role === 'ADMIN';
+}
+
+/**
  * QUY CHẾ VĂN HÀNH CHÍNH & VĂN THƯ NGHỊ ĐỊNH 30/2020/NĐ-CP:
  * Thẩm quyền Khởi tạo & Giao việc (Nhiệm vụ - Task):
  * - CHỈ LÃNH ĐẠO (LEADER) hoặc Quản trị viên (ADMIN) mới có thẩm quyền phân công và giao việc cho cán bộ.
@@ -58,20 +78,21 @@ export function canCreateOrAssignTask(user?: User | null): boolean {
  * - Chỉ Cán bộ Chuyên viên (STAFF) hoặc Lãnh đạo phòng ban (LEADER) mới là đối tượng thụ lý giải quyết văn bản/công việc.
  */
 export function canUserBeAssignedTask(user?: User | null): boolean {
-  if (!user) return false;
-  if (user.role === 'CLERK') return false; // Tuyệt đối cấm giao việc chuyên môn cho văn thư
-  return user.role === 'STAFF' || user.role === 'LEADER';
+  if (!user || user.status === 'INACTIVE') return false;
+  // Cả Chuyên viên, Văn thư và Lãnh đạo đều có thể nhận công việc tương ứng chức năng
+  return user.role === 'STAFF' || user.role === 'CLERK' || user.role === 'LEADER';
 }
 
 /**
  * Lọc danh sách nhân sự có thể làm Cán bộ Chủ trì hoặc Phối hợp giải quyết công việc.
- * - Loại bỏ hoàn toàn tài khoản Văn thư (CLERK).
- * - Ưu tiên các Chuyên viên (STAFF) của các phòng ban chuyên môn.
+ * - Chuyên viên (STAFF): Thụ lý các nhiệm vụ chuyên môn, tờ trình, đề án.
+ * - Văn thư (CLERK): Thụ lý các nhiệm vụ văn thư lưu trữ, số hóa, nộp lưu, thống kê văn bưu.
+ * - Lãnh đạo (LEADER): Chỉ đạo hoặc trực tiếp phụ trách các nhiệm vụ quan trọng.
  */
 export function getAssignableStaffUsers(users: User[] = []): User[] {
   if (!Array.isArray(users)) return [];
   return users.filter(
-    (u) => u && u.status !== 'INACTIVE' && u.role !== 'CLERK' && (u.role === 'STAFF' || u.role === 'LEADER')
+    (u) => u && u.status !== 'INACTIVE' && (u.role === 'STAFF' || u.role === 'CLERK' || u.role === 'LEADER')
   );
 }
 
@@ -175,6 +196,11 @@ export function canAccessTask(task?: Task | null, user?: User | null): boolean {
 
   // Lãnh đạo & Admin có quyền giám sát
   if (isLeaderOrAdmin(user)) {
+    return true;
+  }
+
+  // Văn thư cơ quan có quyền theo dõi công việc toàn cơ quan theo dõi sổ văn thư
+  if (isClerk(user)) {
     return true;
   }
 

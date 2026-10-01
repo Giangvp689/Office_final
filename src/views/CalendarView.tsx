@@ -40,9 +40,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onOpenIncomingDocDetail,
 }) => {
   const isLeaderOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
+  const isClerkRole = currentUser?.role === 'CLERK';
+  const canToggleScope = isLeaderOrAdmin || isClerkRole;
 
-  // Scope filter: Leaders can toggle between personal vs agency-wide
-  const [scope, setScope] = useState<'MY' | 'ALL'>(isLeaderOrAdmin ? 'ALL' : 'MY');
+  // Scope filter: Leaders and Clerks can toggle between personal vs agency-wide
+  const [scope, setScope] = useState<'MY' | 'ALL'>(canToggleScope ? 'ALL' : 'MY');
   const [activeStatusTab, setActiveStatusTab] = useState<ScheduleTab>('ALL');
   const [viewMode, setViewMode] = useState<ViewMode>('CALENDAR');
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   // 1. Filter items based on user RBAC scope
   const scopedTasks = useMemo(() => {
-    if (scope === 'ALL' && isLeaderOrAdmin) {
+    if (scope === 'ALL' && canToggleScope) {
       return tasks;
     }
     if (!currentUser) return tasks;
@@ -91,10 +93,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         t.creatorId === currentUser?.id ||
         t.createdById === currentUser?.id
     );
-  }, [tasks, scope, isLeaderOrAdmin, currentUser?.id]);
+  }, [tasks, scope, canToggleScope, currentUser?.id]);
 
   const scopedDocs = useMemo(() => {
-    if (scope === 'ALL' && isLeaderOrAdmin) {
+    if (scope === 'ALL' && canToggleScope) {
       return incomingDocs;
     }
     if (!currentUser) return incomingDocs;
@@ -104,7 +106,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         d.coAssigneeIds?.includes(currentUser?.id || '') ||
         d.createdById === currentUser?.id
     );
-  }, [incomingDocs, scope, isLeaderOrAdmin, currentUser?.id]);
+  }, [incomingDocs, scope, canToggleScope, currentUser?.id]);
 
   // 2. Helper to classify status category
   const getItemStatusCategory = (
@@ -333,7 +335,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               <h1 className="text-lg md:text-xl font-bold text-slate-800 flex items-center gap-2">
                 Lịch Công Tác & Hạn Chót
                 <span className="text-xs font-normal text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 font-semibold">
-                  {scope === 'MY' ? `Cá nhân: ${currentUser?.fullName || 'Cán bộ'}` : 'Toàn cơ quan'}
+                  {scope === 'MY'
+                    ? `Cá nhân: ${currentUser?.fullName || 'Cán bộ'}`
+                    : isClerkRole
+                    ? 'Lịch công tác cơ quan & Sổ văn thư'
+                    : 'Toàn cơ quan'}
                 </span>
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -345,7 +351,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
         {/* View mode switcher & scope filter */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {isLeaderOrAdmin && (
+          {canToggleScope && (
             <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
               <button
                 onClick={() => setScope('MY')}
@@ -365,7 +371,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Toàn cơ quan
+                {isClerkRole ? 'Lịch cơ quan & Sổ văn thư' : 'Toàn cơ quan'}
               </button>
             </div>
           )}

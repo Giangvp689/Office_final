@@ -22,16 +22,21 @@ import {
 import { db } from '../services/db';
 import { firestoreSync } from '../services/firestoreSync';
 
+import { User } from '../types';
+import { isLeaderOrAdmin } from '../utils/permission';
+
 interface DatabaseCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDataResetOrRestored: () => void;
+  currentUser?: User;
 }
 
 export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
   isOpen,
   onClose,
   onDataResetOrRestored,
+  currentUser,
 }) => {
   const [activeTab, setActiveTab] = useState<'FIREBASE' | 'MYSQL' | 'BACKUP'>('FIREBASE');
   const [jsonText, setJsonText] = useState('');
@@ -154,7 +159,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || (currentUser && !isLeaderOrAdmin(currentUser))) return null;
 
   const handleExportJSON = () => {
     const data = db.exportAllData();

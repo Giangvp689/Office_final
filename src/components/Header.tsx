@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Search, Bell, Check, Clock, AlertTriangle, ChevronDown, LogOut, KeyRound, Sparkles, RefreshCw, Database, Shield, ShieldAlert, ArrowLeft, UserCircle2 } from 'lucide-react';
 import { User, SystemNotification } from '../types';
 import { db } from '../services/db';
+import { canReloadDatabase } from '../utils/permission';
 
 interface HeaderProps {
   currentUser: User;
@@ -111,40 +112,42 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right controls */}
       <div className="flex items-center gap-3">
-        {/* DB Sync indicator & button */}
-        <div className="relative flex items-center gap-1.5">
-          <button
-            onClick={handleSyncDb}
-            disabled={isSyncing}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
-              isSyncing
-                ? 'bg-amber-50 border-amber-300 text-amber-700'
-                : 'bg-emerald-50/80 hover:bg-emerald-100/80 border-emerald-200 text-emerald-800'
-            }`}
-            title="Nhấn để tải lại toàn bộ dữ liệu mới nhất từ CSDL"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-600" />
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-700'}`} />
-            <span className="hidden lg:inline">{isSyncing ? 'Đang nạp CSDL...' : 'Lấy dữ liệu từ CSDL'}</span>
-          </button>
-
-          {onOpenDatabaseCenter && (
+        {/* DB Sync indicator & button (Chỉ dành riêng cho Lãnh đạo hoặc Quản trị viên) */}
+        {canReloadDatabase(currentUser) && (
+          <div className="relative flex items-center gap-1.5">
             <button
-              onClick={onOpenDatabaseCenter}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
-              title="Mở bảng điều khiển CSDL Firebase & MySQL, cấu hình và sao lưu"
+              onClick={handleSyncDb}
+              disabled={isSyncing}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                isSyncing
+                  ? 'bg-amber-50 border-amber-300 text-amber-700'
+                  : 'bg-emerald-50/80 hover:bg-emerald-100/80 border-emerald-200 text-emerald-800'
+              }`}
+              title="Nhấn để tải lại toàn bộ dữ liệu mới nhất từ CSDL"
             >
-              <Database className="w-3.5 h-3.5 text-indigo-600" />
-              <span className="hidden xl:inline">Quản Lý CSDL</span>
+              <Database className="w-3.5 h-3.5 text-emerald-600" />
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-700'}`} />
+              <span className="hidden lg:inline">{isSyncing ? 'Đang nạp CSDL...' : 'Lấy dữ liệu từ CSDL'}</span>
             </button>
-          )}
 
-          {syncToast && (
-            <div className="absolute top-10 right-0 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap z-50 animate-in fade-in slide-in-from-top-2">
-              {syncToast}
-            </div>
-          )}
-        </div>
+            {onOpenDatabaseCenter && (
+              <button
+                onClick={onOpenDatabaseCenter}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+                title="Mở bảng điều khiển CSDL Firebase & MySQL, cấu hình và sao lưu"
+              >
+                <Database className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="hidden xl:inline">Quản Lý CSDL</span>
+              </button>
+            )}
+
+            {syncToast && (
+              <div className="absolute top-10 right-0 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg shadow-xl whitespace-nowrap z-50 animate-in fade-in slide-in-from-top-2">
+                {syncToast}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Date indicator */}
         <div className="hidden sm:flex items-center gap-2 bg-indigo-50/80 text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-indigo-100">

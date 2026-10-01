@@ -29,6 +29,7 @@ import {
   Kanban,
   List,
   AlertCircle,
+  AlertTriangle,
   Send,
   UserCheck,
   ShieldCheck,
@@ -68,6 +69,7 @@ import {
   getLeaderUsers,
   canApproveTaskCompletion,
   canSubmitTaskForApproval,
+  canNudgeOrRemindStaff,
   isClerk,
 } from '../utils/permission';
 import { FilePreviewModal } from '../components/FilePreviewModal';
@@ -187,6 +189,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const modalFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [reportSuccessNotice, setReportSuccessNotice] = useState<string | null>(null);
+  const [nudgeSuccessNotice, setNudgeSuccessNotice] = useState<string | null>(null);
 
   // Format readable file size
   const formatFileSize = (bytes?: number): string => {
@@ -339,11 +342,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
   ];
 
   const isLeaderOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
-  const [agencyScope, setAgencyScope] = useState<'MY' | 'ALL'>(isLeaderOrAdmin ? 'ALL' : 'MY');
+  const isClerkRole = currentUser?.role === 'CLERK';
+  const canToggleAgencyScope = isLeaderOrAdmin || isClerkRole;
+  const [agencyScope, setAgencyScope] = useState<'MY' | 'ALL'>(canToggleAgencyScope ? 'ALL' : 'MY');
 
   // Base list of tasks accessible to this user
   const accessibleTasks = useMemo(() => {
-    if (isLeaderOrAdmin && agencyScope === 'ALL') {
+    if (canToggleAgencyScope && agencyScope === 'ALL') {
       return tasks;
     }
     if (!currentUser) return tasks;
@@ -354,7 +359,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         t.creatorId === currentUser?.id ||
         t.createdById === currentUser?.id
     );
-  }, [tasks, isLeaderOrAdmin, agencyScope, currentUser?.id]);
+  }, [tasks, canToggleAgencyScope, agencyScope, currentUser?.id]);
 
   // Counts for tabs
   const assignedToMeTasks = accessibleTasks.filter(
@@ -441,10 +446,6 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
     const targetAssigneeId = editingTask.assigneeId || currentUser?.id || '';
     const chosenAssignee = users.find((u) => u.id === targetAssigneeId);
-    if (chosenAssignee && chosenAssignee.role === 'CLERK') {
-      setFormError('⚠️ Theo quy chuẩn quản lý văn bản hành chính (Nghị định 30/2020/NĐ-CP), Văn thư chỉ phụ trách công tác văn thư, lưu trữ và cấp số; không thể là cán bộ chủ trì thực hiện nhiệm vụ chuyên môn. Vui lòng chọn Chuyên viên chuyên môn!');
-      return;
-    }
 
     setFormError(null);
 
@@ -661,6 +662,45 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setIsSendingMessage(false);
   };
 
+  // Nudge / urge specialist on overdue task (Leadership / Admin only)
+  const handleNudgeSelectedTask = () => {
+    if (!selectedTask || !canNudgeOrRemindStaff(currentUser)) return;
+    const assignee = users.find((u) => u.id === selectedTask.assigneeId);
+    const deadlineStr = new Date(selectedTask.dueDate).toLocaleDateString('vi-VN');
+    const msg = `${currentUser.fullName} (${currentUser.position || 'Lãnh đạo đơn vị'}) nhắc nhở đôn đốc đẩy nhanh tiến độ công việc "${selectedTask.title}", hạn hoàn thành: ${deadlineStr}`;
+
+    const uniqueId = `cm-nudge-${Date.now()}`;
+    const commentObj: TaskComment = {
+      id: uniqueId,
+      userId: currentUser.id,
+      userName: currentUser.fullName,
+      userAvatar: currentUser.avatar,
+      content: `⚡ [LÃNH ĐẠO ĐÔN ĐỐC TIẾN ĐỘ]: ${msg}`,
+      createdAt: new Date().toISOString(),
+    };
+    const updatedComments = [...(selectedTask.comments || []), commentObj];
+    const updatedTask: Task = {
+      ...selectedTask,
+      comments: updatedComments,
+      updatedAt: new Date().toISOString(),
+    };
+    setSelectedTask(updatedTask);
+    onSaveTask(updatedTask);
+    dbService.addTaskComment(selectedTask.id, commentObj, currentUser);
+
+    dbService.addNotification({
+      title: `Đôn đốc tiến độ: ${selectedTask.code}`,
+      message: msg,
+      userId: selectedTask.assigneeId,
+      type: 'OVERDUE',
+      linkType: 'TASK',
+      targetId: selectedTask.id,
+    });
+
+    setNudgeSuccessNotice(`Đã phát lệnh đôn đốc tiến độ thành công tới chuyên viên ${assignee?.fullName || 'phụ trách'}!`);
+    setTimeout(() => setNudgeSuccessNotice(null), 4000);
+  };
+
   const getPriorityBadge = (p: TaskPriority) => {
     switch (p) {
       case 'URGENT':
@@ -808,7 +848,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             }`}
           >
             <FolderKanban className="w-3.5 h-3.5" />
-            <span>{isLeaderOrAdmin && agencyScope === 'ALL' ? 'Tất cả nhiệm vụ cơ quan' : 'Tất cả việc của tôi'}</span>
+            <span>{canToggleAgencyScope && agencyScope === 'ALL' ? (isClerkRole ? 'Theo dõi công việc toàn cơ quan' : 'Tất cả nhiệm vụ cơ quan') : 'Tất cả việc của tôi'}</span>
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeTab === 'ALL' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
               {accessibleTasks.length}
             </span>
@@ -845,8 +885,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </button>
         </div>
 
-        {/* Agency vs Personal scope switcher for Leaders & Admins */}
-        {isLeaderOrAdmin && (
+        {/* Agency vs Personal scope switcher for Leaders, Admins and Clerk */}
+        {canToggleAgencyScope ? (
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
             <span className="text-[10px] text-slate-500 font-bold px-2 uppercase">Phạm vi:</span>
             <button
@@ -867,13 +907,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Toàn cơ quan
+              {isClerkRole ? 'Theo dõi toàn cơ quan' : 'Toàn cơ quan'}
             </button>
           </div>
-        )}
-
-        {/* Non-leader privacy badge */}
-        {!isLeaderOrAdmin && (
+        ) : (
           <div className="text-[11px] font-medium text-slate-500 bg-slate-100/80 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
             <span>Chỉ hiển thị công việc bạn được giao hoặc trực tiếp giao đi</span>
@@ -1516,6 +1553,54 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* CẢNH BÁO QUÁ HẠN & THẨM QUYỀN ĐÔN ĐỐC CỦA LÃNH ĐẠO */}
+              {selectedTask.status !== 'COMPLETED' && (selectedTask.status === 'OVERDUE' || selectedTask.dueDate < new Date().toISOString().split('T')[0]) && (
+                <div className="bg-rose-50 border border-rose-300 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-start gap-3 max-w-lg">
+                    <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                      <AlertTriangle className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-rose-950 text-xs">Cảnh Báo: Nhiệm Vụ Quá Hạn Xử Lý</span>
+                        <span className="text-[10px] bg-rose-200 text-rose-800 font-bold px-2 py-0.5 rounded-full">
+                          Hạn: {new Date(selectedTask.dueDate).toLocaleDateString('vi-VN')}
+                        </span>
+                      </div>
+                      <p className="text-slate-600 text-[11px] mt-0.5 leading-relaxed">
+                        {canNudgeOrRemindStaff(currentUser)
+                          ? `Đồng chí ${selectedAssignee?.fullName || 'Chuyên viên phụ trách'} chưa hoàn thành nhiệm vụ theo hạn định. Lãnh đạo có thể phát thông báo đôn đốc khẩn.`
+                          : isClerk(currentUser)
+                          ? 'Nhiệm vụ này đã quá hạn thực hiện. Thẩm quyền chỉ đạo đôn đốc thuộc về Lãnh đạo đơn vị (Văn thư không có quyền đôn đốc).'
+                          : 'Nhiệm vụ đã quá thời hạn cam kết. Vui lòng khẩn trương hoàn thiện các nội dung và gửi báo cáo Lãnh đạo nghiệm thu.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {canNudgeOrRemindStaff(currentUser) ? (
+                    <button
+                      type="button"
+                      onClick={handleNudgeSelectedTask}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-all whitespace-nowrap"
+                      title="Chỉ Lãnh đạo hoặc Admin mới có quyền đôn đốc nhắc việc chuyên viên"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Đôn đốc chuyên viên ngay</span>
+                    </button>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-rose-700 bg-rose-100 px-3 py-1.5 rounded-xl border border-rose-200">
+                      {isClerk(currentUser) ? 'Chỉ Lãnh đạo có quyền đôn đốc' : 'Cần đẩy nhanh tiến độ'}
+                    </span>
+                  )}
+
+                  {nudgeSuccessNotice && (
+                    <div className="w-full bg-emerald-100 text-emerald-800 text-xs px-3 py-1.5 rounded-lg border border-emerald-300 font-medium">
+                      {nudgeSuccessNotice}
+                    </div>
+                  )}
                 </div>
               )}
 

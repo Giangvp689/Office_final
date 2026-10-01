@@ -34,7 +34,7 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { DatabaseCenterModal } from './components/DatabaseCenterModal';
 import { FacebookNotificationToast } from './components/FacebookNotificationToast';
 import { Lock } from 'lucide-react';
-import { canAccessClassificationStudio } from './utils/permission';
+import { canAccessClassificationStudio, isLeaderOrAdmin } from './utils/permission';
 
 export const App: React.FC = () => {
   // Authentication State
@@ -208,7 +208,7 @@ export const App: React.FC = () => {
         currentUser={currentUser}
         isImpersonating={db.isImpersonating()}
         onReturnToAdmin={() => db.returnToAdminAccount()}
-        onOpenDatabaseCenter={() => setShowDatabaseCenterModal(true)}
+        onOpenDatabaseCenter={isLeaderOrAdmin(currentUser) ? () => setShowDatabaseCenterModal(true) : undefined}
         onOpenUserProfile={() => {
           setUserProfileTab('PROFILE');
           setShowUserProfileModal(true);
@@ -249,7 +249,7 @@ export const App: React.FC = () => {
             setUserProfileTab('PASSWORD');
             setShowUserProfileModal(true);
           }}
-          onOpenDatabaseCenter={() => setShowDatabaseCenterModal(true)}
+          onOpenDatabaseCenter={isLeaderOrAdmin(currentUser) ? () => setShowDatabaseCenterModal(true) : undefined}
           notifications={userNotifications}
           onMarkNotificationAsRead={(id) => db.markNotificationAsRead(id)}
           onMarkAllAsRead={() => db.markAllNotificationsAsRead(currentUser.id)}
@@ -525,7 +525,9 @@ export const App: React.FC = () => {
             <RemindersView
               tasks={tasks}
               incomingDocs={incomingDocs}
+              outgoingDocs={outgoingDocs}
               users={users}
+              currentUser={currentUser}
               onOpenTaskDetail={(taskId) => {
                 if (taskId) setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
                 setCurrentSection('ALL_TASKS');
@@ -533,6 +535,10 @@ export const App: React.FC = () => {
               onOpenIncomingDocDetail={(docId) => {
                 if (docId) setActiveTarget({ type: 'INCOMING_DOC', id: docId, timestamp: Date.now() });
                 setCurrentSection('INCOMING_DOCS');
+              }}
+              onOpenOutgoingDocDetail={(docId) => {
+                if (docId) setActiveTarget({ type: 'OUTGOING_DOC', id: docId, timestamp: Date.now() });
+                setCurrentSection('OUTGOING_DOCS');
               }}
               onCreateNotification={(title, message, userId) => {
                 db.addNotification({
@@ -599,11 +605,14 @@ export const App: React.FC = () => {
       </div>
 
       {/* Database Center & Domain Modal */}
-      <DatabaseCenterModal
-        isOpen={showDatabaseCenterModal}
-        onClose={() => setShowDatabaseCenterModal(false)}
-        onDataResetOrRestored={reloadData}
-      />
+      {isLeaderOrAdmin(currentUser) && showDatabaseCenterModal && (
+        <DatabaseCenterModal
+          isOpen={showDatabaseCenterModal}
+          onClose={() => setShowDatabaseCenterModal(false)}
+          onDataResetOrRestored={reloadData}
+          currentUser={currentUser}
+        />
+      )}
 
       {/* User Profile & Password Modal */}
       <UserProfileModal

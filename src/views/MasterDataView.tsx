@@ -41,7 +41,19 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
   const isAdminOrLeader = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
 
   if (currentUser && !isAdminOrLeader) {
-    return null;
+    return (
+      <div className="flex-1 p-8 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 max-w-md text-center shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4 border border-amber-200">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h2 className="text-base font-bold text-slate-800">Quyền Hạn Bị Giới Hạn</h2>
+          <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+            Chức năng Quản lý Danh mục dùng chung chỉ dành riêng cho Lãnh đạo cơ quan và Quản trị viên hệ thống.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   const handleAdd = (field: StringArrayField, value: string, setter: (s: string) => void) => {
