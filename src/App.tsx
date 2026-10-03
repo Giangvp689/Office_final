@@ -268,6 +268,7 @@ export const App: React.FC = () => {
               users={users}
               dossiers={dossiers}
               attachments={attachments}
+              currentUser={currentUser}
               onSelectSection={(sec) => setCurrentSection(sec)}
               onOpenTaskDetail={() => setCurrentSection('ALL_TASKS')}
               onOpenIncomingDocDetail={() => setCurrentSection('INCOMING_DOCS')}
