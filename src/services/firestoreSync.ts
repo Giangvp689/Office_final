@@ -678,6 +678,48 @@ export class FirestoreSyncService {
       return null;
     }
   }
+
+  // Fetch users directly from Firestore
+  public async fetchUsersFromFirestore(): Promise<User[]> {
+    try {
+      const snap = await getDocs(collection(firestore, 'users'));
+      const list: User[] = [];
+      snap.forEach((d) => list.push(d.data() as User));
+      return list;
+    } catch (err: any) {
+      if (
+        err?.message?.includes('Missing or insufficient permissions') ||
+        err?.code === 'permission-denied'
+      ) {
+        try {
+          handleFirestoreError(err, OperationType.GET, 'users');
+        } catch {}
+      }
+      console.warn('[Firestore] fetchUsersFromFirestore error:', err);
+      return [];
+    }
+  }
+
+  // Find user by username, email, or ID directly in Firestore
+  public async findUserByLogin(loginInput: string): Promise<User | null> {
+    const clean = loginInput.trim().toLowerCase();
+    try {
+      const users = await this.fetchUsersFromFirestore();
+      for (const u of users) {
+        const uName = (u.username || '').toLowerCase();
+        const uEmail = (u.email || '').toLowerCase();
+        const uEmailPrefix = uEmail.split('@')[0];
+        const uId = (u.id || '').toLowerCase();
+        if (uName === clean || uEmail === clean || uEmailPrefix === clean || uId === clean) {
+          return u;
+        }
+      }
+      return null;
+    } catch (err) {
+      console.warn('[Firestore] findUserByLogin error:', err);
+      return null;
+    }
+  }
 }
 
 export const firestoreSync = new FirestoreSyncService();

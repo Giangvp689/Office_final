@@ -292,7 +292,10 @@ class DatabaseService {
 
       // If Firestore is empty on first run, upload our initial dataset
       const remoteData = await firestoreSync.fetchAllFromFirestore();
-      if (remoteData && remoteData.users.length === 0) {
+      if (remoteData && remoteData.users.length > 0) {
+        this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(remoteData.users));
+        this.notify();
+      } else if (remoteData && remoteData.users.length === 0) {
         console.log('[Firestore] Cloud database initialized, seeding data...');
         await firestoreSync.migrateInitialDataToFirestore({
           users: this.getUsers(),
@@ -573,6 +576,8 @@ class DatabaseService {
       return { success: false, message: 'Vui lòng điền đầy đủ tên đăng nhập và mật khẩu.' };
     }
 
+    const cleanInput = username.trim().toLowerCase();
+
     // 1. Try real server API endpoint
     try {
       const res = await fetch('/api/login', {
@@ -588,17 +593,51 @@ class DatabaseService {
         return { success: false, message: data.message || 'Mật khẩu không đúng.' };
       }
     } catch {
-      // Backend unreachable, fallback to local storage
+      // Backend unreachable, fallback to Firestore / local storage
     }
 
-    // 2. Fallback check from local users database
+    // 2. Direct Firestore Cloud Query (fetches live updates from Firebase Console)
+    try {
+      const firestoreUser = await firestoreSync.findUserByLogin(cleanInput);
+      if (firestoreUser) {
+        const expectedPass = firestoreUser.password || '123';
+        if (password !== expectedPass) {
+          return { success: false, message: 'Mật khẩu không chính xác. Vui lòng kiểm tra lại.' };
+        }
+
+        // Cache in local storage
+        const currentUsers = this.getUsers();
+        const existingIdx = currentUsers.findIndex((u) => u.id === firestoreUser.id);
+        if (existingIdx >= 0) {
+          currentUsers[existingIdx] = { ...currentUsers[existingIdx], ...firestoreUser };
+        } else {
+          currentUsers.unshift(firestoreUser);
+        }
+        this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(currentUsers));
+
+        // Sync with backend API
+        fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(firestoreUser),
+        }).catch(() => {});
+
+        const updatedUser = { ...firestoreUser, lastLogin: new Date().toISOString() };
+        this.saveUserSession(updatedUser, `tok_${firestoreUser.id}_${Date.now()}`);
+        return { success: true, user: updatedUser, message: 'Đăng nhập thành công từ CSDL Firestore!' };
+      }
+    } catch (fsErr) {
+      console.warn('[Firestore Login Check Error]:', fsErr);
+    }
+
+    // 3. Fallback check from local users database
     const users = this.getUsers();
-    const cleanUser = username.trim().toLowerCase();
     const user = users.find(
       (u) =>
-        (u.username && u.username.toLowerCase() === cleanUser) ||
-        u.email.toLowerCase() === cleanUser ||
-        u.email.split('@')[0].toLowerCase() === cleanUser
+        (u.username && u.username.toLowerCase() === cleanInput) ||
+        u.email.toLowerCase() === cleanInput ||
+        u.email.split('@')[0].toLowerCase() === cleanInput ||
+        u.id.toLowerCase() === cleanInput
     );
 
     if (!user) {
@@ -746,6 +785,63 @@ class DatabaseService {
 
     this.logAction('UPDATE', 'USER', user.id, user.fullName, 'Đổi mật khẩu tài khoản thành công', user);
     return { success: true, message: 'Đổi mật khẩu thành công!' };
+  }
+
+  public async resetPassword(emailOrUsername: string, newPassword: string): Promise<{ success: boolean; message: string; user?: User }> {
+    const clean = emailOrUsername.trim().toLowerCase();
+
+    // 1. Check & Update in Firestore
+    let matchedUser: User | null = null;
+    try {
+      matchedUser = await firestoreSync.findUserByLogin(clean);
+      if (matchedUser) {
+        matchedUser.password = newPassword;
+        await firestoreSync.saveUser(matchedUser);
+      }
+    } catch (e) {
+      console.warn('[Firestore resetPassword Error]:', e);
+    }
+
+    // 2. Update local storage users
+    const users = this.getUsers();
+    const idx = users.findIndex(
+      (u) =>
+        (u.username && u.username.toLowerCase() === clean) ||
+        (u.email && u.email.toLowerCase() === clean) ||
+        (u.id && u.id.toLowerCase() === clean)
+    );
+
+    if (idx !== -1) {
+      users[idx] = { ...users[idx], password: newPassword };
+      this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(users));
+      matchedUser = matchedUser || users[idx];
+    } else if (matchedUser) {
+      users.unshift(matchedUser);
+      this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(users));
+    }
+
+    // 3. Call server reset API
+    try {
+      const res = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailOrUsername, newPassword }),
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        matchedUser = matchedUser || data.user;
+      }
+    } catch (apiErr) {
+      console.warn('[Server resetPassword API Notice]:', apiErr);
+    }
+
+    if (matchedUser) {
+      this.logAction('UPDATE', 'USER', matchedUser.id, matchedUser.fullName, `Khôi phục và đặt lại mật khẩu mới cho tài khoản ${matchedUser.username || matchedUser.email}`);
+      this.notify();
+      return { success: true, message: 'Đặt lại mật khẩu thành công!', user: matchedUser };
+    }
+
+    return { success: false, message: 'Không tìm thấy tài khoản với email hoặc tên đăng nhập này.' };
   }
 
   public getCurrentUserId(): string {

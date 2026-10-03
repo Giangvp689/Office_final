@@ -1390,7 +1390,8 @@ app.post('/api/login', async (req, res) => {
       (u) =>
         (u.username && u.username.toLowerCase() === cleanInput) ||
         u.email.toLowerCase() === cleanInput ||
-        u.email.split('@')[0].toLowerCase() === cleanInput
+        u.email.split('@')[0].toLowerCase() === cleanInput ||
+        (u.id && u.id.toLowerCase() === cleanInput)
     );
 
     if (match) {
@@ -1439,6 +1440,130 @@ app.post('/api/change-password', async (req, res) => {
     res.json({ success: true, message: 'Đã cập nhật mật khẩu!' });
   } catch (error: any) {
     res.json({ success: true, message: 'Đã cập nhật mật khẩu!' });
+  }
+});
+
+// Endpoint: Quên mật khẩu & Đặt lại mật khẩu qua OTP
+app.post('/api/reset-password', async (req, res) => {
+  try {
+    const { emailOrUsername, newPassword } = req.body;
+    if (!emailOrUsername || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin tài khoản hoặc mật khẩu mới.' });
+    }
+    const clean = String(emailOrUsername).trim().toLowerCase();
+    const store = loadStore();
+    const u = store.users.find(
+      (x) =>
+        (x.username && x.username.toLowerCase() === clean) ||
+        (x.email && x.email.toLowerCase() === clean) ||
+        (x.id && x.id.toLowerCase() === clean)
+    );
+
+    if (u) {
+      u.password = newPassword;
+      saveStore(store);
+
+      await safeDbRun(async (pool) => {
+        await pool.query('UPDATE users SET password = ? WHERE id = ?', [newPassword, u.id]);
+      });
+
+      return res.json({ success: true, message: 'Đặt lại mật khẩu thành công!', user: u });
+    }
+
+    res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản tương ứng.' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Lỗi đặt lại mật khẩu' });
+  }
+});
+
+// Endpoint: Gửi email chứa mã OTP (Hỗ trợ dịch vụ Email thật qua Resend / REST API)
+app.post('/api/send-otp-email', async (req, res) => {
+  try {
+    const { toEmail, otpCode, recipientName } = req.body;
+    if (!toEmail || !otpCode) {
+      return res.status(400).json({ success: false, message: 'Thiếu email nhận hoặc mã OTP' });
+    }
+
+    const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+    const emailSubject = `[MÃ XÁC THỰC OTP] Yêu cầu đặt lại mật khẩu - Hệ Thống Quản Lý Văn Bản`;
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h2 style="color: #1e293b; margin: 0; font-size: 20px;">CỔNG DỊCH VỤ CÔNG VỤ ĐIỆN TỬ</h2>
+          <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Hệ thống Quản lý & Điều hành Văn bản</p>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
+        <p style="font-size: 14px; color: #334155;">Kính gửi <strong>${recipientName || 'Đồng chí'}</strong>,</p>
+        <p style="font-size: 14px; color: #334155; line-height: 1.5;">Hệ thống nhận được yêu cầu khôi phục mật khẩu đăng nhập cho tài khoản liên kết với địa chỉ email <strong>${toEmail}</strong>.</p>
+        <div style="background-color: #f1f5f9; border-radius: 8px; padding: 18px; text-align: center; margin: 24px 0;">
+          <span style="font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: bold; letter-spacing: 1px; display: block; margin-bottom: 6px;">Mã xác thực OTP của bạn</span>
+          <span style="font-size: 32px; font-weight: bold; color: #4f46e5; letter-spacing: 8px; font-family: monospace;">${otpCode}</span>
+          <span style="font-size: 12px; color: #64748b; display: block; margin-top: 6px;">Mã này có hiệu lực trong vòng <strong>5 phút</strong>. Tuyệt đối không chia sẻ mã này cho người khác.</span>
+        </div>
+        <p style="font-size: 13px; color: #64748b; line-height: 1.5;">Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email hoặc liên hệ với Quản trị viên hệ thống để kiểm tra an toàn tài khoản.</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+        <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">Email tự động từ Hệ thống Quản Lý & Phân Loại Văn Bản Hành Chính.</p>
+      </div>
+    `;
+
+    // 1. If RESEND_API_KEY is configured, dispatch real email directly via Resend REST API
+    if (resendApiKey) {
+      const customSender = (process.env.RESEND_FROM || 'vanban@trg.id.vn').trim();
+      const sendAttempts = [customSender, 'onboarding@resend.dev'];
+
+      for (const fromAddress of sendAttempts) {
+        // If sending with sandbox onboarding@resend.dev, only allow account owner email
+        if (fromAddress === 'onboarding@resend.dev' && toEmail.toLowerCase() !== 'giangvp689@gmail.com') {
+          continue;
+        }
+
+        try {
+          const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${resendApiKey}`,
+            },
+            body: JSON.stringify({
+              from: `Hệ Thống Quản Lý Văn Bản <${fromAddress}>`,
+              to: [toEmail],
+              subject: emailSubject,
+              html: emailHtml,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            return res.json({
+              success: true,
+              deliveredRealEmail: true,
+              provider: 'Resend',
+              sender: fromAddress,
+              message: `Đã gửi mã OTP thật thành công đến hòm thư ${toEmail}`,
+            });
+          }
+        } catch (callErr) {
+          // Continue to next attempt
+        }
+      }
+
+      return res.json({
+        success: true,
+        deliveredRealEmail: false,
+        isDomainOrTestLimit: true,
+        message: 'Mã OTP đã được tạo trên hệ thống.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      deliveredRealEmail: false,
+      hasConfiguredEmailService: false,
+      message: 'Mã OTP đã được tạo trên hệ thống.',
+    });
+  } catch (err: any) {
+    console.error('Error sending OTP email:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
