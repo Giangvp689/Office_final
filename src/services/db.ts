@@ -54,6 +54,7 @@ class DatabaseService {
     this.initIfEmpty();
     this.checkAndSyncMySql();
     this.initFirestoreSync();
+    this.fetchAndRefreshAuditLogs();
   }
 
   /**
@@ -97,58 +98,20 @@ class DatabaseService {
   }
 
   /**
-   * Recovers from QuotaExceededError by trimming non-critical telemetry/log caches
+   * Recovers from QuotaExceededError by trimming oversized attachment base64 caches
    */
   private handleStorageQuotaExceeded(key: string, value: string): boolean {
     try {
-      // 1. If key itself is AUDIT_LOGS, aggressively trim to 30 latest
-      if (key === DB_STORAGE_KEYS.AUDIT_LOGS) {
-        try {
-          const parsed = JSON.parse(value);
-          if (Array.isArray(parsed)) {
-            const trimmed = parsed.slice(0, 30);
-            const trimmedJson = JSON.stringify(trimmed);
-            this.memoryStore[key] = trimmedJson;
-            localStorage.setItem(key, trimmedJson);
-            return true;
-          }
-        } catch {}
-      }
+      this.memoryStore[key] = value;
 
-      // 2. Free quota by trimming existing stored audit logs
-      try {
-        const rawAudit = localStorage.getItem(DB_STORAGE_KEYS.AUDIT_LOGS);
-        if (rawAudit) {
-          const logs = JSON.parse(rawAudit);
-          if (Array.isArray(logs) && logs.length > 20) {
-            localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs.slice(0, 20)));
-          }
-        }
-      } catch {
-        try { localStorage.removeItem(DB_STORAGE_KEYS.AUDIT_LOGS); } catch {}
-      }
-
-      // 3. Free quota by trimming notifications
-      try {
-        const rawNotifs = localStorage.getItem(DB_STORAGE_KEYS.NOTIFICATIONS);
-        if (rawNotifs) {
-          const notifs = JSON.parse(rawNotifs);
-          if (Array.isArray(notifs) && notifs.length > 20) {
-            localStorage.setItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifs.slice(0, 20)));
-          }
-        }
-      } catch {
-        try { localStorage.removeItem(DB_STORAGE_KEYS.NOTIFICATIONS); } catch {}
-      }
-
-      // 4. Free quota by stripping oversized base64 data URLs in attachments
+      // 1. Free quota by stripping oversized base64 data URLs in attachments
       try {
         const rawAtt = localStorage.getItem(DB_STORAGE_KEYS.ATTACHMENTS);
-        if (rawAtt && rawAtt.length > 150000) {
+        if (rawAtt) {
           const atts = JSON.parse(rawAtt);
           if (Array.isArray(atts)) {
             const sanitized = atts.map((a: any) => {
-              if (a.fileUrl && typeof a.fileUrl === 'string' && a.fileUrl.startsWith('data:') && a.fileUrl.length > 10000) {
+              if (a.fileUrl && typeof a.fileUrl === 'string' && a.fileUrl.startsWith('data:') && a.fileUrl.length > 5000) {
                 return { ...a, fileUrl: '' };
               }
               return a;
@@ -158,18 +121,22 @@ class DatabaseService {
         }
       } catch {}
 
-      // 5. Retry saving key with trimmed payload if array
+      // 2. Retry saving key directly
       try {
-        if (key === DB_STORAGE_KEYS.AUDIT_LOGS) {
-          const parsed = JSON.parse(value);
-          const trimmed = Array.isArray(parsed) ? parsed.slice(0, 20) : parsed;
-          localStorage.setItem(key, JSON.stringify(trimmed));
-        } else {
-          localStorage.setItem(key, value);
-        }
+        localStorage.setItem(key, value);
         return true;
-      } catch (retryErr) {
-        console.warn(`[Storage] Retry for "${key}" still failed. Value retained in memoryStore without crashing.`, retryErr);
+      } catch {
+        // If still fails, try keeping up to 500 logs if key is audit logs
+        if (key === DB_STORAGE_KEYS.AUDIT_LOGS) {
+          try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) {
+              const trimmed = parsed.slice(0, 500);
+              localStorage.setItem(key, JSON.stringify(trimmed));
+              return true;
+            }
+          } catch {}
+        }
         return false;
       }
     } catch (e) {
@@ -916,7 +883,35 @@ class DatabaseService {
 
   public getAuditLogs(): AuditLog[] {
     const list = this.getList<AuditLog>(DB_STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
-    return [...list].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return [...list]
+      .filter((l) => l.action !== 'LOGOUT')
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
+  public async fetchAndRefreshAuditLogs(): Promise<AuditLog[]> {
+    try {
+      const res = await fetch('/api/audit-logs');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const nonLogout = json.data.filter((l: any) => l.action !== 'LOGOUT');
+          const sorted = nonLogout.sort(
+            (a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          ).slice(0, 500);
+          this.memoryStore[DB_STORAGE_KEYS.AUDIT_LOGS] = JSON.stringify(sorted);
+          try {
+            localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(sorted));
+          } catch {
+            this.handleStorageQuotaExceeded(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(sorted));
+          }
+          this.notify();
+          return sorted;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch audit logs from API:', e);
+    }
+    return this.getAuditLogs();
   }
 
   public clearAuditLogs(actor?: User) {

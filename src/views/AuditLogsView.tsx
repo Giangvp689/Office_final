@@ -1,15 +1,31 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AuditLog, User } from '../types';
-import { History, Search, Filter, ShieldCheck, LogIn, LogOut } from 'lucide-react';
+import { History, Search, Filter, ShieldCheck, RefreshCw } from 'lucide-react';
 
 interface AuditLogsViewProps {
   logs: AuditLog[];
   users: User[];
+  onRefresh?: () => void;
 }
 
-export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => {
+export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users, onRefresh }) => {
   const [search, setSearch] = useState('');
   const [filterAction, setFilterAction] = useState<string>('ALL');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    onRefresh?.();
+  }, []);
+
+  const handleManualRefresh = async () => {
+    if (!onRefresh) return;
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
 
   // Sắp xếp nhật ký từ mới nhất lên trước (Newest First)
   const sortedLogs = useMemo(() => {
@@ -75,8 +91,21 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
             Ghi vết kiểm toán (Audit Trail): Ghi nhận Ai thực hiện - Thao tác gì - Thời điểm nào
           </p>
         </div>
-        <div className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg font-semibold">
-          Tổng cộng: <span className="font-bold text-indigo-900">{filteredLogs.length}</span> bản ghi
+        <div className="flex items-center gap-3">
+          {onRefresh && (
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-60"
+              title="Tải lại toàn bộ lịch sử từ CSDL đám mây"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>{isRefreshing ? 'Đang đồng bộ...' : 'Đồng bộ từ CSDL'}</span>
+            </button>
+          )}
+          <div className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg font-semibold">
+            Tổng cộng: <span className="font-bold text-indigo-900">{filteredLogs.length}</span> bản ghi
+          </div>
         </div>
       </div>
 

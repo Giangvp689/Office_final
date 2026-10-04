@@ -92,6 +92,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     // Initial fetch directly from the server database
     db.checkAndSyncMySql();
+    db.fetchAndRefreshAuditLogs().then((logs) => {
+      if (logs && logs.length > 0) setAuditLogs(logs);
+    });
 
     const unsubscribe = db.subscribe(() => {
       reloadData();
@@ -591,7 +594,16 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentSection === 'AUDIT_LOGS' && <AuditLogsView logs={auditLogs} users={users} />}
+          {currentSection === 'AUDIT_LOGS' && (
+            <AuditLogsView
+              logs={auditLogs}
+              users={users}
+              onRefresh={async () => {
+                const freshLogs = await db.fetchAndRefreshAuditLogs();
+                setAuditLogs(freshLogs);
+              }}
+            />
+          )}
 
           {currentSection === 'AI_ASSISTANT' && (
             <AIAssistantView
