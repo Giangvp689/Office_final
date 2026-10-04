@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AuditLog, User } from '../types';
-import { History, Search, Filter, ShieldCheck } from 'lucide-react';
+import { History, Search, Filter, ShieldCheck, LogIn, LogOut } from 'lucide-react';
 
 interface AuditLogsViewProps {
   logs: AuditLog[];
@@ -11,10 +11,20 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
   const [search, setSearch] = useState('');
   const [filterAction, setFilterAction] = useState<string>('ALL');
 
-  const filteredLogs = logs.filter((log) => {
+  // Sắp xếp nhật ký từ mới nhất lên trước (Newest First)
+  const sortedLogs = useMemo(() => {
+    return [...logs].sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      return timeB - timeA;
+    });
+  }, [logs]);
+
+  const filteredLogs = sortedLogs.filter((log) => {
     const matchSearch =
       log.userName.toLowerCase().includes(search.toLowerCase()) ||
       log.entityType.toLowerCase().includes(search.toLowerCase()) ||
+      (log.entityTitle && log.entityTitle.toLowerCase().includes(search.toLowerCase())) ||
       log.details.toLowerCase().includes(search.toLowerCase());
 
     const matchAction = filterAction === 'ALL' || log.action === filterAction;
@@ -23,14 +33,26 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
 
   const getActionBadge = (action: string) => {
     switch (action) {
+      case 'LOGIN':
+        return <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded text-[10px] inline-flex items-center gap-1">🔑 ĐĂNG NHẬP</span>;
+      case 'LOGOUT':
+        return <span className="bg-amber-100 text-amber-800 border border-amber-300 font-bold px-2 py-0.5 rounded text-[10px] inline-flex items-center gap-1">🚪 ĐĂNG XUẤT</span>;
       case 'CREATE':
         return <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px]">TẠO MỚI</span>;
       case 'UPDATE':
         return <span className="bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[10px]">CẬP NHẬT</span>;
       case 'DELETE':
         return <span className="bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded text-[10px]">XÓA BỎ</span>;
+      case 'STATUS_CHANGE':
+        return <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded text-[10px]">ĐỔI TRẠNG THÁI</span>;
+      case 'ASSIGN':
+        return <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px]">GIAO VIỆC</span>;
+      case 'UPLOAD_FILE':
+        return <span className="bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded text-[10px]">TẢI LÊN TỆP</span>;
+      case 'SWITCH_USER':
+        return <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px]">CHUYỂN TÀI KHOẢN</span>;
       default:
-        return <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px]">TRUY VẤN AI</span>;
+        return <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px]">{action}</span>;
     }
   };
 
@@ -58,12 +80,17 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
         <select
           value={filterAction}
           onChange={(e) => setFilterAction(e.target.value)}
-          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
         >
           <option value="ALL">Tất cả hành động</option>
+          <option value="LOGIN">Đăng nhập</option>
+          <option value="LOGOUT">Đăng xuất</option>
           <option value="CREATE">Tạo mới</option>
           <option value="UPDATE">Cập nhật</option>
-          <option value="DELETE">Xóa</option>
+          <option value="STATUS_CHANGE">Đổi trạng thái</option>
+          <option value="ASSIGN">Giao việc</option>
+          <option value="DELETE">Xóa bỏ</option>
+          <option value="UPLOAD_FILE">Tải lên tệp</option>
           <option value="AI_QUERY">Truy vấn AI</option>
         </select>
       </div>

@@ -435,9 +435,17 @@ app.get('/api/positions', async (_req, res) => {
 app.get('/api/audit-logs', async (_req, res) => {
   try {
     const sync = await syncStoreWithMySql();
-    res.json({ success: true, data: sync.data.auditLogs, connected: sync.connected });
+    const rawLogs = sync.data.auditLogs || [];
+    const sorted = [...rawLogs].sort(
+      (a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    res.json({ success: true, data: sorted, connected: sync.connected });
   } catch (e: any) {
-    res.json({ success: true, data: loadStore().auditLogs, connected: false });
+    const rawLogs = loadStore().auditLogs || [];
+    const sorted = [...rawLogs].sort(
+      (a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    res.json({ success: true, data: sorted, connected: false });
   }
 });
 
@@ -1337,6 +1345,7 @@ app.post('/api/login', async (req, res) => {
     }
 
     const cleanInput = String(username).trim().toLowerCase();
+    const store = loadStore();
 
     // 1. Check from MySQL if reachable
     try {
@@ -1369,6 +1378,42 @@ app.post('/api/login', async (req, res) => {
               lastLogin: new Date().toISOString(),
             };
 
+            // Ghi nhật ký kiểm toán (Audit Trail) khi đăng nhập thành công
+            const loginAuditLog = {
+              id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              timestamp: new Date().toISOString(),
+              userId: u.id,
+              userName: u.full_name,
+              userAvatar: u.avatar || null,
+              action: 'LOGIN',
+              entityType: 'USER',
+              entityId: u.id,
+              entityTitle: u.full_name,
+              details: `Đăng nhập hệ thống thành công (Tài khoản: ${u.username || u.email})`,
+            };
+            store.auditLogs = store.auditLogs || [];
+            store.auditLogs.unshift(loginAuditLog);
+            if (store.auditLogs.length > 200) store.auditLogs = store.auditLogs.slice(0, 200);
+            saveStore(store);
+
+            safeDbRun(async (poolConn) => {
+              await poolConn.query(
+                `INSERT INTO audit_logs (id, user_id, user_name, user_avatar, action, entity_type, entity_id, entity_title, details) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  loginAuditLog.id,
+                  loginAuditLog.userId,
+                  loginAuditLog.userName,
+                  loginAuditLog.userAvatar,
+                  loginAuditLog.action,
+                  loginAuditLog.entityType,
+                  loginAuditLog.entityId,
+                  loginAuditLog.entityTitle,
+                  loginAuditLog.details,
+                ]
+              );
+            }).catch(() => {});
+
             return res.json({
               success: true,
               user: userObj,
@@ -1385,7 +1430,6 @@ app.post('/api/login', async (req, res) => {
     }
 
     // 2. Check from persistent store
-    const store = loadStore();
     const match = store.users.find(
       (u) =>
         (u.username && u.username.toLowerCase() === cleanInput) ||
@@ -1397,6 +1441,42 @@ app.post('/api/login', async (req, res) => {
     if (match) {
       const expectedPass = match.password || '123';
       if (password === expectedPass) {
+        // Ghi nhật ký kiểm toán (Audit Trail) khi đăng nhập thành công
+        const loginAuditLog = {
+          id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          timestamp: new Date().toISOString(),
+          userId: match.id,
+          userName: match.fullName,
+          userAvatar: match.avatar || null,
+          action: 'LOGIN',
+          entityType: 'USER',
+          entityId: match.id,
+          entityTitle: match.fullName,
+          details: `Đăng nhập hệ thống thành công (Tài khoản: ${match.username || match.email})`,
+        };
+        store.auditLogs = store.auditLogs || [];
+        store.auditLogs.unshift(loginAuditLog);
+        if (store.auditLogs.length > 200) store.auditLogs = store.auditLogs.slice(0, 200);
+        saveStore(store);
+
+        safeDbRun(async (poolConn) => {
+          await poolConn.query(
+            `INSERT INTO audit_logs (id, user_id, user_name, user_avatar, action, entity_type, entity_id, entity_title, details) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              loginAuditLog.id,
+              loginAuditLog.userId,
+              loginAuditLog.userName,
+              loginAuditLog.userAvatar,
+              loginAuditLog.action,
+              loginAuditLog.entityType,
+              loginAuditLog.entityId,
+              loginAuditLog.entityTitle,
+              loginAuditLog.details,
+            ]
+          );
+        }).catch(() => {});
+
         return res.json({
           success: true,
           user: {

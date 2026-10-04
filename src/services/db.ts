@@ -889,14 +889,17 @@ class DatabaseService {
       entityTitle,
       details,
     };
-    const updatedLogs = [newLog, ...logs].slice(0, 60);
+    const updatedLogs = [newLog, ...logs.filter((l) => l.id !== newLog.id)]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 100);
     this.setList(DB_STORAGE_KEYS.AUDIT_LOGS, updatedLogs);
     this.apiCall('/api/audit-logs', 'POST', newLog);
     firestoreSync.saveAuditLog(newLog);
   }
 
   public getAuditLogs(): AuditLog[] {
-    return this.getList<AuditLog>(DB_STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+    const list = this.getList<AuditLog>(DB_STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+    return [...list].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
   public clearAuditLogs(actor?: User) {

@@ -122,6 +122,7 @@ export const App: React.FC = () => {
         onLoginSuccess={(user) => {
           setCurrentUser(user);
           setIsAuthenticated(true);
+          reloadData();
         }}
       />
     );
