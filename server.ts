@@ -449,6 +449,55 @@ app.get('/api/audit-logs', async (_req, res) => {
   }
 });
 
+app.post('/api/audit-logs', async (req, res) => {
+  try {
+    const log = req.body;
+    if (!log.id || !log.action) {
+      return res.status(400).json({ success: false, error: 'Thiếu thông tin audit log' });
+    }
+    // Bỏ qua ghi nhật ký LOGOUT theo yêu cầu
+    if (log.action === 'LOGOUT') {
+      return res.json({ success: true, ignored: true });
+    }
+    const store = loadStore();
+    store.auditLogs = store.auditLogs || [];
+    const idx = store.auditLogs.findIndex((l: any) => l.id === log.id);
+    if (idx >= 0) {
+      store.auditLogs[idx] = log;
+    } else {
+      store.auditLogs.unshift(log);
+    }
+    store.auditLogs = store.auditLogs
+      .filter((l: any) => l.action !== 'LOGOUT')
+      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 500);
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
+      await pool.query(
+        `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_avatar, action, entity_type, entity_id, entity_title, details)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE action=VALUES(action), details=VALUES(details)`,
+        [
+          log.id,
+          log.timestamp ? new Date(log.timestamp) : new Date(),
+          log.userId || null,
+          log.userName || 'Hệ thống',
+          log.userAvatar || null,
+          log.action,
+          log.entityType || 'SYSTEM',
+          log.entityId || null,
+          log.entityTitle || null,
+          log.details || null,
+        ]
+      );
+    });
+    res.json({ success: true, log, fromDb: dbResult.fromDb });
+  } catch (error: any) {
+    res.json({ success: true, log: req.body });
+  }
+});
+
 app.get('/api/notifications', async (_req, res) => {
   try {
     const sync = await syncStoreWithMySql();

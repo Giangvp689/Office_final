@@ -268,7 +268,10 @@ export class FirestoreSyncService {
           (snap) => {
             const list: AuditLog[] = [];
             snap.forEach((d) => list.push(d.data() as AuditLog));
-            if (list.length > 0) callbacks.onAuditLogs!(list);
+            if (list.length > 0) {
+              list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+              callbacks.onAuditLogs!(list);
+            }
           },
           (err) => {
             if (err?.message?.includes('Missing or insufficient permissions') || (err as any)?.code === 'permission-denied') {

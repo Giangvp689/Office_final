@@ -21,11 +21,21 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
   }, [logs]);
 
   const filteredLogs = sortedLogs.filter((log) => {
+    // Không cần ghi nhận / hiển thị đăng xuất
+    if (log.action === 'LOGOUT') return false;
+
+    const q = (search || '').trim().toLowerCase();
+    const uName = (log.userName || '').toLowerCase();
+    const eType = (log.entityType || '').toLowerCase();
+    const eTitle = (log.entityTitle || '').toLowerCase();
+    const det = (log.details || '').toLowerCase();
+
     const matchSearch =
-      log.userName.toLowerCase().includes(search.toLowerCase()) ||
-      log.entityType.toLowerCase().includes(search.toLowerCase()) ||
-      (log.entityTitle && log.entityTitle.toLowerCase().includes(search.toLowerCase())) ||
-      log.details.toLowerCase().includes(search.toLowerCase());
+      !q ||
+      uName.includes(q) ||
+      eType.includes(q) ||
+      eTitle.includes(q) ||
+      det.includes(q);
 
     const matchAction = filterAction === 'ALL' || log.action === filterAction;
     return matchSearch && matchAction;
@@ -35,8 +45,6 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
     switch (action) {
       case 'LOGIN':
         return <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded text-[10px] inline-flex items-center gap-1">🔑 ĐĂNG NHẬP</span>;
-      case 'LOGOUT':
-        return <span className="bg-amber-100 text-amber-800 border border-amber-300 font-bold px-2 py-0.5 rounded text-[10px] inline-flex items-center gap-1">🚪 ĐĂNG XUẤT</span>;
       case 'CREATE':
         return <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px]">TẠO MỚI</span>;
       case 'UPDATE':
@@ -47,22 +55,29 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
         return <span className="bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded text-[10px]">ĐỔI TRẠNG THÁI</span>;
       case 'ASSIGN':
         return <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px]">GIAO VIỆC</span>;
+      case 'COMMENT':
+        return <span className="bg-cyan-100 text-cyan-800 font-bold px-2 py-0.5 rounded text-[10px]">TRAO ĐỔI</span>;
       case 'UPLOAD_FILE':
         return <span className="bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded text-[10px]">TẢI LÊN TỆP</span>;
       case 'SWITCH_USER':
         return <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px]">CHUYỂN TÀI KHOẢN</span>;
       default:
-        return <span className="bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px]">{action}</span>;
+        return <span className="bg-slate-100 text-slate-800 font-bold px-2 py-0.5 rounded text-[10px]">{action}</span>;
     }
   };
 
   return (
     <div className="w-full p-6 md:p-8 flex flex-col gap-6 flex-1">
-      <div>
-        <h1 className="text-xl font-bold text-slate-800">Lịch Sử Thao Tác & Nhật Ký Hệ Thống</h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Ghi vết kiểm toán (Audit Trail): Ghi nhận Ai thực hiện - Thao tác gì - Thời điểm nào
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Lịch Sử Thao Tác & Nhật Ký Hệ Thống</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Ghi vết kiểm toán (Audit Trail): Ghi nhận Ai thực hiện - Thao tác gì - Thời điểm nào
+          </p>
+        </div>
+        <div className="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg font-semibold">
+          Tổng cộng: <span className="font-bold text-indigo-900">{filteredLogs.length}</span> bản ghi
+        </div>
       </div>
 
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3">
@@ -82,13 +97,14 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, users }) => 
           onChange={(e) => setFilterAction(e.target.value)}
           className="bg-slate-50 border border-slate-200 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
         >
-          <option value="ALL">Tất cả hành động</option>
+          <option value="ALL">Tất cả hành động ({filteredLogs.length})</option>
           <option value="LOGIN">Đăng nhập</option>
-          <option value="LOGOUT">Đăng xuất</option>
           <option value="CREATE">Tạo mới</option>
           <option value="UPDATE">Cập nhật</option>
           <option value="STATUS_CHANGE">Đổi trạng thái</option>
           <option value="ASSIGN">Giao việc</option>
+          <option value="COMMENT">Ý kiến trao đổi</option>
+          <option value="SWITCH_USER">Chuyển tài khoản</option>
           <option value="DELETE">Xóa bỏ</option>
           <option value="UPLOAD_FILE">Tải lên tệp</option>
           <option value="AI_QUERY">Truy vấn AI</option>

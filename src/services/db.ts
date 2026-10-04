@@ -188,8 +188,8 @@ class DatabaseService {
       if (rawAudit) {
         try {
           const logs = JSON.parse(rawAudit);
-          if (Array.isArray(logs) && logs.length > 40) {
-            localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs.slice(0, 40)));
+          if (Array.isArray(logs) && logs.length > 500) {
+            localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs.slice(0, 500)));
           }
         } catch {
           localStorage.removeItem(DB_STORAGE_KEYS.AUDIT_LOGS);
@@ -277,7 +277,9 @@ class DatabaseService {
         },
         onAuditLogs: (logs) => {
           this.firestoreConnected = true;
-          const cappedLogs = Array.isArray(logs) ? logs.slice(0, 60) : [];
+          const nonLogout = (logs || []).filter((l) => l.action !== 'LOGOUT');
+          const sorted = nonLogout.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          const cappedLogs = sorted.slice(0, 500);
           this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(cappedLogs));
           this.notify();
         },
@@ -290,10 +292,19 @@ class DatabaseService {
         },
       });
 
-      // If Firestore is empty on first run, upload our initial dataset
+      // If Firestore has data, sync into local storage
       const remoteData = await firestoreSync.fetchAllFromFirestore();
-      if (remoteData && remoteData.users.length > 0) {
-        this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(remoteData.users));
+      if (remoteData) {
+        if (remoteData.users && remoteData.users.length > 0) {
+          this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(remoteData.users));
+        }
+        if (remoteData.auditLogs && remoteData.auditLogs.length > 0) {
+          const nonLogout = remoteData.auditLogs.filter((l) => l.action !== 'LOGOUT');
+          const sortedAuditLogs = nonLogout.sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          ).slice(0, 500);
+          this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(sortedAuditLogs));
+        }
         this.notify();
       } else if (remoteData && remoteData.users.length === 0) {
         console.log('[Firestore] Cloud database initialized, seeding data...');
@@ -357,8 +368,16 @@ class DatabaseService {
           if (Array.isArray(d.tasks)) this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(d.tasks));
           if (Array.isArray(d.attachments)) this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(d.attachments));
           if (Array.isArray(d.auditLogs)) {
-            const cappedLogs = d.auditLogs.slice(0, 60);
-            this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(cappedLogs));
+            const currentLogs = this.getAuditLogs();
+            const idMap = new Map<string, AuditLog>();
+            currentLogs.forEach((l) => { if (l.action !== 'LOGOUT') idMap.set(l.id, l); });
+            d.auditLogs.forEach((l: AuditLog) => {
+              if (l.action !== 'LOGOUT' && !idMap.has(l.id)) idMap.set(l.id, l);
+            });
+            const merged = Array.from(idMap.values())
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+              .slice(0, 500);
+            this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(merged));
           }
           if (Array.isArray(d.notifications)) {
             const readIds = this.getPersistentReadNotifIds();
@@ -554,8 +573,8 @@ class DatabaseService {
   private setList<T>(key: string, items: T[]) {
     if (typeof window === 'undefined') return;
     let itemsToStore = items;
-    if (key === DB_STORAGE_KEYS.AUDIT_LOGS && items.length > 60) {
-      itemsToStore = items.slice(0, 60) as T[];
+    if (key === DB_STORAGE_KEYS.AUDIT_LOGS && items.length > 500) {
+      itemsToStore = items.slice(0, 500) as T[];
     } else if (key === DB_STORAGE_KEYS.NOTIFICATIONS && items.length > 60) {
       itemsToStore = items.slice(0, 60) as T[];
     }
@@ -671,10 +690,8 @@ class DatabaseService {
     this.notify();
   }
 
-  public logout(actor?: User) {
+  public logout(_actor?: User) {
     if (typeof window === 'undefined') return;
-    const current = actor || this.getCurrentUser();
-    this.logAction('LOGOUT', 'USER', current.id, current.fullName, `Đăng xuất khỏi hệ thống`, current);
     this.safeRemoveItem(DB_STORAGE_KEYS.AUTH_TOKEN);
     this.safeRemoveItem(DB_STORAGE_KEYS.CURRENT_USER_ID);
     this.safeRemoveItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID);
@@ -891,7 +908,7 @@ class DatabaseService {
     };
     const updatedLogs = [newLog, ...logs.filter((l) => l.id !== newLog.id)]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 100);
+      .slice(0, 500);
     this.setList(DB_STORAGE_KEYS.AUDIT_LOGS, updatedLogs);
     this.apiCall('/api/audit-logs', 'POST', newLog);
     firestoreSync.saveAuditLog(newLog);
