@@ -2257,6 +2257,11 @@ YÊU CẦU: Trả về duy nhất định dạng JSON thuần túy (không bọc
 
 // Serve frontend in production or development
 async function startServer() {
+  if (process.env.VERCEL) {
+    // On Vercel, requests are handled by serverless function in api/index.ts
+    return;
+  }
+
   if (process.env.NODE_ENV === 'production') {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -2286,4 +2291,6 @@ async function startServer() {
 startServer().catch((err) => {
   console.error('Failed to start server:', err);
 });
+
+export default app;
 

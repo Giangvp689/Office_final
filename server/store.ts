@@ -21,7 +21,9 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const STORE_FILE = path.join(__dirname, '.db_store_cache.json');
+const STORE_FILE = process.env.VERCEL
+  ? path.join('/tmp', '.db_store_cache.json')
+  : path.join(__dirname, '.db_store_cache.json');
 
 export interface FullDbState {
   departments: any[];
