@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Eye,
   EyeOff,
   ArrowRight,
@@ -150,11 +151,12 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
         if (mailData.deliveredRealEmail) {
           setEmailDeliveryMessage(`Email chứa mã OTP thực tế đã được gửi thành công đến hòm thư: ${targetEmail}`);
         } else {
-          setEmailDeliveryMessage(null);
+          setEmailDeliveryMessage(mailData.message || mailData.errorDetail || 'Chưa thể gửi email thực tế qua Resend.');
         }
-      } catch (mailErr) {
+      } catch (mailErr: any) {
         console.warn('Mail dispatch notice:', mailErr);
         setDeliveredRealEmail(false);
+        setEmailDeliveryMessage('Không thể kết nối máy chủ gửi thư.');
       }
 
       setStep('VERIFY_OTP');
@@ -405,29 +407,72 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
         {step === 'VERIFY_OTP' && (
           <form onSubmit={handleVerifyOtp} className="space-y-4">
             {/* Real Email Dispatch Notice Banner */}
-            <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200/80 text-xs text-indigo-950 space-y-2.5 animate-in fade-in">
-              <div className="flex items-center justify-between font-bold text-indigo-800">
-                <span className="flex items-center gap-1.5">
-                  <Mail className="w-4 h-4 text-indigo-600" />
-                  <span>ĐÃ PHÁT MÃ XÁC THỰC ĐẾN EMAIL</span>
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-indigo-200/70 text-[10px] text-indigo-900 uppercase font-mono font-bold">
-                  Bảo Mật Email
-                </span>
-              </div>
-              <div className="text-slate-700 leading-relaxed text-xs">
-                Hệ thống đã gửi thư chứa mã OTP xác thực (6 chữ số) đến địa chỉ email:
-                <div className="mt-1.5 px-3 py-2 bg-white rounded-xl border border-indigo-100 font-semibold text-indigo-950 flex items-center justify-between shadow-xs">
-                  <span className="font-mono text-sm">{matchedUser?.email}</span>
-                  <span className="text-[11px] text-slate-500 font-normal">
-                    {matchedUser?.fullName} ({matchedUser?.position || 'Cán bộ'})
+            {deliveredRealEmail ? (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-2.5 animate-in fade-in">
+                <div className="flex items-center justify-between font-bold text-emerald-800">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>ĐÃ PHÁT MÃ XÁC THỰC THÀNH CÔNG ĐẾN EMAIL</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-200/70 text-[10px] text-emerald-900 uppercase font-mono font-bold">
+                    Resend Live
                   </span>
                 </div>
+                <div className="text-slate-700 leading-relaxed text-xs">
+                  Hệ thống đã gửi thư chứa mã OTP xác thực (6 chữ số) đến địa chỉ email:
+                  <div className="mt-1.5 px-3 py-2 bg-white rounded-xl border border-emerald-100 font-semibold text-emerald-950 flex items-center justify-between shadow-xs">
+                    <span className="font-mono text-sm">{matchedUser?.email}</span>
+                    <span className="text-[11px] text-slate-500 font-normal">
+                      {matchedUser?.fullName} ({matchedUser?.position || 'Cán bộ'})
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed pt-0.5">
+                  👉 Vui lòng mở hộp thư email (kiểm tra cả mục <strong>Hộp thư đến</strong> và <strong>Spam/Thư rác</strong>), sao chép mã 6 chữ số và nhập vào ô bên dưới.
+                </p>
               </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed pt-0.5">
-                👉 Vui lòng mở hộp thư email (kiểm tra cả mục <strong>Hộp thư đến</strong> và <strong>Spam/Thư rác</strong>), sao chép mã 6 chữ số và nhập vào ô bên dưới.
-              </p>
-            </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950 space-y-2.5 animate-in fade-in">
+                <div className="flex items-center justify-between font-bold text-amber-800">
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <span>THÔNG BÁO DỊCH VỤ EMAIL MÁY CHỦ</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-200/70 text-[10px] text-amber-900 uppercase font-mono font-bold">
+                    Chế độ Kiểm thử
+                  </span>
+                </div>
+                <div className="text-slate-700 text-xs leading-relaxed">
+                  {emailDeliveryMessage ? (
+                    <p className="font-medium text-amber-900 mb-1">{emailDeliveryMessage}</p>
+                  ) : (
+                    <p className="font-medium text-amber-900 mb-1">Chưa tìm thấy biến môi trường RESEND_API_KEY trong file .env trên máy chủ.</p>
+                  )}
+                  <p className="text-[11px] text-slate-500">
+                    Để gửi thư thật đến hòm thư ngoài, quản trị viên cần thêm <code className="bg-amber-100 px-1 py-0.5 rounded text-amber-900 font-mono">RESEND_API_KEY=re_...</code> vào file <code className="bg-amber-100 px-1 py-0.5 rounded text-amber-900 font-mono">.env</code>.
+                  </p>
+                </div>
+                {/* Temporary OTP for development / testing */}
+                <div className="mt-2 p-3 bg-white rounded-xl border border-amber-200 flex items-center justify-between shadow-xs">
+                  <div>
+                    <span className="text-[11px] text-slate-500 block">Mã OTP thử nghiệm hệ thống vừa tạo:</span>
+                    <span className="font-mono text-xl font-bold tracking-widest text-indigo-700">{otpCode}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEnteredOtp(otpCode);
+                      setCopiedOtp(true);
+                      setTimeout(() => setCopiedOtp(false), 2000);
+                    }}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {copiedOtp ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedOtp ? 'Đã điền mã' : 'Điền mã ngay'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">

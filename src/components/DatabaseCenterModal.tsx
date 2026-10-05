@@ -18,6 +18,8 @@ import {
   HardDrive,
   Flame,
   Cloud,
+  Mail,
+  Send,
 } from 'lucide-react';
 import { db } from '../services/db';
 import { firestoreSync } from '../services/firestoreSync';
@@ -38,12 +40,23 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
   onDataResetOrRestored,
   currentUser,
 }) => {
-  const [activeTab, setActiveTab] = useState<'FIREBASE' | 'MYSQL' | 'BACKUP'>('FIREBASE');
+  const [activeTab, setActiveTab] = useState<'FIREBASE' | 'MYSQL' | 'EMAIL' | 'BACKUP'>('FIREBASE');
   const [jsonText, setJsonText] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [dbStatus, setDbStatus] = useState<{ connected: boolean; tablesCount?: number; error?: string; config?: any } | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [initResult, setInitResult] = useState<string | null>(null);
+
+  // Email status & test
+  const [emailStatus, setEmailStatus] = useState<{
+    isConfigured: boolean;
+    sender: string;
+    maskedKey: string;
+    domain: string;
+  } | null>(null);
+  const [testEmailTo, setTestEmailTo] = useState(currentUser?.email || 'giangvp689@gmail.com');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Firebase status
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState(false);
@@ -67,10 +80,52 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
     setTimeout(() => setRulesCopied(false), 3000);
   };
 
+  const checkEmailStatus = async () => {
+    try {
+      const res = await fetch('/api/email-status');
+      if (res.ok) {
+        const data = await res.json();
+        setEmailStatus(data);
+      }
+    } catch {
+      setEmailStatus(null);
+    }
+  };
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testEmailTo.trim()) return;
+    setIsSendingTestEmail(true);
+    setTestEmailResult(null);
+    try {
+      const res = await fetch('/api/send-test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toEmail: testEmailTo.trim() }),
+      });
+      const data = await res.json();
+      setTestEmailResult({
+        success: data.success,
+        message: data.message || (data.success ? 'Đã gửi thành công!' : 'Thất bại'),
+      });
+    } catch (err: any) {
+      setTestEmailResult({
+        success: false,
+        message: err.message || 'Lỗi mạng khi kết nối máy chủ gửi email.',
+      });
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       checkStatus();
       checkFirebase();
+      checkEmailStatus();
+      if (currentUser?.email) {
+        setTestEmailTo(currentUser.email);
+      }
     }
   }, [isOpen]);
 
@@ -255,6 +310,17 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
           >
             <Server className="w-3.5 h-3.5 text-indigo-600" />
             <span>MySQL Backend (Offline/Local)</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('EMAIL')}
+            className={`pb-2.5 px-3 font-bold text-xs flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'EMAIL'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5 text-blue-600" />
+            <span>Email Resend ({emailStatus?.isConfigured ? 'Hoạt động' : 'Chưa bật'})</span>
           </button>
           <button
             onClick={() => setActiveTab('BACKUP')}
@@ -573,6 +639,140 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Reset Dữ Liệu</span>
                 </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'EMAIL' && (
+            <div className="space-y-4">
+              {/* Resend Service Status Banner */}
+              <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-5 rounded-2xl space-y-3 shadow-md border border-slate-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-blue-400" />
+                    <span className="font-bold text-sm">Dịch Vụ Gửi Email (Resend REST API)</span>
+                  </div>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] flex items-center gap-1 ${
+                      emailStatus?.isConfigured
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${emailStatus?.isConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    {emailStatus?.isConfigured ? 'ĐÃ CẤU HÌNH API KEY' : 'CHƯA CẤU HÌNH .ENV'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 text-[11px]">
+                  <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-slate-400 block">Địa chỉ người gửi (RESEND_FROM):</span>
+                    <span className="font-mono font-bold text-slate-200">{emailStatus?.sender || 'vanban@trg.id.vn'}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-slate-400 block">Khóa API (RESEND_API_KEY):</span>
+                    <span className="font-mono font-bold text-slate-200">
+                      {emailStatus?.isConfigured ? emailStatus.maskedKey : 'Chưa thiết lập'}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400">
+                  Dịch vụ Resend phục vụ tính năng gửi mã OTP quên mật khẩu và các thông báo văn bản khẩn đến email cán bộ.
+                </p>
+              </div>
+
+              {/* Test Email Dispatch Card */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Kiểm Tra Gửi Email Thật Ngay Lập Tức</span>
+                  </h4>
+                  <span className="text-[10px] text-slate-400">Kiểm tra kết nối trực tiếp với máy chủ Resend</span>
+                </div>
+
+                <form onSubmit={handleSendTestEmail} className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Địa chỉ email nhận thư thử nghiệm:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        required
+                        value={testEmailTo}
+                        onChange={(e) => setTestEmailTo(e.target.value)}
+                        placeholder="Ví dụ: giangvp689@gmail.com"
+                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSendingTestEmail || !testEmailTo.trim()}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-sm"
+                      >
+                        {isSendingTestEmail ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Đang gửi...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Gửi Thử Nghiệm</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {testEmailResult && (
+                    <div
+                      className={`p-3 rounded-xl text-xs flex items-start gap-2 animate-in fade-in ${
+                        testEmailResult.success
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-rose-50 text-rose-800 border border-rose-200'
+                      }`}
+                    >
+                      {testEmailResult.success ? (
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      )}
+                      <div className="space-y-0.5 leading-snug">
+                        <span className="font-bold">{testEmailResult.success ? 'Thành công:' : 'Thất bại:'} </span>
+                        <span>{testEmailResult.message}</span>
+                      </div>
+                    </div>
+                  )}
+                </form>
+              </div>
+
+              {/* Step by step configuration guide */}
+              <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/60 space-y-2 text-slate-700 text-xs">
+                <h4 className="font-bold text-blue-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  <span>Hướng Dẫn Cấu Hình Resend & Tên Miền trg.id.vn</span>
+                </h4>
+                <ol className="list-decimal pl-4 space-y-1.5 text-[11px] leading-relaxed">
+                  <li>
+                    Đăng nhập tài khoản Resend tại <strong className="font-mono text-blue-800">resend.com/emails</strong> (tài khoản <strong className="font-mono">giangvp689</strong>).
+                  </li>
+                  <li>
+                    Vào menu <strong>API Keys</strong> &gt; Tạo khóa mới (Permission: <em>Full Access</em> hoặc <em>Sending Access</em>) và sao chép mã khóa dạng <code className="bg-white px-1 py-0.5 rounded font-mono text-indigo-700">re_...</code>.
+                  </li>
+                  <li>
+                    Thêm biến vào file <code className="bg-white px-1 py-0.5 rounded font-mono text-indigo-700">.env</code> trên máy chủ:
+                    <div className="mt-1 p-2 bg-slate-900 text-emerald-400 rounded-lg font-mono text-[10px]">
+                      RESEND_API_KEY=re_your_api_key_here<br />
+                      RESEND_FROM=vanban@trg.id.vn
+                    </div>
+                  </li>
+                  <li>
+                    Vào mục <strong>Domains</strong> trên Resend, kiểm tra xem tên miền <strong className="font-mono">trg.id.vn</strong> đã có trạng thái <strong>Verified</strong> (Đã xác thực DNS DKIM/SPF) chưa.
+                    <span className="block text-slate-500 mt-0.5">*(Nếu tên miền chưa xác thực, Resend chỉ cho phép gửi thử đến email chính của tài khoản giangvp689@gmail.com)*</span>
+                  </li>
+                </ol>
               </div>
             </div>
           )}

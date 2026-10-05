@@ -1605,6 +1605,116 @@ app.post('/api/reset-password', async (req, res) => {
   }
 });
 
+// Endpoint: Kiểm tra trạng thái cấu hình dịch vụ Email (Resend)
+app.get('/api/email-status', async (_req, res) => {
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  const sender = (process.env.RESEND_FROM || 'vanban@trg.id.vn').trim();
+  const isConfigured = Boolean(resendApiKey);
+  const maskedKey = isConfigured
+    ? `${resendApiKey.slice(0, 4)}••••${resendApiKey.slice(-4)}`
+    : '';
+
+  res.json({
+    success: true,
+    isConfigured,
+    sender,
+    maskedKey,
+    hasApiKey: isConfigured,
+    provider: 'Resend (REST API)',
+    domain: sender.split('@')[1] || 'trg.id.vn',
+  });
+});
+
+// Endpoint: Gửi email thử nghiệm trực tiếp kiểm tra kết nối Resend
+app.post('/api/send-test-email', async (req, res) => {
+  try {
+    const { toEmail } = req.body;
+    if (!toEmail) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp địa chỉ email nhận thư kiểm tra.' });
+    }
+
+    const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+    if (!resendApiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'Chưa cấu hình biến RESEND_API_KEY trong file .env trên máy chủ.',
+      });
+    }
+
+    const customSender = (process.env.RESEND_FROM || 'vanban@trg.id.vn').trim();
+    const sendAttempts = [customSender, 'onboarding@resend.dev'];
+    let lastError = '';
+
+    for (const fromAddress of sendAttempts) {
+      if (fromAddress === 'onboarding@resend.dev' && toEmail.toLowerCase() !== 'giangvp689@gmail.com') {
+        continue;
+      }
+
+      try {
+        console.log(`[Resend Test Dispatch] Attempting to send test email to ${toEmail} from ${fromAddress}...`);
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${resendApiKey}`,
+          },
+          body: JSON.stringify({
+            from: `Hệ Thống Quản Lý Văn Bản <${fromAddress}>`,
+            to: [toEmail],
+            subject: `[KIỂM TRA] Kết nối gửi email thật thành công`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                  <h2 style="color: #4f46e5; margin: 0; font-size: 20px;">🎉 KẾT NỐI EMAIL THÀNH CÔNG</h2>
+                  <p style="color: #64748b; font-size: 13px; margin: 4px 0 0 0;">Dịch vụ Resend trên Hệ Thống Quản Lý & Phân Loại Văn Bản</p>
+                </div>
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
+                <p style="font-size: 14px; color: #334155; line-height: 1.5;">Xin chào Quản trị viên,</p>
+                <p style="font-size: 14px; color: #334155; line-height: 1.5;">Hệ thống đã kết nối thành công với máy chủ <strong>Resend</strong> và xác thực gửi email thật tới địa chỉ <strong>${toEmail}</strong>.</p>
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 13px;">
+                  <p style="margin: 4px 0; color: #475569;"><strong>Địa chỉ gửi:</strong> <span style="font-family: monospace; color: #0f172a;">${fromAddress}</span></p>
+                  <p style="margin: 4px 0; color: #475569;"><strong>Địa chỉ nhận:</strong> <span style="font-family: monospace; color: #0f172a;">${toEmail}</span></p>
+                  <p style="margin: 4px 0; color: #475569;"><strong>Thời gian gửi:</strong> ${new Date().toLocaleString('vi-VN')}</p>
+                </div>
+                <p style="font-size: 13px; color: #16a34a; font-weight: bold;">✅ Tính năng gửi mã xác thực OTP và thông báo văn bản qua email đã sẵn sàng hoạt động!</p>
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+                <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">Email kiểm tra tự động phát hành từ trg.id.vn</p>
+              </div>
+            `,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`[Resend Test Email Success]: Delivered to ${toEmail}, Resend ID: ${data.id}`);
+          return res.json({
+            success: true,
+            id: data.id,
+            from: fromAddress,
+            to: toEmail,
+            message: `Gửi email kiểm tra thành công tới hòm thư ${toEmail} (Mã thư: ${data.id})!`,
+          });
+        } else {
+          const errText = await response.text();
+          console.error(`[Resend Test Email Error] HTTP ${response.status} from ${fromAddress}:`, errText);
+          lastError = `HTTP ${response.status}: ${errText}`;
+        }
+      } catch (err: any) {
+        console.error(`[Resend Test Email Network Error]:`, err);
+        lastError = err?.message || String(err);
+      }
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: `Không thể gửi email kiểm tra qua Resend: ${lastError}`,
+      lastError,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Endpoint: Gửi email chứa mã OTP (Hỗ trợ dịch vụ Email thật qua Resend / REST API)
 app.post('/api/send-otp-email', async (req, res) => {
   try {
@@ -1639,6 +1749,7 @@ app.post('/api/send-otp-email', async (req, res) => {
     if (resendApiKey) {
       const customSender = (process.env.RESEND_FROM || 'vanban@trg.id.vn').trim();
       const sendAttempts = [customSender, 'onboarding@resend.dev'];
+      let lastErrorDetail = '';
 
       for (const fromAddress of sendAttempts) {
         // If sending with sandbox onboarding@resend.dev, only allow account owner email
@@ -1647,6 +1758,7 @@ app.post('/api/send-otp-email', async (req, res) => {
         }
 
         try {
+          console.log(`[Resend OTP Dispatch] Sending OTP to ${toEmail} via sender: ${fromAddress}...`);
           const response = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: {
@@ -1663,6 +1775,7 @@ app.post('/api/send-otp-email', async (req, res) => {
 
           if (response.ok) {
             const data = await response.json();
+            console.log(`[Resend OTP Success]: Successfully sent to ${toEmail} from ${fromAddress}, ID: ${data.id}`);
             return res.json({
               success: true,
               deliveredRealEmail: true,
@@ -1670,25 +1783,39 @@ app.post('/api/send-otp-email', async (req, res) => {
               sender: fromAddress,
               message: `Đã gửi mã OTP thật thành công đến hòm thư ${toEmail}`,
             });
+          } else {
+            const errBody = await response.text();
+            console.error(`[Resend OTP Error] HTTP ${response.status} from ${fromAddress}:`, errBody);
+            lastErrorDetail = `HTTP ${response.status}: ${errBody}`;
           }
-        } catch (callErr) {
-          // Continue to next attempt
+        } catch (callErr: any) {
+          console.error(`[Resend OTP Network Failure]:`, callErr);
+          lastErrorDetail = callErr?.message || String(callErr);
         }
       }
 
+      console.warn(`[Resend OTP Notice]: Real email delivery failed. Error detail: ${lastErrorDetail}`);
       return res.json({
         success: true,
         deliveredRealEmail: false,
         isDomainOrTestLimit: true,
-        message: 'Mã OTP đã được tạo trên hệ thống.',
+        errorDetail: lastErrorDetail,
+        otpCode, // Fallback for local testing / debugging when domain or key encounters issue
+        message: lastErrorDetail
+          ? `Máy chủ Resend phản hồi lỗi: ${lastErrorDetail}`
+          : 'Không thể chuyển tiếp email qua Resend. Vui lòng kiểm tra cấu hình tên miền hoặc API Key.',
       });
     }
 
+    // When RESEND_API_KEY is not configured in .env
+    console.warn('[Resend OTP Notice]: RESEND_API_KEY is not configured in .env. Falling back to test OTP code.');
     return res.json({
       success: true,
       deliveredRealEmail: false,
       hasConfiguredEmailService: false,
-      message: 'Mã OTP đã được tạo trên hệ thống.',
+      otpCode, // For testing & debugging so user is not blocked
+      errorDetail: 'Chưa cấu hình biến môi trường RESEND_API_KEY trong file .env máy chủ.',
+      message: 'Hệ thống chưa tìm thấy RESEND_API_KEY trong file .env trên máy chủ.',
     });
   } catch (err: any) {
     console.error('Error sending OTP email:', err);
