@@ -253,6 +253,10 @@ export interface SystemNotification {
   subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL';
   isRead?: boolean;
   createdAt?: string;
+  targetRole?: Role;
+  senderId?: string;
+  senderName?: string;
+  senderRole?: string;
 }
 
 export interface MasterData {

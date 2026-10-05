@@ -41,7 +41,9 @@ import { classifyDocumentWithAI } from '../services/aiService';
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { classifyDocumentLocally } from '../utils/localClassifier';
 import { SamplePdfModal } from '../components/SamplePdfModal';
-import { Download } from 'lucide-react';
+import { Download, ShieldAlert } from 'lucide-react';
+import { isLeaderOrAdmin, isClerk } from '../utils/permission';
+import { db } from '../services/db';
 
 interface ClassificationStudioViewProps {
   users: User[];
@@ -287,6 +289,41 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     actionType: 'DOC' | 'TASK';
   } | null>(null);
 
+  // User-editable dispatch recommendations (gives Clerks / Leaders full control over AI proposals)
+  const [editableDepartment, setEditableDepartment] = useState<string>('Phòng Kế hoạch - Tài chính');
+  const [editableAssigneeId, setEditableAssigneeId] = useState<string>('');
+  const [editableDossierChoice, setEditableDossierChoice] = useState<string>('NONE'); // 'NONE' | 'NEW' | dossierId
+  const [editableDueDate, setEditableDueDate] = useState<string>('');
+
+  const applyClassificationResult = (res: DocumentClassificationResult) => {
+    setClassificationResult(res);
+    const rec = res.dispatchRecommendation;
+    const dept = rec.primaryDepartment || 'Văn phòng Cơ quan';
+    setEditableDepartment(dept);
+
+    // Filter staff for recommendation
+    const matched = users.find(
+      (u) =>
+        u.role === 'STAFF' &&
+        u.fullName.toLowerCase().includes(rec.suggestedAssigneeName?.toLowerCase() || '')
+    ) || users.find((u) => u.role === 'STAFF' && u.department === dept);
+    setEditableAssigneeId(matched ? matched.id : '');
+
+    // Dossier selection: ONLY OPEN / IN_PROGRESS DOSSIERS! Never closed or archived dossiers!
+    const activeDossiers = dossiers.filter((d) => d.status !== 'CLOSED' && d.status !== 'ARCHIVED');
+    const matchedActiveDos = activeDossiers.find(
+      (d) => d.code === rec.suggestedDossierCode
+    );
+    if (matchedActiveDos) {
+      setEditableDossierChoice(matchedActiveDos.id);
+    } else {
+      // Default to 'NONE' (Không gắn hồ sơ ngay - Để trống cho chuyên viên lập hồ sơ sau)
+      setEditableDossierChoice('NONE');
+    }
+
+    setEditableDueDate(rec.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0]);
+  };
+
   // Handle selected sample PDF directly
   const handleSelectSamplePdfFile = async (file: File) => {
     setIsReadingFile(true);
@@ -369,7 +406,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
           departments,
           availableStaff: staffList,
         });
-        setClassificationResult(localResult);
+        applyClassificationResult(localResult);
       } catch (err: any) {
         setErrorMessage(err.message || 'Lỗi khi phân loại.');
       } finally {
@@ -388,7 +425,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         availableStaff: staffList,
       });
 
-      setClassificationResult(result);
+      applyClassificationResult(result);
     } catch (err: any) {
       console.warn('Gemini cloud slow/error, fallback to high-speed local engine:', err);
       const fallbackResult = classifyDocumentLocally({
@@ -398,7 +435,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         departments,
         availableStaff: staffList,
       });
-      setClassificationResult(fallbackResult);
+      applyClassificationResult(fallbackResult);
     } finally {
       setIsClassifying(false);
     }
@@ -421,18 +458,43 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       return;
     }
 
-    const matchedAssignee = users.find(
-      (u) =>
-        u.role === 'STAFF' &&
-        (u.fullName.toLowerCase().includes(classificationResult.dispatchRecommendation.suggestedAssigneeName?.toLowerCase() || '') ||
-        u.department?.toLowerCase().includes(classificationResult.dispatchRecommendation.primaryDepartment.toLowerCase()))
-    ) || users.find((u) => u.role === 'STAFF') || users.find((u) => u.role !== 'CLERK') || users[0];
+    const matchedAssignee = users.find((u) => u.id === editableAssigneeId);
 
-    const matchedDossier = dossiers.find(
-      (d) =>
-        d.code === classificationResult.dispatchRecommendation.suggestedDossierCode ||
-        d.title.toLowerCase().includes(classificationResult.primaryDomain.toLowerCase())
-    ) || dossiers[0];
+    // Xử lý lựa chọn Hồ sơ vụ việc:
+    // 1. NONE -> dossierId = undefined (không gán bừa bãi vào hồ sơ nào cả)
+    // 2. NEW -> Tạo hồ sơ mới
+    // 3. dossierId -> Kiểm tra chỉ gán nếu hồ sơ ĐANG MỞ (status !== 'CLOSED' && status !== 'ARCHIVED')
+    let finalDossierId: string | undefined = undefined;
+    let dossierDisplayName = 'Chưa xếp vào hồ sơ';
+
+    if (editableDossierChoice === 'NEW') {
+      const newDosId = 'dos-ai-' + Date.now();
+      const newDosCode = classificationResult.dispatchRecommendation.suggestedDossierCode || `HS-${new Date().getFullYear()}-AI-${Math.floor(Math.random() * 900 + 100)}`;
+      const newDos: Dossier = {
+        id: newDosId,
+        code: newDosCode,
+        title: classificationResult.dispatchRecommendation.suggestedDossierTitle || `Hồ sơ ${classificationResult.primaryDomain}`,
+        department: editableDepartment,
+        status: 'OPEN',
+        securityLevel: classificationResult.securityLevel,
+        startDate: new Date().toISOString().split('T')[0],
+        description: `Hồ sơ mở tự động từ văn bản phân loại AI: ${classificationResult.extractedEntities.summary}`,
+        tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Engine'],
+        createdById: currentUser?.id || '',
+      };
+      onSaveDossier(newDos);
+      finalDossierId = newDosId;
+      dossierDisplayName = `Hồ sơ mới [${newDosCode}]`;
+    } else if (editableDossierChoice && editableDossierChoice !== 'NONE') {
+      const activeDos = dossiers.find((d) => d.id === editableDossierChoice && d.status !== 'CLOSED' && d.status !== 'ARCHIVED');
+      if (activeDos) {
+        finalDossierId = activeDos.id;
+        dossierDisplayName = `[${activeDos.code}] ${activeDos.title}`;
+      } else {
+        finalDossierId = undefined;
+        dossierDisplayName = 'Chưa xếp vào hồ sơ (Hồ sơ đã chọn không còn mở)';
+      }
+    }
 
     // Check if doc number already exists in DB
     const baseDocNumber = classificationResult.extractedEntities.documentNumber || `${Math.floor(Math.random() * 900 + 100)}/UBND-VP`;
@@ -450,10 +512,10 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       docType: classificationResult.docType,
       urgency: classificationResult.urgency,
       securityLevel: classificationResult.securityLevel,
-      assigneeId: matchedAssignee?.id || currentUser?.id || '',
-      dueDate: classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+      assigneeId: matchedAssignee?.id || '',
+      dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
       status: 'PENDING_ASSIGN',
-      dossierId: matchedDossier?.id || '',
+      dossierId: finalDossierId,
       attachments: [
         {
           id: 'att-' + Date.now(),
@@ -461,7 +523,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
           fileSize: 1024 * 350,
           fileType: 'application/pdf',
           category: 'VAN_BAN_DEN',
-          uploadedByName: 'AI Classifier Engine',
+          uploadedByName: currentUser?.fullName || 'Văn thư cơ quan',
           tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified'],
         },
       ],
@@ -469,24 +531,145 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
 
     onSaveIncomingDoc(newDoc);
     setSavedIncomingDoc(newDoc);
-    setSuccessActionMsg(`Đã tạo thành công Văn bản đến [${newDoc.documentNumber}] và nạp vào Sổ Văn bản Đến!`);
+    setSuccessActionMsg(`Đã tiếp nhận văn bản [${newDoc.documentNumber}] vào Sổ Văn Bản Đến thành công!`);
 
     // Display modal notification with clear exit / navigation options
     setSuccessModal({
       isOpen: true,
       title: 'Đã Lưu Vào Sổ Văn Bản Đến Thành Công!',
-      message: `Đã nạp văn bản đến số [${newDoc.documentNumber}] vào hệ thống. Cán bộ thụ lý dự kiến: ${matchedAssignee?.fullName || 'Chưa giao'}. Hạn xử lý: ${newDoc.dueDate}.`,
+      message: `Đã nạp văn bản đến số [${newDoc.documentNumber}] vào hệ thống với trạng thái Chờ Lãnh đạo cho ý kiến chỉ đạo. Đơn vị chủ trì: ${editableDepartment}. Cán bộ thụ lý đề xuất: ${matchedAssignee?.fullName || 'Chưa chỉ định'}. Hồ sơ vụ việc: ${dossierDisplayName}. Hạn xử lý: ${newDoc.dueDate}.`,
       docNumber: newDoc.documentNumber,
       targetSection: 'INCOMING_DOCS',
       actionType: 'DOC',
     });
   };
 
-  // Quick Action 2: Create Dossier & Task (Protected against duplicate submissions)
+  // Quick Action 2: For Leader -> Create Dossier & Task; For Clerk -> Forward to Leader for Approval & Directive
   const handleCreateDossierAndTask = () => {
     if (!classificationResult) return;
 
-    // If already saved in this session, provide options to view without duplicating
+    const isLeader = isLeaderOrAdmin(currentUser);
+
+    // If current user is CLERK (or non-leader): Follow State Administrative Flow (NĐ 30/2020/NĐ-CP)
+    // Clerk CANNOT directly assign tasks to colleagues; Clerk registers doc and submits slip to Leader!
+    if (!isLeader) {
+      if (savedDossierTask) {
+        setSuccessModal({
+          isOpen: true,
+          title: 'Văn Bản Đã Được Kính Trình Lãnh Đạo Trước Đó',
+          message: `Phiếu trình văn bản [${savedDossierTask.taskCode}] đã được chuyển tiếp đến Lãnh đạo cơ quan để xem xét cho ý kiến chỉ đạo và phân công cán bộ chủ trì. Đồng chí có thể bấm xem trong Sổ Văn Bản Đến!`,
+          docNumber: savedDossierTask.taskCode,
+          targetSection: 'INCOMING_DOCS',
+          actionType: 'DOC',
+        });
+        return;
+      }
+
+      // Step 1: Ensure incoming doc is saved using user's exact selections
+      let targetDoc = savedIncomingDoc;
+      let dossierDisplayName = 'Chưa xếp vào hồ sơ';
+
+      if (!targetDoc) {
+        const matchedAssignee = users.find((u) => u.id === editableAssigneeId);
+        let finalDossierId: string | undefined = undefined;
+
+        if (editableDossierChoice === 'NEW') {
+          const newDosId = 'dos-ai-' + Date.now();
+          const newDosCode = classificationResult.dispatchRecommendation.suggestedDossierCode || `HS-${new Date().getFullYear()}-AI-${Math.floor(Math.random() * 900 + 100)}`;
+          const newDos: Dossier = {
+            id: newDosId,
+            code: newDosCode,
+            title: classificationResult.dispatchRecommendation.suggestedDossierTitle || `Hồ sơ ${classificationResult.primaryDomain}`,
+            department: editableDepartment,
+            status: 'OPEN',
+            securityLevel: classificationResult.securityLevel,
+            startDate: new Date().toISOString().split('T')[0],
+            description: `Hồ sơ mở tự động từ văn bản phân loại AI: ${classificationResult.extractedEntities.summary}`,
+            tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Engine'],
+            createdById: currentUser?.id || '',
+          };
+          onSaveDossier(newDos);
+          finalDossierId = newDosId;
+          dossierDisplayName = `Hồ sơ mới [${newDosCode}]`;
+        } else if (editableDossierChoice && editableDossierChoice !== 'NONE') {
+          const activeDos = dossiers.find((d) => d.id === editableDossierChoice && d.status !== 'CLOSED' && d.status !== 'ARCHIVED');
+          if (activeDos) {
+            finalDossierId = activeDos.id;
+            dossierDisplayName = `[${activeDos.code}] ${activeDos.title}`;
+          }
+        }
+
+        const baseDocNumber = classificationResult.extractedEntities.documentNumber || `${Math.floor(Math.random() * 900 + 100)}/UBND-VP`;
+        const docExists = incomingDocs.some((d) => d.documentNumber === baseDocNumber);
+        const finalDocNumber = docExists ? `${baseDocNumber}-${Math.floor(Math.random() * 90 + 10)}` : baseDocNumber;
+
+        targetDoc = {
+          id: 'doc-in-ai-' + Date.now(),
+          documentNumber: finalDocNumber,
+          officialNumber: classificationResult.extractedEntities.officialNumber || `${Math.floor(Math.random() * 90 + 10)}/QĐ-STC`,
+          receivedDate: new Date().toISOString().split('T')[0],
+          issueDate: classificationResult.extractedEntities.issueDate || new Date().toISOString().split('T')[0],
+          issuingAuthority: classificationResult.extractedEntities.issuingAuthority || 'Ủy ban nhân dân Thành phố',
+          summary: classificationResult.extractedEntities.summary || inputTitle || 'Văn bản đã qua phân loại AI',
+          docType: classificationResult.docType,
+          urgency: classificationResult.urgency,
+          securityLevel: classificationResult.securityLevel,
+          assigneeId: matchedAssignee?.id || '',
+          dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+          status: 'PENDING_ASSIGN',
+          dossierId: finalDossierId,
+          attachments: [
+            {
+              id: 'att-' + Date.now(),
+              fileName: fileName || 'Van_ban_phan_loai_AI.pdf',
+              fileSize: 1024 * 350,
+              fileType: 'application/pdf',
+              category: 'VAN_BAN_DEN',
+              uploadedByName: currentUser?.fullName || 'Văn thư cơ quan',
+              tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified'],
+            },
+          ],
+        };
+        onSaveIncomingDoc(targetDoc);
+        setSavedIncomingDoc(targetDoc);
+      }
+
+      // Step 2: Notify Leaders
+      const leaders = users.filter((u) => (u.role === 'LEADER' || u.role === 'ADMIN') && u.id !== currentUser?.id);
+      const suggestedStaff = users.find((u) => u.id === editableAssigneeId);
+      leaders.forEach((leaderUser) => {
+        db.addNotification(
+          {
+            userId: leaderUser.id,
+            title: `📬 Văn thư kính trình văn bản đến: [${targetDoc.documentNumber}]`,
+            message: `Văn thư ${currentUser?.fullName} đã tiếp nhận, vào sổ văn bản "${targetDoc.summary.slice(0, 100)}..." và kính trình Lãnh đạo cho ý kiến chỉ đạo, phân công cán bộ thụ lý (Văn thư đề xuất: Đơn vị ${editableDepartment} - ${suggestedStaff?.fullName || 'Chưa chỉ định cán bộ'} - ${dossierDisplayName}).`,
+            type: 'DOC_INCOMING',
+            linkType: 'INCOMING_DOC',
+            targetId: targetDoc.id,
+          },
+          currentUser
+        );
+      });
+
+      setSavedDossierTask({
+        dossierCode: dossierDisplayName,
+        taskCode: targetDoc.documentNumber,
+        assigneeName: 'Lãnh đạo cơ quan (Chờ phê duyệt)',
+      });
+      setSuccessActionMsg(`Đã lập Phiếu trình và chuyển văn bản [${targetDoc.documentNumber}] lên Lãnh đạo cơ quan phê duyệt phân công!`);
+
+      setSuccessModal({
+        isOpen: true,
+        title: 'Đã Vào Sổ & Kính Trình Lãnh Đạo Phê Duyệt!',
+        message: `Đồng chí ${currentUser?.fullName} (Văn thư) đã thực hiện đúng quy trình hành chính: Tiếp nhận → Phân loại AI → Vào Sổ Văn Bản Đến [${targetDoc.documentNumber}] và lập phiếu trình Lãnh đạo. Hệ thống đã gửi thông báo đến Lãnh đạo cơ quan với các thông số đề xuất do đồng chí đã hiệu chỉnh (Đơn vị: ${editableDepartment}, Cán bộ: ${suggestedStaff?.fullName || 'Chưa chỉ định'}, Hồ sơ: ${dossierDisplayName}).`,
+        docNumber: targetDoc.documentNumber,
+        targetSection: 'INCOMING_DOCS',
+        actionType: 'DOC',
+      });
+      return;
+    }
+
+    // IF CURRENT USER IS LEADER OR ADMIN: Direct assignment is authorized!
     if (savedDossierTask) {
       setSuccessModal({
         isOpen: true,
@@ -499,42 +682,48 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       return;
     }
 
-    const newDosId = 'dos-ai-' + Date.now();
-    const newDosCode = classificationResult.dispatchRecommendation.suggestedDossierCode || `HS-2025-AI-${Math.floor(Math.random() * 900 + 100)}`;
-    const newDos: Dossier = {
-      id: newDosId,
-      code: newDosCode,
-      title: classificationResult.dispatchRecommendation.suggestedDossierTitle || `Hồ sơ ${classificationResult.primaryDomain}`,
-      department: classificationResult.dispatchRecommendation.primaryDepartment,
-      status: 'OPEN',
-      securityLevel: classificationResult.securityLevel,
-      startDate: new Date().toISOString().split('T')[0],
-      description: `Hồ sơ mở tự động từ phân loại AI. Căn cứ: ${classificationResult.extractedEntities.summary}`,
-      tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Engine'],
-      createdById: currentUser?.id || '',
-    };
-    onSaveDossier(newDos);
+    let finalDossierId: string | undefined = undefined;
+    let finalDossierCode = classificationResult.dispatchRecommendation.suggestedDossierCode || `HS-${new Date().getFullYear()}-AI-${Math.floor(Math.random() * 900 + 100)}`;
 
-    const fallbackAssignee = users.find((u) => u.role === 'STAFF') || users.find((u) => u.role !== 'CLERK') || users[0];
-    const matchedAssignee = users.find(
-      (u) =>
-        u.role === 'STAFF' &&
-        u?.fullName?.toLowerCase().includes(classificationResult.dispatchRecommendation.suggestedAssigneeName?.toLowerCase() || '')
-    ) || fallbackAssignee;
-    const assigneeName = matchedAssignee?.fullName || currentUser?.fullName || 'Cán bộ phụ trách';
-    const assigneeId = matchedAssignee?.id || currentUser?.id || '';
+    if (editableDossierChoice === 'NEW') {
+      const newDosId = 'dos-ai-' + Date.now();
+      const newDos: Dossier = {
+        id: newDosId,
+        code: finalDossierCode,
+        title: classificationResult.dispatchRecommendation.suggestedDossierTitle || `Hồ sơ ${classificationResult.primaryDomain}`,
+        department: editableDepartment,
+        status: 'OPEN',
+        securityLevel: classificationResult.securityLevel,
+        startDate: new Date().toISOString().split('T')[0],
+        description: `Hồ sơ mở tự động từ phân loại AI. Căn cứ: ${classificationResult.extractedEntities.summary}`,
+        tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Engine'],
+        createdById: currentUser?.id || '',
+      };
+      onSaveDossier(newDos);
+      finalDossierId = newDosId;
+    } else if (editableDossierChoice && editableDossierChoice !== 'NONE') {
+      const activeDos = dossiers.find((d) => d.id === editableDossierChoice && d.status !== 'CLOSED' && d.status !== 'ARCHIVED');
+      if (activeDos) {
+        finalDossierId = activeDos.id;
+        finalDossierCode = activeDos.code;
+      }
+    }
+
+    const assignedStaff = users.find((u) => u.id === editableAssigneeId) || users.find((u) => u.role === 'STAFF') || currentUser;
+    const assigneeName = assignedStaff?.fullName || 'Cán bộ phụ trách';
+    const assigneeId = assignedStaff?.id || currentUser?.id || '';
 
     const newTask = {
       id: 'task-ai-' + Date.now(),
       code: `CV-2025-${Math.floor(Math.random() * 900 + 100)}`,
       title: `[${classificationResult.primaryDomain}] Xử lý ${classificationResult.docType}: ${(inputTitle || classificationResult.extractedEntities.summary).slice(0, 50)}...`,
-      description: `Nhiệm vụ điều phối tự động: ${classificationResult.dispatchRecommendation.routingReason}`,
-      dossierId: newDosId,
+      description: `Nhiệm vụ điều phối Lãnh đạo phê duyệt: ${classificationResult.dispatchRecommendation.routingReason}`,
+      dossierId: finalDossierId,
       assigneeId: assigneeId,
       coAssigneeIds: [],
       priority: classificationResult.urgency === 'HOA_TOC' ? 'URGENT' : classificationResult.urgency === 'KHAN' ? 'HIGH' : 'MEDIUM',
       startDate: new Date().toISOString().split('T')[0],
-      dueDate: classificationResult.dispatchRecommendation.suggestedDueDate,
+      dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate,
       progress: 0,
       status: 'IN_PROGRESS',
       subTasks: classificationResult.dispatchRecommendation.actionChecklist.map((act, idx) => ({
@@ -547,18 +736,18 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     onSaveTask(newTask);
 
     setSavedDossierTask({
-      dossierCode: newDosCode,
+      dossierCode: finalDossierCode,
       taskCode: newTask.code,
       assigneeName: assigneeName,
     });
-    setSuccessActionMsg(`Đã tạo mới Hồ sơ [${newDosCode}] và phân công nhiệm vụ cho [${assigneeName}]!`);
+    setSuccessActionMsg(`Lãnh đạo đã mở Hồ sơ [${finalDossierCode}] và phân công nhiệm vụ cho [${assigneeName}]!`);
 
     // Display modal notification with clear exit / navigation options
     setSuccessModal({
       isOpen: true,
-      title: 'Đã Mở Hồ Sơ & Giao Việc Thành Công!',
-      message: `Đã mở Hồ sơ [${newDosCode}] và giao nhiệm vụ [${newTask.code}] cho đồng chí ${assigneeName}. Hạn hoàn thành: ${classificationResult.dispatchRecommendation.suggestedDueDate}.`,
-      dossierCode: newDosCode,
+      title: 'Đã Mở Hồ Sơ & Phê Duyệt Giao Việc Thành Công!',
+      message: `Đã mở Hồ sơ [${finalDossierCode}] và giao nhiệm vụ [${newTask.code}] cho đồng chí ${assigneeName}. Hạn hoàn thành: ${newTask.dueDate}.`,
+      dossierCode: finalDossierCode,
       targetSection: 'ALL_TASKS',
       actionType: 'TASK',
     });
@@ -1144,48 +1333,117 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                       <UserCheck className="w-4 h-4 text-emerald-600" />
-                      <span>Đề xuất phân luồng thụ lý & điều hành</span>
+                      <span>Đề xuất phân luồng thụ lý & điều hành (Có thể chỉnh sửa)</span>
                     </h4>
-                    <span className="text-[10px] text-emerald-700 bg-emerald-50 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                      Tự động hóa luồng việc
+                    <span className="text-[10px] text-indigo-700 bg-indigo-50 font-bold px-2 py-0.5 rounded-full border border-indigo-200">
+                      Cho phép người dùng tùy chỉnh
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-200/80">
-                      <span className="text-[10px] font-bold text-emerald-700 block uppercase">
-                        Đơn vị chủ trì đề xuất
-                      </span>
-                      <span className="font-black text-slate-900 text-sm">
-                        {classificationResult.dispatchRecommendation.primaryDepartment}
-                      </span>
+                    {/* Field 1: Đơn vị chủ trì đề xuất */}
+                    <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-200/80 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-emerald-800 uppercase flex items-center gap-1">
+                          <Building2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Đơn vị chủ trì
+                        </span>
+                        <span className="text-[10px] text-emerald-700 font-medium">Tùy chọn</span>
+                      </div>
+                      <select
+                        value={editableDepartment}
+                        onChange={(e) => setEditableDepartment(e.target.value)}
+                        className="w-full bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
+                      >
+                        <option value="Phòng Kế hoạch - Tài chính">Phòng Kế hoạch - Tài chính</option>
+                        <option value="Phòng Tổ chức Cán bộ">Phòng Tổ chức Cán bộ</option>
+                        <option value="Văn phòng Cơ quan">Văn phòng Cơ quan</option>
+                        <option value="Phòng Kỹ thuật - Công nghệ">Phòng Kỹ thuật - Công nghệ</option>
+                        <option value="Phòng Pháp chế - Thanh tra">Phòng Pháp chế - Thanh tra</option>
+                        <option value="Ban Quản lý Dự án & Đầu tư">Ban Quản lý Dự án & Đầu tư</option>
+                        <option value="Phòng Quản lý Đào tạo">Phòng Quản lý Đào tạo</option>
+                      </select>
                     </div>
 
-                    <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-200/80">
-                      <span className="text-[10px] font-bold text-indigo-700 block uppercase">
-                        Cán bộ xử lý phù hợp nhất
-                      </span>
-                      <span className="font-black text-slate-900 text-sm">
-                        {classificationResult.dispatchRecommendation.suggestedAssigneeName || 'Chuyên viên thụ lý'}
-                      </span>
+                    {/* Field 2: Cán bộ xử lý đề xuất */}
+                    <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-200/80 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-indigo-800 uppercase flex items-center gap-1">
+                          <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                          Cán bộ xử lý đề xuất
+                        </span>
+                        <span className="text-[10px] text-indigo-700 font-medium">Chuyên viên</span>
+                      </div>
+                      <select
+                        value={editableAssigneeId}
+                        onChange={(e) => setEditableAssigneeId(e.target.value)}
+                        className="w-full bg-white border border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs"
+                      >
+                        <option value="">-- Chưa chỉ định (Lãnh đạo phân công sau) --</option>
+                        {users
+                          .filter((u) => u.role === 'STAFF')
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.fullName} ({u.position || 'Chuyên viên'} - {u.department || 'Đơn vị'})
+                            </option>
+                          ))}
+                      </select>
                     </div>
 
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                        Gắn vào Mã Hồ Sơ đề xuất
-                      </span>
-                      <span className="font-bold text-indigo-700 font-mono">
-                        {classificationResult.dispatchRecommendation.suggestedDossierCode}
-                      </span>
+                    {/* Field 3: Gắn vào Mã Hồ Sơ đề xuất (LỌC HỒ SƠ ĐANG MỞ HOẶC CHƯA GẮN) */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                          <FolderArchive className="w-3.5 h-3.5 text-indigo-600" />
+                          Gắn vào Hồ Sơ Vụ Việc
+                        </span>
+                        <span className="text-[10px] text-emerald-700 font-medium bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                          Chỉ hồ sơ đang mở
+                        </span>
+                      </div>
+                      <select
+                        value={editableDossierChoice}
+                        onChange={(e) => setEditableDossierChoice(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs"
+                      >
+                        <option value="NONE">📁 Chưa gắn vào hồ sơ (Để chuyên viên/Lãnh đạo xếp sau)</option>
+                        <option value="NEW">
+                          ✨ Tạo mới Hồ sơ: [{classificationResult.dispatchRecommendation.suggestedDossierCode || 'Mã mới'}] {classificationResult.dispatchRecommendation.suggestedDossierTitle?.slice(0, 32)}...
+                        </option>
+                        {dossiers.filter((d) => d.status !== 'CLOSED' && d.status !== 'ARCHIVED').length > 0 && (
+                          <optgroup label="Danh sách hồ sơ vụ việc đang mở trong hệ thống:">
+                            {dossiers
+                              .filter((d) => d.status !== 'CLOSED' && d.status !== 'ARCHIVED')
+                              .map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  [{d.code}] {d.title} ({d.department || 'Cơ quan'})
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
+                      </select>
+                      {dossiers.some((d) => d.status === 'CLOSED' || d.status === 'ARCHIVED') && (
+                        <p className="text-[10px] text-slate-400 italic">
+                          * Tự động lọc ẩn {dossiers.filter((d) => d.status === 'CLOSED' || d.status === 'ARCHIVED').length} hồ sơ đã đóng để tránh đưa tài liệu mới vào hồ sơ kết thúc.
+                        </p>
+                      )}
                     </div>
 
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                        Hạn hoàn thành đề xuất
-                      </span>
-                      <span className="font-bold text-slate-800 font-mono">
-                        {classificationResult.dispatchRecommendation.suggestedDueDate}
-                      </span>
+                    {/* Field 4: Hạn hoàn thành đề xuất */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                          Hạn hoàn thành đề xuất
+                        </span>
+                        <span className="text-[10px] text-amber-700 font-medium">Tùy chỉnh ngày</span>
+                      </div>
+                      <input
+                        type="date"
+                        value={editableDueDate}
+                        onChange={(e) => setEditableDueDate(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer font-mono shadow-2xs"
+                      />
                     </div>
                   </div>
 
@@ -1217,6 +1475,21 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                     </p>
                   </div>
 
+                  {/* Role Guidance for Clerk vs Leader */}
+                  {!isLeaderOrAdmin(currentUser) && (
+                    <div className="p-3 bg-amber-50/90 rounded-xl border border-amber-200 flex items-start gap-2.5 text-xs text-amber-950">
+                      <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-[11px] uppercase tracking-wider text-amber-800 block">
+                          Quy trình nghiệp vụ Văn thư (Nghị định 30/2020/NĐ-CP):
+                        </span>
+                        <p className="text-[11px] leading-relaxed text-amber-900">
+                          Văn thư thực hiện <strong>Tiếp nhận → Kiểm tra → Phân loại → Vào sổ văn bản đến → Chuyển xử lý (Kính trình Lãnh đạo)</strong>. Thẩm quyền quyết định giao việc cho Chuyên viên thuộc về <strong>Lãnh đạo cơ quan</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* 1-Click Action Buttons to Ingest into Workflow */}
                   <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row gap-2.5">
                     <button
@@ -1232,7 +1505,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                       {savedIncomingDoc ? (
                         <>
                           <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                          <span>Đã Lưu [{savedIncomingDoc.documentNumber}] (Xem Sổ VB Đến)</span>
+                          <span>Đã Lưu Vào Sổ Đến [{savedIncomingDoc.documentNumber}]</span>
                         </>
                       ) : (
                         <>
@@ -1248,19 +1521,36 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                       onClick={handleCreateDossierAndTask}
                       className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all ${
                         savedDossierTask
-                          ? 'bg-teal-600 hover:bg-teal-700 text-white ring-2 ring-teal-300'
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          ? isLeaderOrAdmin(currentUser)
+                            ? 'bg-teal-600 hover:bg-teal-700 text-white ring-2 ring-teal-300'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300'
+                          : isLeaderOrAdmin(currentUser)
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                       }`}
                     >
                       {savedDossierTask ? (
                         <>
-                          <CheckCircle2 className="w-4 h-4 text-teal-200" />
-                          <span>Đã Giao Việc [{savedDossierTask.assigneeName}] (Xem Nhiệm Vụ)</span>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                          <span>
+                            {isLeaderOrAdmin(currentUser)
+                              ? `Đã Giao Việc [${savedDossierTask.assigneeName}]`
+                              : `Đã Kính Trình Lãnh Đạo Phê Duyệt`}
+                          </span>
                         </>
                       ) : (
                         <>
-                          <FolderArchive className="w-4 h-4" />
-                          <span>Mở Hồ Sơ & Giao Việc Tự Động</span>
+                          {isLeaderOrAdmin(currentUser) ? (
+                            <>
+                              <FolderArchive className="w-4 h-4" />
+                              <span>Mở Hồ Sơ & Phê Duyệt Giao Việc</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-4 h-4" />
+                              <span>Lưu Sổ & Trình Lãnh Đạo Phê Duyệt</span>
+                            </>
+                          )}
                         </>
                       )}
                     </button>

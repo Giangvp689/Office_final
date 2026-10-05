@@ -375,6 +375,19 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
         updatedAt: new Date().toISOString(),
       };
       dbService.saveOutgoingDoc(updated, currentUser);
+      if (selectedDoc.drafterId && selectedDoc.drafterId !== currentUser.id) {
+        dbService.addNotification(
+          {
+            userId: selectedDoc.drafterId,
+            title: `⚠️ Lãnh đạo yêu cầu chỉnh sửa dự thảo VB đi: ${selectedDoc.documentNumber}`,
+            message: `Lãnh đạo ${currentUser.fullName} yêu cầu chỉnh sửa lại dự thảo văn bản "${selectedDoc.summary}". Ý kiến: "${value}".`,
+            type: 'DOC_OUTGOING',
+            linkType: 'OUTGOING_DOC',
+            targetId: selectedDoc.id,
+          },
+          currentUser
+        );
+      }
       setSelectedDoc(updated);
       onSaveDoc(updated);
     } else if (actionDialog.type === 'ISSUE') {

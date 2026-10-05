@@ -958,24 +958,69 @@ class DatabaseService {
     const readIds = this.getPersistentReadNotifIds();
     const list = rawList.map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n));
     if (!userId) return list;
-    return list.filter((n) => !n.userId || n.userId === userId);
+    const user = this.getUserById(userId);
+    return list.filter((n) => {
+      if (n.userId) return n.userId === userId;
+      if (n.targetRole && user) return n.targetRole === user.role;
+      return false;
+    });
   }
 
-  public addNotification(notification: Omit<SystemNotification, 'id' | 'createdAt' | 'isRead'>) {
-    const list = this.getNotifications();
+  public addNotification(
+    notification: Omit<SystemNotification, 'id' | 'createdAt' | 'isRead'>,
+    actor?: User
+  ) {
+    // Crucial rule: A user must NEVER receive a notification for an action they themselves performed!
+    if (actor && notification.userId && notification.userId === actor.id) {
+      return;
+    }
+
+    const senderId = notification.senderId || actor?.id;
+    const senderName = notification.senderName || actor?.fullName;
+    const senderRole =
+      notification.senderRole ||
+      (actor ? (actor.role === 'LEADER' ? 'Lãnh đạo' : actor.role === 'CLERK' ? 'Văn thư' : 'Chuyên viên') : undefined);
+
+    const list = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
     const newNotif: SystemNotification = {
       ...notification,
-      id: 'notif-' + Date.now(),
+      id: 'notif-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
       createdAt: new Date().toISOString(),
       isRead: false,
+      senderId,
+      senderName,
+      senderRole,
     };
     this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, [newNotif, ...list]);
     firestoreSync.saveNotification(newNotif);
   }
 
+  public deleteNotification(id: string) {
+    const current = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+    const updated = current.filter((n) => n.id !== id);
+    this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, updated);
+    this.apiCall(`/api/notifications/${id}`, 'DELETE');
+    try {
+      firestoreSync.deleteNotification?.(id);
+    } catch {}
+  }
+
+  public clearAllNotifications(userId?: string) {
+    const current = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+    const user = userId ? this.getUserById(userId) : undefined;
+    const updated = current.filter((n) => {
+      if (!userId) return false;
+      if (n.userId === userId) return false;
+      if (n.targetRole && user && n.targetRole === user.role) return false;
+      return true;
+    });
+    this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, updated);
+    this.apiCall('/api/notifications/clear-all', 'POST', { userId });
+  }
+
   public markNotificationAsRead(id: string) {
     this.savePersistentReadNotifIds([id]);
-    const list = this.getNotifications().map((n) => (n.id === id ? { ...n, isRead: true } : n));
+    const list = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS).map((n) => (n.id === id ? { ...n, isRead: true } : n));
     this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, list);
     this.apiCall('/api/notifications/mark-read', 'POST', { id });
     const target = list.find((n) => n.id === id);
@@ -985,11 +1030,18 @@ class DatabaseService {
   }
 
   public markAllNotificationsAsRead(userId?: string) {
-    const current = this.getNotifications();
-    const idsToMark = current.filter((n) => !userId || n.userId === userId).map((n) => n.id);
+    const current = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+    const user = userId ? this.getUserById(userId) : undefined;
+    const isTarget = (n: SystemNotification) => {
+      if (!userId) return true;
+      if (n.userId === userId) return true;
+      if (n.targetRole && user && n.targetRole === user.role) return true;
+      return false;
+    };
+    const idsToMark = current.filter(isTarget).map((n) => n.id);
     this.savePersistentReadNotifIds(idsToMark);
     const list = current.map((n) => {
-      if (!userId || n.userId === userId) {
+      if (isTarget(n)) {
         return { ...n, isRead: true };
       }
       return n;
@@ -997,7 +1049,7 @@ class DatabaseService {
     this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, list);
     this.apiCall('/api/notifications/mark-all-read', 'POST', { userId });
     list.forEach((n) => {
-      if (!userId || n.userId === userId) {
+      if (isTarget(n)) {
         firestoreSync.saveNotification(n);
       }
     });
@@ -1251,7 +1303,8 @@ class DatabaseService {
       updatedAt: now,
     };
 
-    this.saveTask(newTask, leader);
+    // 1. Tự động tạo Nhiệm vụ mới liên kết chặt chẽ (skip generic notification so custom directive notification is sent)
+    this.saveTask(newTask, leader, true);
 
     // 2. Cập nhật Văn bản đến
     const updatedDoc: IncomingDocument = {
@@ -1279,29 +1332,53 @@ class DatabaseService {
       }
     }
 
-    // 4. Gửi thông báo đến Cán bộ chủ trì & phối hợp
-    this.addNotification({
-      userId: assignment.assigneeId,
-      title: `⚡ Lãnh đạo giao việc xử lý VB đến: ${doc.documentNumber}`,
-      message: `Lãnh đạo ${leader.fullName} đã chỉ đạo: "${assignment.directive}". Bạn được giao chủ trì nhiệm vụ [${taskCode}]. Hạn chót: ${assignment.dueDate || doc.dueDate}.`,
-      type: 'DOC_ASSIGNED',
-      linkType: 'TASK',
-      targetId: newTask.id,
-    });
+    // 4. Gửi thông báo đến Cán bộ chủ trì & phối hợp (Người giao - Leader - không bao giờ tự nhận thông báo này)
+    if (assignment.assigneeId && assignment.assigneeId !== leader.id) {
+      this.addNotification(
+        {
+          userId: assignment.assigneeId,
+          title: `⚡ Lãnh đạo giao việc xử lý VB đến: ${doc.documentNumber}`,
+          message: `Lãnh đạo ${leader.fullName} đã chỉ đạo: "${assignment.directive}". Bạn được giao chủ trì nhiệm vụ [${taskCode}]. Hạn chót: ${assignment.dueDate || doc.dueDate}.`,
+          type: 'DOC_ASSIGNED',
+          linkType: 'TASK',
+          targetId: newTask.id,
+        },
+        leader
+      );
+    }
 
     if (assignment.coAssigneeIds) {
       for (const coId of assignment.coAssigneeIds) {
-        if (coId && coId !== assignment.assigneeId) {
-          this.addNotification({
-            userId: coId,
-            title: `👥 Phối hợp xử lý VB đến: ${doc.documentNumber}`,
-            message: `Lãnh đạo ${leader.fullName} phân công bạn phối hợp cùng ${assigneeName} thực hiện nhiệm vụ [${taskCode}].`,
-            type: 'DOC_ASSIGNED',
-            linkType: 'TASK',
-            targetId: newTask.id,
-          });
+        if (coId && coId !== assignment.assigneeId && coId !== leader.id) {
+          this.addNotification(
+            {
+              userId: coId,
+              title: `👥 Phối hợp xử lý VB đến: ${doc.documentNumber}`,
+              message: `Lãnh đạo ${leader.fullName} phân công bạn phối hợp cùng ${assigneeName} thực hiện nhiệm vụ [${taskCode}].`,
+              type: 'DOC_ASSIGNED',
+              linkType: 'TASK',
+              targetId: newTask.id,
+            },
+            leader
+          );
         }
       }
+    }
+
+    // 5. Thông báo ngược lại cho Văn thư để biết Lãnh đạo đã chỉ đạo phân luồng xong
+    const clerks = this.getUsers().filter((u) => u.role === 'CLERK' && u.id !== leader.id);
+    for (const clerk of clerks) {
+      this.addNotification(
+        {
+          userId: clerk.id,
+          title: `✅ Lãnh đạo đã bút phê giao việc: VB đến [${doc.documentNumber}]`,
+          message: `Lãnh đạo ${leader.fullName} đã phê duyệt bút phê: "${assignment.directive}" và giao cán bộ ${assigneeName} chủ trì thực hiện nhiệm vụ [${taskCode}].`,
+          type: 'STATUS_UPDATED',
+          linkType: 'INCOMING_DOC',
+          targetId: doc.id,
+        },
+        leader
+      );
     }
 
     return { doc: updatedDoc, task: newTask };
@@ -1415,7 +1492,7 @@ class DatabaseService {
     return this.getTasks().find((t) => t.id === id);
   }
 
-  public saveTask(task: Task, actor?: User) {
+  public saveTask(task: Task, actor?: User, skipAssigneeNotification = false) {
     const tasks = this.getTasks();
     const idx = tasks.findIndex((t) => t.id === task.id);
     let updated: Task[];
@@ -1452,26 +1529,39 @@ class DatabaseService {
       this.logAction('UPDATE', 'TASK', taskToPersist.id, taskToPersist.title, actionDesc, actor);
 
       // Notify if completed
-      if (taskToPersist.status === 'COMPLETED' && prev.status !== 'COMPLETED' && taskToPersist.createdById) {
-        this.addNotification({
-          userId: taskToPersist.createdById,
-          title: `Công việc đã nghiệm thu hoàn thành: ${taskToPersist.code}`,
-          message: `${this.getUserById(taskToPersist.assigneeId)?.fullName} đã hoàn thành công việc "${taskToPersist.title}".`,
-          type: 'TASK_APPROVED',
-          linkType: 'TASK',
-          targetId: taskToPersist.id,
-        });
+      if (taskToPersist.status === 'COMPLETED' && prev.status !== 'COMPLETED') {
+        const creatorId = taskToPersist.creatorId || taskToPersist.createdById;
+        if (creatorId && creatorId !== actor?.id) {
+          this.addNotification(
+            {
+              userId: creatorId,
+              title: `🎉 Công việc đã hoàn thành: ${taskToPersist.code}`,
+              message: `${actor?.fullName || this.getUserById(taskToPersist.assigneeId)?.fullName || 'Cán bộ'} đã hoàn thành công việc "${taskToPersist.title}".`,
+              type: 'TASK_APPROVED',
+              linkType: 'TASK',
+              targetId: taskToPersist.id,
+            },
+            actor
+          );
+        }
       } else if (taskToPersist.status === 'WAITING_APPROVAL' && prev.status !== 'WAITING_APPROVAL') {
         const leaderId = taskToPersist.creatorId || taskToPersist.createdById;
-        if (leaderId) {
-          this.addNotification({
-            userId: leaderId,
-            title: `📋 Trình duyệt nghiệm thu: ${taskToPersist.code}`,
-            message: `Cán bộ ${actor?.fullName || this.getUserById(taskToPersist.assigneeId)?.fullName} đã hoàn thành việc và trình Lãnh đạo phê duyệt nghiệm thu: "${taskToPersist.title}".`,
-            type: 'TASK_APPROVAL_REQUEST',
-            linkType: 'TASK',
-            targetId: taskToPersist.id,
-          });
+        const targetLeaderId =
+          leaderId && leaderId !== actor?.id
+            ? leaderId
+            : this.getUsers().find((u) => u.role === 'LEADER' && u.id !== actor?.id)?.id || 'usr-01';
+        if (targetLeaderId && targetLeaderId !== actor?.id) {
+          this.addNotification(
+            {
+              userId: targetLeaderId,
+              title: `📋 Yêu cầu nghiệm thu nhiệm vụ: ${taskToPersist.code}`,
+              message: `Cán bộ ${actor?.fullName || this.getUserById(taskToPersist.assigneeId)?.fullName || 'Chuyên viên'} đã nộp báo cáo hoàn thành và kính trình Lãnh đạo phê duyệt nghiệm thu: "${taskToPersist.title}".`,
+              type: 'TASK_APPROVAL_REQUEST',
+              linkType: 'TASK',
+              targetId: taskToPersist.id,
+            },
+            actor
+          );
         }
       }
     } else {
@@ -1485,16 +1575,19 @@ class DatabaseService {
         actor
       );
 
-      // Notify assignee
-      if (taskToPersist.assigneeId) {
-        this.addNotification({
-          userId: taskToPersist.assigneeId,
-          title: `Bạn được giao công việc mới: ${taskToPersist.code}`,
-          message: `Nhiệm vụ: "${taskToPersist.title}". Hạn hoàn thành: ${taskToPersist.dueDate}.`,
-          type: 'NEW_TASK',
-          linkType: 'TASK',
-          targetId: taskToPersist.id,
-        });
+      // Notify assignee ONLY (The creator/leader will never receive this notification)
+      if (!skipAssigneeNotification && taskToPersist.assigneeId && taskToPersist.assigneeId !== actor?.id) {
+        this.addNotification(
+          {
+            userId: taskToPersist.assigneeId,
+            title: `⚡ Bạn được giao công việc mới: ${taskToPersist.code}`,
+            message: `${actor ? `Đồng chí ${actor.fullName} đã giao nhiệm vụ:` : 'Nhiệm vụ:'} "${taskToPersist.title}". Hạn hoàn thành: ${taskToPersist.dueDate}.`,
+            type: 'NEW_TASK',
+            linkType: 'TASK',
+            targetId: taskToPersist.id,
+          },
+          actor
+        );
       }
     }
     this.setList(DB_STORAGE_KEYS.TASKS, updated);
@@ -1625,17 +1718,24 @@ class DatabaseService {
     this.apiCall(`/api/tasks/${taskId}/submit-approval`, 'POST', { submissionNote: note, staff, attachments: finalAttachments });
     firestoreSync.saveTask(updatedTask);
 
-    // Notify Leader / Creator
-    const leaderId = task.creatorId || task.createdById || 'usr-01';
-    if (leaderId && leaderId !== staff.id) {
-      this.addNotification({
-        userId: leaderId,
-        title: `📋 Yêu cầu nghiệm thu nhiệm vụ: [${task.code}]`,
-        message: `Đồng chí ${staff.fullName} đã báo cáo hoàn thành công việc "${task.title}" (kèm ${fileCount} tệp tài liệu kết quả) và kính trình Lãnh đạo thẩm định, phê duyệt nghiệm thu.`,
-        type: 'TASK_APPROVAL_REQUEST',
-        linkType: 'TASK',
-        targetId: task.id,
-      });
+    // Notify Leader / Creator (Leader receives request for approval; Staff does not receive this notification)
+    const leaderId = task.creatorId || task.createdById;
+    const targetLeaderId =
+      leaderId && leaderId !== staff.id
+        ? leaderId
+        : this.getUsers().find((u) => u.role === 'LEADER' && u.id !== staff.id)?.id || 'usr-01';
+    if (targetLeaderId && targetLeaderId !== staff.id) {
+      this.addNotification(
+        {
+          userId: targetLeaderId,
+          title: `📋 Yêu cầu nghiệm thu nhiệm vụ: [${task.code}]`,
+          message: `Đồng chí ${staff.fullName} đã báo cáo hoàn thành công việc "${task.title}" (kèm ${fileCount} tệp tài liệu kết quả) và kính trình Lãnh đạo thẩm định, phê duyệt nghiệm thu.`,
+          type: 'TASK_APPROVAL_REQUEST',
+          linkType: 'TASK',
+          targetId: task.id,
+        },
+        staff
+      );
     }
 
     return updatedTask;
@@ -1693,17 +1793,20 @@ class DatabaseService {
     this.apiCall(`/api/tasks/${taskId}/approve`, 'POST', { leader, feedback: praise });
     firestoreSync.saveTask(updatedTask);
 
-    // Notify Assignee & Co-assignees
+    // Notify Assignee & Co-assignees (Leader who approved will NOT receive this notification)
     const participantIds = [task.assigneeId, ...(task.coAssigneeIds || [])].filter((id) => id && id !== leader.id);
     for (const pId of participantIds) {
-      this.addNotification({
-        userId: pId,
-        title: `🎉 Nhiệm vụ đã được Lãnh đạo phê duyệt: [${task.code}]`,
-        message: `Lãnh đạo ${leader.fullName} đã chấp thuận và phê duyệt nghiệm thu nhiệm vụ "${task.title}". Nhận xét: "${praise}"`,
-        type: 'TASK_APPROVED',
-        linkType: 'TASK',
-        targetId: task.id,
-      });
+      this.addNotification(
+        {
+          userId: pId,
+          title: `🎉 Nhiệm vụ đã được Lãnh đạo phê duyệt nghiệm thu: [${task.code}]`,
+          message: `Lãnh đạo ${leader.fullName} đã chấp thuận và phê duyệt nghiệm thu nhiệm vụ "${task.title}". Nhận xét: "${praise}"`,
+          type: 'TASK_APPROVED',
+          linkType: 'TASK',
+          targetId: task.id,
+        },
+        leader
+      );
     }
 
     // Auto-complete linked Incoming Document if all its tasks are now completed!
@@ -1785,15 +1888,20 @@ class DatabaseService {
     this.apiCall(`/api/tasks/${taskId}/reject`, 'POST', { leader, feedback });
     firestoreSync.saveTask(updatedTask);
 
-    // Notify Assignee
-    this.addNotification({
-      userId: task.assigneeId,
-      title: `⚠️ Yêu cầu bổ sung / hoàn thiện lại: [${task.code}]`,
-      message: `Lãnh đạo ${leader.fullName} chưa chấp thuận nghiệm thu công việc "${task.title}". Lý do: "${feedback}". Vui lòng xử lý lại.`,
-      type: 'TASK_REJECTED',
-      linkType: 'TASK',
-      targetId: task.id,
-    });
+    // Notify Assignee (Leader who rejected will NOT receive this notification)
+    if (task.assigneeId && task.assigneeId !== leader.id) {
+      this.addNotification(
+        {
+          userId: task.assigneeId,
+          title: `⚠️ Yêu cầu bổ sung / hoàn thiện lại: [${task.code}]`,
+          message: `Lãnh đạo ${leader.fullName} chưa chấp thuận nghiệm thu công việc "${task.title}". Lý do: "${feedback}". Vui lòng xử lý lại.`,
+          type: 'TASK_REJECTED',
+          linkType: 'TASK',
+          targetId: task.id,
+        },
+        leader
+      );
+    }
 
     return updatedTask;
   }
@@ -1814,16 +1922,23 @@ class DatabaseService {
 
     this.saveOutgoingDoc(updatedDoc, actor);
 
-    // Notify Signer (Leader)
-    if (doc.signerId) {
-      this.addNotification({
-        userId: doc.signerId,
-        title: `🖊️ Trình ký dự thảo văn bản đi: ${doc.documentNumber}`,
-        message: `Chuyên viên ${actor.fullName} kính trình Lãnh đạo xem xét, phê duyệt & ký số văn bản "${doc.summary}".`,
-        type: 'DOC_SIGN_REQUEST',
-        linkType: 'OUTGOING_DOC',
-        targetId: doc.id,
-      });
+    // Notify Signer (Leader) - Leader receives notification; Drafter/Actor does NOT receive it
+    const targetLeaderId =
+      doc.signerId && doc.signerId !== actor.id
+        ? doc.signerId
+        : this.getUsers().find((u) => u.role === 'LEADER' && u.id !== actor.id)?.id || 'usr-01';
+    if (targetLeaderId && targetLeaderId !== actor.id) {
+      this.addNotification(
+        {
+          userId: targetLeaderId,
+          title: `🖊️ Trình ký dự thảo văn bản đi: ${doc.documentNumber}`,
+          message: `Chuyên viên ${actor.fullName} kính trình Lãnh đạo xem xét, phê duyệt & ký số văn bản "${doc.summary}".`,
+          type: 'DOC_SIGN_REQUEST',
+          linkType: 'OUTGOING_DOC',
+          targetId: doc.id,
+        },
+        actor
+      );
     }
 
     return updatedDoc;
@@ -1899,30 +2014,36 @@ class DatabaseService {
 
     this.saveOutgoingDoc(updatedDoc, leader);
 
-    // Notify Clerk (Văn thư) to assign official number and dispatch
+    // Notify Clerk (Văn thư) to assign official number and dispatch (Leader will not receive this notification)
     const users = this.getUsers();
-    const clerks = users.filter((u) => u.role === 'CLERK');
+    const clerks = users.filter((u) => u.role === 'CLERK' && u.id !== leader.id);
     clerks.forEach((clerk) => {
-      this.addNotification({
-        userId: clerk.id,
-        title: `✍️ Dự thảo văn bản đi đã được Lãnh đạo ký số: ${doc.documentNumber}`,
-        message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Đề nghị Văn thư kiểm tra thể thức, cấp số văn bản đi, đóng dấu và phát hành.`,
-        type: 'DOC_SIGNED',
-        linkType: 'OUTGOING_DOC',
-        targetId: doc.id,
-      });
+      this.addNotification(
+        {
+          userId: clerk.id,
+          title: `✍️ Lãnh đạo đã ký duyệt văn bản đi: ${doc.documentNumber}`,
+          message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Đề nghị Văn thư kiểm tra thể thức, cấp số văn bản đi, đóng dấu và phát hành.`,
+          type: 'DOC_SIGNED',
+          linkType: 'OUTGOING_DOC',
+          targetId: doc.id,
+        },
+        leader
+      );
     });
 
-    // Also notify drafter
+    // Also notify drafter (chuyên viên đề xuất lên) so they know leader signed
     if (doc.drafterId && doc.drafterId !== leader.id) {
-      this.addNotification({
-        userId: doc.drafterId,
-        title: `✍️ Dự thảo văn bản đi đã được Lãnh đạo ký số: ${doc.documentNumber}`,
-        message: `Lãnh đạo ${leader.fullName} đã ký số văn bản "${doc.summary}". Văn bản đã chuyển sang Văn thư để cấp số phát hành.`,
-        type: 'DOC_SIGNED',
-        linkType: 'OUTGOING_DOC',
-        targetId: doc.id,
-      });
+      this.addNotification(
+        {
+          userId: doc.drafterId,
+          title: `🎉 Dự thảo văn bản đi đã được Lãnh đạo ký duyệt: ${doc.documentNumber}`,
+          message: `Lãnh đạo ${leader.fullName} đã ký số phê duyệt văn bản "${doc.summary}". Văn bản đã chuyển sang Văn thư để cấp số phát hành.`,
+          type: 'DOC_SIGNED',
+          linkType: 'OUTGOING_DOC',
+          targetId: doc.id,
+        },
+        leader
+      );
     }
 
     return updatedDoc;
@@ -1957,17 +2078,20 @@ class DatabaseService {
 
     this.saveOutgoingDoc(updatedDoc, clerk);
 
-    // Notify Drafter & Signer
+    // Notify Drafter & Signer (Clerk will not receive this notification)
     const recipients = [doc.drafterId, doc.signerId].filter((id) => id && id !== clerk.id);
     recipients.forEach((uid) => {
-      this.addNotification({
-        userId: uid,
-        title: `📬 Văn bản đi đã phát hành chính thức: ${updatedDoc.documentNumber}`,
-        message: `Văn thư cơ quan đã cấp số chính thức ${updatedDoc.documentNumber}, đóng dấu và chuyển phát hành văn bản "${doc.summary}" đến ${doc.recipient}.`,
-        type: 'DOC_ISSUED',
-        linkType: 'OUTGOING_DOC',
-        targetId: doc.id,
-      });
+      this.addNotification(
+        {
+          userId: uid,
+          title: `📬 Văn bản đi đã phát hành chính thức: ${updatedDoc.documentNumber}`,
+          message: `Văn thư ${clerk.fullName} đã cấp số chính thức ${updatedDoc.documentNumber}, đóng dấu và chuyển phát hành văn bản "${doc.summary}" đến ${doc.recipient}.`,
+          type: 'DOC_ISSUED',
+          linkType: 'OUTGOING_DOC',
+          targetId: doc.id,
+        },
+        clerk
+      );
     });
 
     // If replyToDocId: check if replying to an incoming document

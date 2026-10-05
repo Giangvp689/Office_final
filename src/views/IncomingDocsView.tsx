@@ -78,6 +78,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   onDraftOutgoingDoc,
   currentUser,
   onOpenDossier,
+  onOpenTaskDetail,
   initialSelectedDocId,
   masterData,
 }) => {
@@ -100,6 +101,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [selectedDueDate, setSelectedDueDate] = useState('');
   const [selectedDossierId, setSelectedDossierId] = useState('');
   const [assignmentNotice, setAssignmentNotice] = useState<string | null>(null);
+  const [newlyAssignedTask, setNewlyAssignedTask] = useState<Task | null>(null);
 
   useEffect(() => {
     if (selectedDoc) {
@@ -110,6 +112,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       setSelectedDossierId(selectedDoc.dossierId || (dossiers[0]?.id || ''));
       setIsDirectingOpen(selectedDoc.status === 'PENDING_ASSIGN');
       setAssignmentNotice(null);
+      setNewlyAssignedTask(null);
     }
   }, [selectedDoc, dossiers]);
 
@@ -130,8 +133,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       setSelectedDoc(result.doc);
       onSaveDoc(result.doc);
       setIsDirectingOpen(false);
+      setNewlyAssignedTask(result.task);
       setAssignmentNotice(`Đã phê duyệt bút phê chỉ đạo và khởi tạo nhiệm vụ [${result.task.code}] cho ${getUser(selectedAssigneeId)?.fullName || 'cán bộ'}!`);
-      setTimeout(() => setAssignmentNotice(null), 5000);
     }
   };
 
@@ -725,6 +728,9 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 paginatedDocs.map((doc) => {
                   const assignee = getUser(doc.assigneeId);
                   const attCount = doc.attachments?.length || 0;
+                  const docLinkedTask = tasks.find(
+                    (t) => t.incomingDocId === doc.id || t.linkedDocId === doc.id || doc.linkedTaskIds?.includes(t.id)
+                  );
 
                   return (
                     <tr
@@ -790,19 +796,33 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                       {/* Assignee */}
                       <td className="py-3.5 px-4 align-top">
                         {assignee ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-start gap-2">
                             <img
                               src={assignee.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                               alt={assignee.fullName || 'User'}
-                              className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0"
+                              className="w-6 h-6 rounded-full object-cover border border-slate-200 shrink-0 mt-0.5"
                             />
-                            <div className="truncate max-w-[120px]">
+                            <div className="truncate max-w-[130px]">
                               <span className="font-bold text-slate-700 block truncate">
                                 {assignee.fullName || 'Cán bộ'}
                               </span>
                               <span className="text-[10px] text-slate-400 truncate block">
                                 {assignee.position || 'Chuyên viên'}
                               </span>
+                              {docLinkedTask && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenTaskDetail?.(docLinkedTask.id);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 mt-1 cursor-pointer transition-colors"
+                                  title={`Xem nhiệm vụ [${docLinkedTask.code}]: ${docLinkedTask.title}`}
+                                >
+                                  <CheckSquare className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                                  <span>{docLinkedTask.code}</span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         ) : (
@@ -832,6 +852,19 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                       {/* Actions */}
                       <td className="py-3.5 px-4 align-top text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
+                          {docLinkedTask && onOpenTaskDetail && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenTaskDetail(docLinkedTask.id);
+                              }}
+                              className="p-1.5 rounded-lg text-purple-600 hover:text-purple-800 hover:bg-purple-50 transition-colors cursor-pointer"
+                              title={`Mở nhiệm vụ liên kết [${docLinkedTask.code}]`}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => handleOpenEditModal(doc)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
@@ -1063,11 +1096,59 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </div>
               </div>
 
-              {/* Assignment Notice Toast */}
+              {/* Assignment Notice Toast / Action Banner */}
               {assignmentNotice && (
-                <div className="p-3 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-                  <CheckCircle className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <span>{assignmentNotice}</span>
+                <div className="p-3.5 bg-emerald-50 text-emerald-950 border-2 border-emerald-300 rounded-2xl text-xs space-y-2 animate-in fade-in shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-bold text-emerald-900">
+                      <CheckCircle className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span>{assignmentNotice}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssignmentNotice(null);
+                        setNewlyAssignedTask(null);
+                      }}
+                      className="text-emerald-700 hover:text-emerald-900 text-xs font-bold cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {newlyAssignedTask && (
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      {onOpenTaskDetail && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const tId = newlyAssignedTask.id;
+                            setSelectedDoc(null);
+                            onOpenTaskDetail(tId);
+                          }}
+                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all"
+                        >
+                          <CheckSquare className="w-3.5 h-3.5" />
+                          <span>Mở bàn làm việc nhiệm vụ [{newlyAssignedTask.code}] &rarr;</span>
+                        </button>
+                      )}
+                      {dbService.canSwitchUser() && newlyAssignedTask.assigneeId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const tId = newlyAssignedTask.id;
+                            const staffId = newlyAssignedTask.assigneeId;
+                            dbService.switchUser(staffId);
+                            setSelectedDoc(null);
+                            onOpenTaskDetail?.(tId);
+                          }}
+                          className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition-all"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-purple-700" />
+                          <span>Đóng vai {getUser(newlyAssignedTask.assigneeId)?.fullName} (Chuyên viên) để xử lý</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1275,6 +1356,156 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     </button>
                   </div>
                 )}
+              </div>
+
+              {/* LINKED TASKS & SPECIALIST EXECUTION SECTION */}
+              <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckSquare className="w-4 h-4 text-purple-600" />
+                    <span>Nhiệm vụ phân công & Tiến độ chuyên viên ({tasks.filter((t) => t.incomingDocId === selectedDoc.id || t.linkedDocId === selectedDoc.id || selectedDoc.linkedTaskIds?.includes(t.id)).length})</span>
+                  </span>
+                  {selectedDoc.assigneeId && tasks.filter((t) => t.incomingDocId === selectedDoc.id || t.linkedDocId === selectedDoc.id || selectedDoc.linkedTaskIds?.includes(t.id)).length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetDoc = selectedDoc;
+                        setSelectedDoc(null);
+                        onCreateTaskFromDoc(targetDoc);
+                      }}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Khởi tạo Task</span>
+                    </button>
+                  )}
+                </div>
+
+                {(() => {
+                  const docTasks = tasks.filter(
+                    (t) =>
+                      t.incomingDocId === selectedDoc.id ||
+                      t.linkedDocId === selectedDoc.id ||
+                      selectedDoc.linkedTaskIds?.includes(t.id)
+                  );
+
+                  if (docTasks.length === 0) {
+                    return (
+                      <div className="p-3.5 bg-slate-50 rounded-xl text-center border border-dashed border-slate-200 space-y-2 text-xs">
+                        <p className="text-slate-500 font-medium">
+                          {selectedDoc.status === 'PENDING_ASSIGN'
+                            ? 'Văn bản đang Chờ Lãnh đạo cho ý kiến chỉ đạo và phân công Chuyên viên thực hiện.'
+                            : selectedDoc.assigneeId
+                            ? `Đã phân công cho cán bộ ${getUser(selectedDoc.assigneeId)?.fullName || 'chuyên viên'}, nhưng chưa mở bản ghi Nhiệm vụ (Task).`
+                            : 'Chưa có nhiệm vụ nào được khởi tạo từ văn bản đến này.'}
+                        </p>
+                        {selectedDoc.assigneeId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const targetDoc = selectedDoc;
+                              setSelectedDoc(null);
+                              onCreateTaskFromDoc(targetDoc);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-2xs cursor-pointer transition-all"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Mở Bàn Làm Việc Nhiệm Vụ Cho {getUser(selectedDoc.assigneeId)?.fullName || 'Chuyên viên'}</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2.5">
+                      {docTasks.map((task) => {
+                        const staff = getUser(task.assigneeId);
+                        return (
+                          <div
+                            key={task.id}
+                            className="p-3 bg-purple-50/50 rounded-xl border border-purple-200/80 space-y-2 hover:border-purple-300 transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono text-xs font-bold text-purple-700 bg-white px-2 py-0.5 rounded border border-purple-200">
+                                    {task.code}
+                                  </span>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                    task.status === 'COMPLETED'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : task.status === 'WAITING_APPROVAL'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-indigo-100 text-indigo-800'
+                                  }`}>
+                                    {task.status === 'COMPLETED'
+                                      ? 'Đã nghiệm thu'
+                                      : task.status === 'WAITING_APPROVAL'
+                                      ? 'Chờ duyệt nghiệm thu'
+                                      : 'Đang thực hiện'}
+                                  </span>
+                                </div>
+                                <h4 className="font-bold text-slate-800 text-xs mt-1.5 line-clamp-2">
+                                  {task.title}
+                                </h4>
+                              </div>
+                              <span className="text-xs font-bold text-purple-800 shrink-0 font-mono">
+                                {task.progress}%
+                              </span>
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="w-full bg-purple-100 h-1.5 rounded-full overflow-hidden">
+                              <div
+                                className="bg-purple-600 h-full rounded-full transition-all duration-300"
+                                style={{ width: `${task.progress}%` }}
+                              />
+                            </div>
+
+                            {/* Assignee & Actions */}
+                            <div className="flex items-center justify-between pt-1 text-xs">
+                              <div className="flex items-center gap-1.5 text-slate-600">
+                                <span className="text-[10px] text-slate-400">Chủ trì:</span>
+                                <span className="font-semibold text-slate-800">{staff?.fullName || 'Cán bộ'}</span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                {onOpenTaskDetail && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedDoc(null);
+                                      onOpenTaskDetail(task.id);
+                                    }}
+                                    className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    <span>Mở nhiệm vụ</span>
+                                  </button>
+                                )}
+                                {dbService.canSwitchUser() && task.assigneeId && currentUser.id !== task.assigneeId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      dbService.switchUser(task.assigneeId);
+                                      setSelectedDoc(null);
+                                      onOpenTaskDetail?.(task.id);
+                                    }}
+                                    className="px-2 py-1 bg-white hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[10px] font-bold cursor-pointer transition-colors"
+                                    title={`Chuyển sang tài khoản ${staff?.fullName || 'chuyên viên'}`}
+                                  >
+                                    Đóng vai cán bộ
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Attachments / Scanned Files Section */}

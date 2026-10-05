@@ -189,7 +189,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span>Nhắc Việc & Trễ Hạn</span>
               </div>
               {counts.overdue > 0 && (
-                <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-200">
                   {counts.overdue}
                 </span>
               )}
@@ -216,9 +216,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Inbox className="w-4 h-4 text-blue-600" />
                 <span>Quản Lý Văn Bản Đến</span>
               </div>
-              <span className="text-[10px] text-slate-400 font-mono font-bold">
-                {counts.incoming}
-              </span>
+              {counts.incoming > 0 && (
+                <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-full font-mono font-bold">
+                  {counts.incoming}
+                </span>
+              )}
             </button>
 
             <button
@@ -234,9 +236,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Send className="w-4 h-4 text-emerald-600" />
                 <span>Quản Lý Văn Bản Đi</span>
               </div>
-              <span className="text-[10px] text-slate-400 font-mono font-bold">
-                {counts.outgoing}
-              </span>
+              {counts.outgoing > 0 && (
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full font-mono font-bold">
+                  {counts.outgoing}
+                </span>
+              )}
             </button>
 
             <button

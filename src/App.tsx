@@ -102,20 +102,96 @@ export const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Compute counts for sidebar
+  // Compute personalized counts for sidebar based on role and active tasks (excluding completed items)
   const counts = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    const incoming = incomingDocs.length;
-    const outgoing = outgoingDocs.length;
+    const role = currentUser?.role || 'STAFF';
+    const isStaff = role === 'STAFF';
+    const isLeader = role === 'LEADER' || role === 'ADMIN';
+    const isClerkRole = role === 'CLERK';
+
+    // 1. Nhắc Việc & Trễ Hạn (Overdue / Action Needed):
+    // - Chuyên viên: CHỈ ĐẾM việc quá hạn của chính mình, không đếm của toàn hệ thống
+    // - Lãnh đạo: Việc quá hạn chưa xử lý + việc chuyên viên trình nghiệm thu chờ Lãnh đạo duyệt (WAITING_APPROVAL)
+    // - Văn thư: Việc chuyên môn của văn thư quá hạn
+    let overdueCount = 0;
+    if (isStaff) {
+      overdueCount = tasks.filter(
+        (t) =>
+          (t.assigneeId === currentUser?.id || t.coAssigneeIds?.includes(currentUser?.id || '')) &&
+          t.status !== 'COMPLETED' &&
+          t.status !== 'CANCELLED' &&
+          (t.status === 'OVERDUE' || t.dueDate < today)
+      ).length;
+    } else if (isLeader) {
+      const agencyOverdue = tasks.filter(
+        (t) => (t.status === 'OVERDUE' || t.dueDate < today) && t.status !== 'COMPLETED' && t.status !== 'CANCELLED'
+      ).length;
+      const waitingApproval = tasks.filter((t) => t.status === 'WAITING_APPROVAL').length;
+      overdueCount = agencyOverdue + waitingApproval;
+    } else if (isClerkRole) {
+      overdueCount = tasks.filter(
+        (t) =>
+          (t.assigneeId === currentUser?.id || t.coAssigneeIds?.includes(currentUser?.id || '')) &&
+          t.status !== 'COMPLETED' &&
+          t.status !== 'CANCELLED' &&
+          (t.status === 'OVERDUE' || t.dueDate < today)
+      ).length;
+    }
+
+    // 2. Quản Lý Văn Bản Đến (Active / Đang làm, KHÔNG đếm cái đã xong):
+    // - Lãnh đạo & Văn thư: Văn bản đến mới hoặc đang xử lý (chờ chỉ đạo / đang làm, KHÔNG đếm COMPLETED)
+    // - Chuyên viên: CHỈ ĐẾM văn bản đến được giao cho mình mà ĐANG LÀM (chưa hoàn thành)
+    let incomingCount = 0;
+    if (isStaff) {
+      incomingCount = incomingDocs.filter(
+        (d) =>
+          (d.assigneeId === currentUser?.id || d.coAssigneeIds?.includes(currentUser?.id || '')) &&
+          d.status !== 'COMPLETED'
+      ).length;
+    } else {
+      incomingCount = incomingDocs.filter((d) => d.status !== 'COMPLETED').length;
+    }
+
+    // 3. Quản Lý Văn Bản Đi (Active / Đang làm, KHÔNG đếm cái đã phát hành xong):
+    // - Lãnh đạo: Văn bản đi đang chờ thẩm định / ký duyệt (DRAFT, REVIEWING)
+    // - Văn thư: Văn bản đi cần phát hành / cấp số / đóng dấu (SIGNED, DRAFT)
+    // - Chuyên viên: CHỈ ĐẾM văn bản đi do mình soạn thảo đang xử lý (chưa phát hành/gửi: status !== 'ISSUED' && status !== 'SENT')
+    let outgoingCount = 0;
+    if (isStaff) {
+      outgoingCount = outgoingDocs.filter(
+        (d) =>
+          (d.drafterId === currentUser?.id || d.createdById === currentUser?.id) &&
+          d.status !== 'ISSUED' &&
+          d.status !== 'SENT'
+      ).length;
+    } else if (isClerkRole) {
+      outgoingCount = outgoingDocs.filter(
+        (d) => d.status === 'SIGNED' || d.status === 'DRAFT'
+      ).length;
+    } else {
+      outgoingCount = outgoingDocs.filter(
+        (d) => d.status !== 'ISSUED' && d.status !== 'SENT'
+      ).length;
+    }
+
+    // 4. Nhiệm vụ của tôi (Đang làm, không đếm đã xong):
     const myTasks = tasks.filter(
-      (t) => (t.assigneeId === currentUser?.id || t.coAssigneeIds?.includes(currentUser?.id)) && t.status !== 'COMPLETED'
+      (t) =>
+        (t.assigneeId === currentUser?.id || t.coAssigneeIds?.includes(currentUser?.id || '')) &&
+        t.status !== 'COMPLETED' &&
+        t.status !== 'CANCELLED'
     ).length;
-    const overdue = tasks.filter(
-      (t) => (t.status === 'OVERDUE' || t.dueDate < today) && t.status !== 'COMPLETED' && t.status !== 'CANCELLED'
-    ).length;
+
     const unreadNotifs = userNotifications.filter((n) => !n.isRead).length;
 
-    return { incoming, outgoing, myTasks, overdue, reminders: unreadNotifs };
+    return {
+      incoming: incomingCount,
+      outgoing: outgoingCount,
+      myTasks,
+      overdue: overdueCount,
+      reminders: unreadNotifs,
+    };
   }, [incomingDocs, outgoingDocs, tasks, currentUser, userNotifications]);
 
   // If user is not authenticated, show modern Login view
