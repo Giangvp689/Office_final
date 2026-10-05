@@ -253,7 +253,14 @@ class DatabaseService {
         onNotifications: (notifications) => {
           this.firestoreConnected = true;
           const readIds = this.getPersistentReadNotifIds();
-          const merged = (notifications || []).map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n)).slice(0, 60);
+          const current = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+          const map = new Map<string, SystemNotification>();
+          current.forEach((n) => map.set(n.id, n));
+          (notifications || []).forEach((n) => map.set(n.id, n));
+          const merged = Array.from(map.values())
+            .map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n))
+            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+            .slice(0, 200);
           this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
           this.notify();
         },
@@ -348,7 +355,14 @@ class DatabaseService {
           }
           if (Array.isArray(d.notifications)) {
             const readIds = this.getPersistentReadNotifIds();
-            const merged = d.notifications.map((n: SystemNotification) => (readIds.has(n.id) ? { ...n, isRead: true } : n)).slice(0, 60);
+            const current = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+            const map = new Map<string, SystemNotification>();
+            current.forEach((n) => map.set(n.id, n));
+            d.notifications.forEach((n: SystemNotification) => map.set(n.id, n));
+            const merged = Array.from(map.values())
+              .map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n))
+              .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+              .slice(0, 200);
             this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
           }
           if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
@@ -542,8 +556,9 @@ class DatabaseService {
     let itemsToStore = items;
     if (key === DB_STORAGE_KEYS.AUDIT_LOGS && items.length > 500) {
       itemsToStore = items.slice(0, 500) as T[];
-    } else if (key === DB_STORAGE_KEYS.NOTIFICATIONS && items.length > 60) {
-      itemsToStore = items.slice(0, 60) as T[];
+    } else if (key === DB_STORAGE_KEYS.NOTIFICATIONS) {
+      const sorted = [...items].sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      itemsToStore = sorted.slice(0, 200) as T[];
     }
     this.safeSetItem(key, JSON.stringify(itemsToStore));
     this.notify();
@@ -618,11 +633,14 @@ class DatabaseService {
 
     // 3. Fallback check from local users database
     const users = this.getUsers();
+    const cleanNoDiacritics = cleanInput.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
     const user = users.find(
       (u) =>
         (u.username && u.username.toLowerCase() === cleanInput) ||
         u.email.toLowerCase() === cleanInput ||
         u.email.split('@')[0].toLowerCase() === cleanInput ||
+        (u.fullName && u.fullName.toLowerCase() === cleanInput) ||
+        (u.fullName && u.fullName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd') === cleanNoDiacritics) ||
         u.id.toLowerCase() === cleanInput
     );
 
@@ -685,12 +703,12 @@ class DatabaseService {
   public canSwitchUser(): boolean {
     const currentUser = this.getCurrentUser();
     const adminId = this.getAdminOriginUserId();
-    return currentUser?.role === 'ADMIN' || Boolean(adminId);
+    return currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER' || Boolean(adminId);
   }
 
   public switchUser(targetUserId: string): boolean {
     if (!this.canSwitchUser()) {
-      console.warn('Chỉ có Quản trị viên (Admin) mới có quyền chuyển đổi tài khoản.');
+      console.warn('Chỉ có Quản trị viên (Admin) hoặc Lãnh đạo mới có quyền chuyển đổi tài khoản.');
       return false;
     }
 
@@ -700,8 +718,8 @@ class DatabaseService {
     const currentActor = this.getCurrentUser();
     const adminOrigin = this.getAdminOriginUser() || currentActor;
 
-    // Ensure admin origin is saved if current actor is Admin
-    if (currentActor.role === 'ADMIN') {
+    // Ensure origin is saved if current actor is Admin or Leader
+    if (currentActor.role === 'ADMIN' || currentActor.role === 'LEADER') {
       this.safeSetItem(DB_STORAGE_KEYS.ADMIN_ORIGIN_USER_ID, currentActor.id);
     }
 
@@ -713,7 +731,7 @@ class DatabaseService {
       'USER',
       targetUser.id,
       targetUser.fullName,
-      `Quản trị viên ${adminOrigin.fullName} chuyển sang tài khoản ${targetUser.fullName} (${targetUser.role})`,
+      `${currentActor.role === 'LEADER' ? 'Lãnh đạo' : 'Quản trị viên'} ${adminOrigin.fullName} chuyển sang tài khoản ${targetUser.fullName} (${targetUser.role})`,
       adminOrigin
     );
 
@@ -992,6 +1010,7 @@ class DatabaseService {
       senderRole,
     };
     this.setList(DB_STORAGE_KEYS.NOTIFICATIONS, [newNotif, ...list]);
+    this.apiCall('/api/notifications', 'POST', newNotif);
     firestoreSync.saveNotification(newNotif);
   }
 
@@ -1564,6 +1583,39 @@ class DatabaseService {
           );
         }
       }
+      // Notify if reassigned or updated by leader
+      if (prev.assigneeId !== taskToPersist.assigneeId && taskToPersist.assigneeId && taskToPersist.assigneeId !== actor?.id) {
+        this.addNotification(
+          {
+            userId: taskToPersist.assigneeId,
+            title: `⚡ Phân công nhiệm vụ: ${taskToPersist.code}`,
+            message: `${actor ? `Lãnh đạo ${actor.fullName}` : 'Cơ quan'} đã giao bạn chủ trì nhiệm vụ: "${taskToPersist.title}". Hạn hoàn thành: ${taskToPersist.dueDate}.`,
+            type: 'TASK_ASSIGNED',
+            linkType: 'TASK',
+            targetId: taskToPersist.id,
+          },
+          actor
+        );
+      } else if (
+        prev.assigneeId === taskToPersist.assigneeId &&
+        taskToPersist.assigneeId &&
+        taskToPersist.assigneeId !== actor?.id &&
+        actor &&
+        (actor.role === 'LEADER' || actor.role === 'ADMIN') &&
+        (prev.dueDate !== taskToPersist.dueDate || prev.title !== taskToPersist.title || prev.priority !== taskToPersist.priority || prev.description !== taskToPersist.description)
+      ) {
+        this.addNotification(
+          {
+            userId: taskToPersist.assigneeId,
+            title: `📝 Lãnh đạo cập nhật nhiệm vụ: ${taskToPersist.code}`,
+            message: `Lãnh đạo ${actor.fullName} đã cập nhật thông tin nhiệm vụ "${taskToPersist.title}". Hạn hoàn thành: ${taskToPersist.dueDate}, Tiến độ: ${taskToPersist.progress}%.`,
+            type: 'TASK_ASSIGNED',
+            linkType: 'TASK',
+            targetId: taskToPersist.id,
+          },
+          actor
+        );
+      }
     } else {
       updated = [{ ...taskToPersist, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...tasks];
       this.logAction(
@@ -1577,17 +1629,37 @@ class DatabaseService {
 
       // Notify assignee ONLY (The creator/leader will never receive this notification)
       if (!skipAssigneeNotification && taskToPersist.assigneeId && taskToPersist.assigneeId !== actor?.id) {
+        const creatorName = actor ? `Lãnh đạo ${actor.fullName}` : 'Cơ quan';
         this.addNotification(
           {
             userId: taskToPersist.assigneeId,
             title: `⚡ Bạn được giao công việc mới: ${taskToPersist.code}`,
-            message: `${actor ? `Đồng chí ${actor.fullName} đã giao nhiệm vụ:` : 'Nhiệm vụ:'} "${taskToPersist.title}". Hạn hoàn thành: ${taskToPersist.dueDate}.`,
+            message: `${creatorName} đã giao bạn chủ trì nhiệm vụ: "${taskToPersist.title}". Hạn hoàn thành: ${taskToPersist.dueDate}.`,
             type: 'NEW_TASK',
             linkType: 'TASK',
             targetId: taskToPersist.id,
           },
           actor
         );
+      }
+
+      // Notify co-assignees if any
+      if (!skipAssigneeNotification && Array.isArray(taskToPersist.coAssigneeIds)) {
+        for (const coId of taskToPersist.coAssigneeIds) {
+          if (coId && coId !== taskToPersist.assigneeId && coId !== actor?.id) {
+            this.addNotification(
+              {
+                userId: coId,
+                title: `👥 Phối hợp thực hiện nhiệm vụ: ${taskToPersist.code}`,
+                message: `${actor ? `Lãnh đạo ${actor.fullName}` : 'Cơ quan'} phân công bạn phối hợp cùng ${this.getUserById(taskToPersist.assigneeId)?.fullName || 'chuyên viên'} thực hiện nhiệm vụ: "${taskToPersist.title}".`,
+                type: 'NEW_TASK',
+                linkType: 'TASK',
+                targetId: taskToPersist.id,
+              },
+              actor
+            );
+          }
+        }
       }
     }
     this.setList(DB_STORAGE_KEYS.TASKS, updated);
@@ -1720,19 +1792,21 @@ class DatabaseService {
 
     // Notify Leader / Creator (Leader receives request for approval; Staff does not receive this notification)
     const leaderId = task.creatorId || task.createdById;
-    const targetLeaderId =
-      leaderId && leaderId !== staff.id
-        ? leaderId
-        : this.getUsers().find((u) => u.role === 'LEADER' && u.id !== staff.id)?.id || 'usr-01';
-    if (targetLeaderId && targetLeaderId !== staff.id) {
+    const leaders = this.getUsers().filter((u) => (u.role === 'LEADER' || u.role === 'ADMIN') && u.id !== staff.id);
+    const targetLeaders = leaderId && leaderId !== staff.id
+      ? leaders.filter((l) => l.id === leaderId)
+      : leaders;
+    const finalLeaders = targetLeaders.length > 0 ? targetLeaders : leaders;
+    for (const l of finalLeaders) {
       this.addNotification(
         {
-          userId: targetLeaderId,
+          userId: l.id,
           title: `📋 Yêu cầu nghiệm thu nhiệm vụ: [${task.code}]`,
           message: `Đồng chí ${staff.fullName} đã báo cáo hoàn thành công việc "${task.title}" (kèm ${fileCount} tệp tài liệu kết quả) và kính trình Lãnh đạo thẩm định, phê duyệt nghiệm thu.`,
           type: 'TASK_APPROVAL_REQUEST',
           linkType: 'TASK',
           targetId: task.id,
+          subTarget: 'APPROVAL',
         },
         staff
       );
@@ -1793,9 +1867,10 @@ class DatabaseService {
     this.apiCall(`/api/tasks/${taskId}/approve`, 'POST', { leader, feedback: praise });
     firestoreSync.saveTask(updatedTask);
 
-    // Notify Assignee & Co-assignees (Leader who approved will NOT receive this notification)
-    const participantIds = [task.assigneeId, ...(task.coAssigneeIds || [])].filter((id) => id && id !== leader.id);
-    for (const pId of participantIds) {
+    // Notify Assignee & Co-assignees & Drafter (Leader who approved will NOT receive this notification)
+    const participantIds = [task.assigneeId, task.createdById, ...(task.coAssigneeIds || [])].filter((id): id is string => Boolean(id && id !== leader.id));
+    const uniqueParticipants = Array.from(new Set(participantIds));
+    for (const pId of uniqueParticipants) {
       this.addNotification(
         {
           userId: pId,
@@ -2032,10 +2107,11 @@ class DatabaseService {
     });
 
     // Also notify drafter (chuyên viên đề xuất lên) so they know leader signed
-    if (doc.drafterId && doc.drafterId !== leader.id) {
+    const drafterId = doc.drafterId || doc.createdById;
+    if (drafterId && drafterId !== leader.id) {
       this.addNotification(
         {
-          userId: doc.drafterId,
+          userId: drafterId,
           title: `🎉 Dự thảo văn bản đi đã được Lãnh đạo ký duyệt: ${doc.documentNumber}`,
           message: `Lãnh đạo ${leader.fullName} đã ký số phê duyệt văn bản "${doc.summary}". Văn bản đã chuyển sang Văn thư để cấp số phát hành.`,
           type: 'DOC_SIGNED',

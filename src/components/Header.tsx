@@ -1,8 +1,34 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, Check, Clock, AlertTriangle, ChevronDown, LogOut, KeyRound, Sparkles, RefreshCw, Database, Shield, ShieldAlert, ArrowLeft, UserCircle2 } from 'lucide-react';
+import {
+  Search,
+  Bell,
+  Check,
+  Clock,
+  AlertTriangle,
+  ChevronDown,
+  LogOut,
+  KeyRound,
+  Sparkles,
+  RefreshCw,
+  Database,
+  Shield,
+  ShieldAlert,
+  ArrowLeft,
+  UserCircle2,
+  Trash2,
+  FileSignature,
+  Award,
+  Send,
+  FileText,
+  CheckCircle2,
+  MessageSquare,
+  ExternalLink,
+  ArrowRight,
+} from 'lucide-react';
 import { User, SystemNotification } from '../types';
 import { db } from '../services/db';
 import { canReloadDatabase } from '../utils/permission';
+import { formatNotificationDateTime } from '../utils/dateUtils';
 
 interface HeaderProps {
   currentUser: User;
@@ -19,6 +45,8 @@ interface HeaderProps {
   notifications: SystemNotification[];
   onMarkNotificationAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
+  onDeleteNotification?: (id: string) => void;
+  onOpenNotificationHistory?: () => void;
   onSelectNotificationTarget: (type?: string, id?: string, subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL') => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
@@ -39,11 +67,14 @@ export const Header: React.FC<HeaderProps> = ({
   notifications,
   onMarkNotificationAsRead,
   onMarkAllAsRead,
+  onDeleteNotification,
+  onOpenNotificationHistory,
   onSelectNotificationTarget,
   searchQuery,
   onSearchChange,
 }) => {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [notifFilterTab, setNotifFilterTab] = useState<'ALL' | 'UNREAD' | 'ACTION'>('ALL');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
@@ -51,6 +82,20 @@ export const Header: React.FC<HeaderProps> = ({
   const userRef = useRef<HTMLDivElement>(null);
 
   const unreadNotifs = notifications.filter((n) => !n.isRead);
+
+  const filteredNotifs = notifications.filter((n) => {
+    if (notifFilterTab === 'UNREAD') return !n.isRead;
+    if (notifFilterTab === 'ACTION') {
+      return (
+        n.type === 'TASK_APPROVAL_REQUEST' ||
+        n.type === 'DOC_SIGN_REQUEST' ||
+        n.type === 'DOC_SIGNED' ||
+        n.type === 'TASK_ASSIGNED' ||
+        n.type === 'NEW_TASK'
+      );
+    }
+    return true;
+  });
 
   const handleSyncDb = async () => {
     setIsSyncing(true);
@@ -173,88 +218,251 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Notifications Dropdown */}
           {showNotifPanel && (
-            <div className="absolute right-0 mt-2 w-84 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
+            <div className="absolute right-0 mt-2 w-96 sm:w-[420px] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+              {/* Header */}
               <div className="p-3.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-bold text-slate-800">Thông Báo & Nhắc Hạn</h4>
-                  <span className="text-[10px] text-slate-400">{unreadNotifs.length} chưa đọc</span>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Hộp Thư Thông Báo</h4>
+                    {unreadNotifs.length > 0 && (
+                      <span className="text-[10px] bg-rose-500 text-white font-bold px-1.5 py-0.2 rounded-full">
+                        {unreadNotifs.length} mới
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-400">Điều hành công việc & theo dõi văn bản</span>
                 </div>
                 {unreadNotifs.length > 0 && (
                   <button
                     onClick={onMarkAllAsRead}
-                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer hover:bg-indigo-50 px-2 py-1 rounded-lg transition-colors"
+                    title="Đánh dấu tất cả thông báo là đã đọc"
                   >
-                    <Check className="w-3 h-3" /> Đọc tất cả
+                    <Check className="w-3.5 h-3.5" /> Đọc tất cả
                   </button>
                 )}
               </div>
 
-              <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
-                {notifications.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-400">Không có thông báo mới</div>
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1 px-3 py-2 bg-white border-b border-slate-100 text-xs">
+                <button
+                  onClick={() => setNotifFilterTab('ALL')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold text-[11px] transition-all cursor-pointer ${
+                    notifFilterTab === 'ALL'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Tất cả ({notifications.length})
+                </button>
+                <button
+                  onClick={() => setNotifFilterTab('UNREAD')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold text-[11px] transition-all cursor-pointer ${
+                    notifFilterTab === 'UNREAD'
+                      ? 'bg-rose-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Chưa đọc ({unreadNotifs.length})
+                </button>
+                <button
+                  onClick={() => setNotifFilterTab('ACTION')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold text-[11px] transition-all cursor-pointer ${
+                    notifFilterTab === 'ACTION'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Trình duyệt & Ký số
+                </button>
+              </div>
+
+              {/* Notification List */}
+              <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 custom-scrollbar">
+                {filteredNotifs.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400 flex flex-col items-center gap-2">
+                    <Bell className="w-8 h-8 text-slate-300 stroke-1" />
+                    <span>Không có thông báo nào trong mục này</span>
+                  </div>
                 ) : (
-                  notifications.map((n) => (
-                    <div
-                      key={n.id}
-                      onClick={() => {
-                        onMarkNotificationAsRead(n.id);
-                        if (n.linkType && n.targetId) {
-                          const subTarget = n.subTarget || (n.type === 'TASK_COMMENT' ? 'COMMENTS' : n.type === 'TASK_APPROVAL_REQUEST' ? 'APPROVAL' : undefined);
-                          onSelectNotificationTarget(n.linkType, n.targetId, subTarget);
-                          setShowNotifPanel(false);
-                        }
-                      }}
-                      className={`p-3 text-left hover:bg-slate-50 cursor-pointer transition-colors ${
-                        !n.isRead ? 'bg-indigo-50/40' : ''
-                      }`}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <div className="shrink-0 mt-0.5">
-                          {n.type === 'OVERDUE' ? (
-                            <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xs font-bold">
-                              <AlertTriangle className="w-3.5 h-3.5" />
-                            </span>
-                          ) : n.type === 'DEADLINE_TODAY' ? (
-                            <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs font-bold">
-                              <Clock className="w-3.5 h-3.5" />
-                            </span>
-                          ) : (
-                            <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
-                              <Bell className="w-3.5 h-3.5" />
-                            </span>
-                          )}
+                  filteredNotifs.map((n) => {
+                    const timeInfo = formatNotificationDateTime(n.createdAt);
+                    
+                    // Icon and color badge mapping
+                    let iconNode = <Bell className="w-4 h-4 text-indigo-600" />;
+                    let iconBg = 'bg-indigo-50 border-indigo-100';
+                    let typeBadge = 'Thông báo';
+                    let badgeColor = 'bg-slate-100 text-slate-700';
+
+                    if (n.type === 'TASK_APPROVAL_REQUEST') {
+                      iconNode = <Award className="w-4 h-4 text-purple-600" />;
+                      iconBg = 'bg-purple-50 border-purple-200';
+                      typeBadge = 'Trình nghiệm thu';
+                      badgeColor = 'bg-purple-100 text-purple-800';
+                    } else if (n.type === 'DOC_SIGN_REQUEST') {
+                      iconNode = <FileSignature className="w-4 h-4 text-violet-600" />;
+                      iconBg = 'bg-violet-50 border-violet-200';
+                      typeBadge = 'Trình ký duyệt';
+                      badgeColor = 'bg-violet-100 text-violet-800';
+                    } else if (n.type === 'DOC_SIGNED') {
+                      iconNode = <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
+                      iconBg = 'bg-emerald-50 border-emerald-200';
+                      typeBadge = 'Lãnh đạo đã ký';
+                      badgeColor = 'bg-emerald-100 text-emerald-800';
+                    } else if (n.type === 'TASK_APPROVED') {
+                      iconNode = <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
+                      iconBg = 'bg-emerald-50 border-emerald-200';
+                      typeBadge = 'Đã nghiệm thu';
+                      badgeColor = 'bg-emerald-100 text-emerald-800';
+                    } else if (n.type === 'DOC_ISSUED') {
+                      iconNode = <Send className="w-4 h-4 text-blue-600" />;
+                      iconBg = 'bg-blue-50 border-blue-200';
+                      typeBadge = 'Đã phát hành';
+                      badgeColor = 'bg-blue-100 text-blue-800';
+                    } else if (n.type === 'NEW_TASK' || n.type === 'TASK_ASSIGNED') {
+                      iconNode = <FileText className="w-4 h-4 text-indigo-600" />;
+                      iconBg = 'bg-indigo-50 border-indigo-200';
+                      typeBadge = 'Giao nhiệm vụ';
+                      badgeColor = 'bg-indigo-100 text-indigo-800';
+                    } else if (n.type === 'DOC_ASSIGNED' || n.type === 'DOC_INCOMING') {
+                      iconNode = <FileText className="w-4 h-4 text-sky-600" />;
+                      iconBg = 'bg-sky-50 border-sky-200';
+                      typeBadge = 'Văn bản đến';
+                      badgeColor = 'bg-sky-100 text-sky-800';
+                    } else if (n.type === 'OVERDUE' || n.type === 'TASK_REJECTED') {
+                      iconNode = <AlertTriangle className="w-4 h-4 text-rose-600" />;
+                      iconBg = 'bg-rose-50 border-rose-200';
+                      typeBadge = n.type === 'TASK_REJECTED' ? 'Yêu cầu làm lại' : 'Quá hạn';
+                      badgeColor = 'bg-rose-100 text-rose-800';
+                    } else if (n.type === 'DEADLINE_TODAY') {
+                      iconNode = <Clock className="w-4 h-4 text-amber-600" />;
+                      iconBg = 'bg-amber-50 border-amber-200';
+                      typeBadge = 'Hạn hôm nay';
+                      badgeColor = 'bg-amber-100 text-amber-800';
+                    } else if (n.type === 'TASK_COMMENT') {
+                      iconNode = <MessageSquare className="w-4 h-4 text-emerald-600" />;
+                      iconBg = 'bg-emerald-50 border-emerald-200';
+                      typeBadge = 'Ý kiến trao đổi';
+                      badgeColor = 'bg-emerald-50 text-emerald-700';
+                    }
+
+                    return (
+                      <div
+                        key={n.id}
+                        className={`p-3 text-left hover:bg-slate-50 cursor-pointer transition-colors relative group ${
+                          !n.isRead ? 'bg-indigo-50/40' : ''
+                        }`}
+                        onClick={() => {
+                          onMarkNotificationAsRead(n.id);
+                          if (n.linkType && n.targetId) {
+                            const subTarget =
+                              n.subTarget ||
+                              (n.type === 'TASK_COMMENT'
+                                ? 'COMMENTS'
+                                : n.type === 'TASK_APPROVAL_REQUEST'
+                                ? 'APPROVAL'
+                                : undefined);
+                            onSelectNotificationTarget(n.linkType, n.targetId, subTarget);
+                            setShowNotifPanel(false);
+                          }
+                        }}
+                      >
+                        <div className="flex items-start gap-3">
+                          {/* Icon */}
+                          <div className={`w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 ${iconBg}`}>
+                            {iconNode}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${badgeColor}`}>
+                                {typeBadge}
+                              </span>
+                              
+                              {/* Date and Time badge */}
+                              <span
+                                className="text-[10px] text-slate-500 font-semibold flex items-center gap-1 shrink-0"
+                                title={timeInfo.full}
+                              >
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                {timeInfo.display}
+                              </span>
+                            </div>
+
+                            <p className={`text-xs leading-snug line-clamp-2 ${!n.isRead ? 'font-bold text-slate-900' : 'text-slate-700 font-medium'}`}>
+                              {n.title}
+                            </p>
+                            <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">
+                              {n.message}
+                            </p>
+
+                            {/* Sender Info */}
+                            {n.senderName && (
+                              <div className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
+                                <span className="font-semibold text-slate-600">Từ:</span> {n.senderName}
+                                {n.senderRole && <span className="text-slate-400">({n.senderRole})</span>}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Actions on hover & Unread dot */}
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            {!n.isRead && (
+                              <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 mt-1 shadow-2xs"></span>
+                            )}
+                            {onDeleteNotification && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteNotification(n.id);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                                title="Xóa thông báo này"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-xs leading-snug ${!n.isRead ? 'font-bold text-slate-900' : 'text-slate-700'}`}>
-                            {n.title}
-                          </p>
-                          <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">{n.message}</p>
-                          <span className="text-[9px] text-slate-400 mt-1 block">
-                            {new Date(n.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        {!n.isRead && (
-                          <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 mt-1"></span>
-                        )}
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Footer with link to full history view */}
+              <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
+                {onOpenNotificationHistory ? (
+                  <button
+                    onClick={() => {
+                      setShowNotifPanel(false);
+                      onOpenNotificationHistory();
+                    }}
+                    className="w-full py-1.5 text-center text-xs font-bold text-indigo-700 hover:text-indigo-900 flex items-center justify-center gap-1.5 hover:bg-indigo-50/80 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <span>Xem toàn bộ Lịch Sử Thông Báo & Điều Hành</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-slate-400 px-2">Đã lưu trữ {notifications.length} thông báo</span>
                 )}
               </div>
             </div>
           )}
         </div>
 
-        {/* Impersonation Indicator for Admin */}
+        {/* Impersonation Indicator for Admin / Leader */}
         {isImpersonating && onReturnToAdmin && (
           <button
             onClick={onReturnToAdmin}
             id="btn-return-admin-header"
             className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer animate-pulse"
-            title="Nhấp để quay lại tài khoản Quản trị viên chính"
+            title={`Nhấp để quay lại tài khoản ${adminOriginUser?.role === 'LEADER' ? 'Lãnh đạo' : 'Quản trị viên'}`}
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Quay lại Admin</span>
+            <span>Quay lại {adminOriginUser?.role === 'LEADER' ? 'Lãnh đạo' : 'Admin'}</span>
           </button>
         )}
 
@@ -350,13 +558,13 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 </div>
 
-                {/* ONLY render Account Switching for ADMIN or active impersonator */}
+                {/* Account Switching for ADMIN, LEADER, or active impersonator */}
                 {canSwitchUser && onSwitchUser && (
                   <div className="py-1 bg-slate-50/60 rounded-xl p-2 my-1 border border-slate-100">
                     <div className="px-1 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
                       <span className="flex items-center gap-1">
                         <Shield className="w-3 h-3 text-indigo-600" />
-                        <span>Chuyển quyền tài khoản (Admin)</span>
+                        <span>Chuyển quyền tài khoản kiểm tra</span>
                       </span>
                     </div>
                     <div className="max-h-36 overflow-y-auto mt-1 space-y-0.5 custom-scrollbar">

@@ -1144,7 +1144,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                           className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition-all"
                         >
                           <Sparkles className="w-3.5 h-3.5 text-purple-700" />
-                          <span>Đóng vai {getUser(newlyAssignedTask.assigneeId)?.fullName} (Chuyên viên) để xử lý</span>
+                          <span>Chuyển sang tài khoản {getUser(newlyAssignedTask.assigneeId)?.fullName} để kiểm tra thông báo &rarr;</span>
                         </button>
                       )}
                     </div>

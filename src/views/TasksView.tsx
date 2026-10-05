@@ -190,6 +190,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [reportSuccessNotice, setReportSuccessNotice] = useState<string | null>(null);
   const [nudgeSuccessNotice, setNudgeSuccessNotice] = useState<string | null>(null);
+  const [assignedNotice, setAssignedNotice] = useState<{
+    taskCode: string;
+    taskTitle: string;
+    assigneeName: string;
+    assigneeId: string;
+  } | null>(null);
 
   // Format readable file size
   const formatFileSize = (bytes?: number): string => {
@@ -476,6 +482,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
     setEditingTask(null);
     if (selectedTask && selectedTask.id === taskToSave.id) {
       setSelectedTask(taskToSave);
+    }
+    if (taskToSave.assigneeId && taskToSave.assigneeId !== currentUser?.id) {
+      const assignee = users.find((u) => u.id === taskToSave.assigneeId);
+      setAssignedNotice({
+        taskCode: taskToSave.code,
+        taskTitle: taskToSave.title,
+        assigneeName: assignee?.fullName || 'cán bộ',
+        assigneeId: taskToSave.assigneeId,
+      });
     }
   };
 
@@ -835,6 +850,47 @@ export const TasksView: React.FC<TasksViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Alert banner when task was assigned */}
+      {assignedNotice && (
+        <div className="bg-emerald-50 border-2 border-emerald-300 p-3.5 rounded-2xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-emerald-950">
+                Đã giao nhiệm vụ [{assignedNotice.taskCode}] thành công cho {assignedNotice.assigneeName}!
+              </p>
+              <p className="text-[11px] text-emerald-800 mt-0.5">
+                🔔 Thông báo điều hành kèm thời hạn hoàn thành đã được chuyển đến tài khoản của cán bộ {assignedNotice.assigneeName}.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {dbService.canSwitchUser() && (
+              <button
+                type="button"
+                onClick={() => {
+                  dbService.switchUser(assignedNotice.assigneeId);
+                  setAssignedNotice(null);
+                }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Chuyển sang {assignedNotice.assigneeName} để kiểm tra &rarr;</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setAssignedNotice(null)}
+              className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Tabs Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SystemNotification } from '../types';
-import { Bell, X, ArrowRight, MessageSquare, FileText, CheckSquare, Clock, AlertTriangle } from 'lucide-react';
+import { Bell, X, ArrowRight, MessageSquare, FileText, CheckSquare, Clock, AlertTriangle, Award, FileSignature, CheckCircle2, Send } from 'lucide-react';
+import { formatNotificationDateTime } from '../utils/dateUtils';
 
 interface FacebookNotificationToastProps {
   notifications: SystemNotification[];
@@ -110,13 +111,24 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-1 mb-1">
               <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                Thông báo mới
+                {activeNotif.type === 'TASK_APPROVAL_REQUEST'
+                  ? 'Trình nghiệm thu'
+                  : activeNotif.type === 'DOC_SIGN_REQUEST'
+                  ? 'Trình ký duyệt'
+                  : activeNotif.type === 'DOC_SIGNED'
+                  ? 'Lãnh đạo đã ký'
+                  : activeNotif.type === 'TASK_APPROVED'
+                  ? 'Đã nghiệm thu'
+                  : activeNotif.type === 'DOC_ISSUED'
+                  ? 'Đã phát hành'
+                  : 'Thông báo mới'}
               </span>
-              <span className="text-[10px] text-slate-400">
-                {new Date(activeNotif.createdAt).toLocaleTimeString('vi-VN', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
+              <span
+                className="text-[10px] text-slate-500 font-semibold flex items-center gap-1"
+                title={formatNotificationDateTime(activeNotif.createdAt).full}
+              >
+                <Clock className="w-3 h-3 text-slate-400" />
+                {formatNotificationDateTime(activeNotif.createdAt).display}
               </span>
             </div>
 
@@ -126,6 +138,13 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
             <p className="text-xs text-slate-600 line-clamp-2 mt-0.5 font-normal leading-relaxed">
               {activeNotif.message}
             </p>
+
+            {activeNotif.senderName && (
+              <div className="text-[10px] text-slate-400 mt-1">
+                <span className="font-semibold text-slate-500">Từ:</span> {activeNotif.senderName}
+                {activeNotif.senderRole && ` (${activeNotif.senderRole})`}
+              </div>
+            )}
 
             <div className="flex items-center gap-1.5 mt-2.5 text-[11px] font-bold text-indigo-600 group-hover:translate-x-0.5 transition-transform">
               <span>Bấm vào để mở xem chi tiết</span>

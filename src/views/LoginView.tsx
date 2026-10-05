@@ -308,6 +308,66 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               </div>
             </form>
 
+            {/* Quick Demo Login Accounts */}
+            <div className="mt-5 pt-4 border-t border-slate-100">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
+                Đăng nhập nhanh để kiểm tra (Chọn tài khoản):
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsername('long.dh');
+                    setPassword('123');
+                    if (error) setError(null);
+                  }}
+                  className="p-2 text-left bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition-all cursor-pointer"
+                >
+                  <p className="text-xs font-bold text-purple-950 truncate">👑 Đỗ Hoàng Long</p>
+                  <p className="text-[10px] text-purple-700 truncate">Lãnh đạo đơn vị</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsername('yen.vh');
+                    setPassword('123');
+                    if (error) setError(null);
+                  }}
+                  className="p-2 text-left bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all cursor-pointer"
+                >
+                  <p className="text-xs font-bold text-emerald-950 truncate">👩‍💼 Vũ Hải Yến</p>
+                  <p className="text-[10px] text-emerald-700 truncate">Chuyên viên Kế hoạch</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsername('thu.lt');
+                    setPassword('123');
+                    if (error) setError(null);
+                  }}
+                  className="p-2 text-left bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-all cursor-pointer"
+                >
+                  <p className="text-xs font-bold text-blue-950 truncate">📑 Lê Thị Thu</p>
+                  <p className="text-[10px] text-blue-700 truncate">Văn thư cơ quan</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsername('admin');
+                    setPassword('123');
+                    if (error) setError(null);
+                  }}
+                  className="p-2 text-left bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-all cursor-pointer"
+                >
+                  <p className="text-xs font-bold text-indigo-950 truncate">🛡️ Quản trị viên</p>
+                  <p className="text-[10px] text-indigo-700 truncate">Admin hệ thống</p>
+                </button>
+              </div>
+            </div>
+
             <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
               <div className="flex items-center gap-1.5">
                 <Lock className="w-3.5 h-3.5 text-emerald-600" />

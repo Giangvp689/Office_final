@@ -507,6 +507,99 @@ app.get('/api/notifications', async (_req, res) => {
   }
 });
 
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const n = req.body;
+    if (!n.id || !n.title) {
+      return res.status(400).json({ success: false, error: 'Thiếu thông tin thông báo' });
+    }
+
+    const store = loadStore();
+    store.notifications = store.notifications || [];
+    const idx = store.notifications.findIndex((x: any) => x.id === n.id);
+    const notifObj = {
+      ...n,
+      createdAt: n.createdAt || new Date().toISOString(),
+      isRead: Boolean(n.isRead),
+    };
+
+    if (idx >= 0) {
+      store.notifications[idx] = { ...store.notifications[idx], ...notifObj };
+    } else {
+      store.notifications.unshift(notifObj);
+    }
+    store.notifications = store.notifications.slice(0, 300);
+    saveStore(store);
+
+    await safeDbRun(async (pool) => {
+      await pool.query(
+        `INSERT INTO notifications 
+        (id, user_id, title, message, type, link_type, target_id, is_read, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE 
+        title=VALUES(title), message=VALUES(message), is_read=VALUES(is_read)`,
+        [
+          notifObj.id,
+          notifObj.userId || '',
+          notifObj.title,
+          notifObj.message || '',
+          notifObj.type || 'INFO',
+          notifObj.linkType || null,
+          notifObj.targetId || null,
+          notifObj.isRead ? 1 : 0,
+          notifObj.createdAt ? new Date(notifObj.createdAt) : new Date(),
+        ]
+      );
+    });
+
+    res.json({ success: true, notification: notifObj });
+  } catch (error: any) {
+    res.json({ success: true, notification: req.body });
+  }
+});
+
+app.delete('/api/notifications/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const store = loadStore();
+    store.notifications = (store.notifications || []).filter((n: any) => n.id !== id);
+    saveStore(store);
+
+    await safeDbRun(async (pool) => {
+      await pool.query('DELETE FROM notifications WHERE id = ?', [id]);
+    });
+
+    res.json({ success: true, id });
+  } catch (e: any) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/notifications/clear-all', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const store = loadStore();
+    if (userId) {
+      store.notifications = (store.notifications || []).filter((n: any) => n.userId !== userId);
+    } else {
+      store.notifications = [];
+    }
+    saveStore(store);
+
+    await safeDbRun(async (pool) => {
+      if (userId) {
+        await pool.query('DELETE FROM notifications WHERE user_id = ?', [userId]);
+      } else {
+        await pool.query('DELETE FROM notifications');
+      }
+    });
+
+    res.json({ success: true, message: 'Đã xóa toàn bộ lịch sử thông báo' });
+  } catch (e: any) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
 app.post('/api/notifications/mark-read', async (req, res) => {
   try {
     const { id } = req.body;

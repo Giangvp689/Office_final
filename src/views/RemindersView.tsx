@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Task, IncomingDocument, OutgoingDocument, User } from '../types';
+import { Task, IncomingDocument, OutgoingDocument, User, SystemNotification } from '../types';
 import {
   Bell,
   AlertTriangle,
@@ -15,8 +15,19 @@ import {
   Sparkles,
   Award,
   Layers,
+  Trash2,
+  Search,
+  FileSignature,
+  ArrowRight,
+  ExternalLink,
+  Check,
+  RotateCcw,
+  Calendar,
+  MessageSquare,
+  Filter,
 } from 'lucide-react';
 import { canNudgeOrRemindStaff, canCreateOrAssignTask, isClerk, isLeaderOrAdmin } from '../utils/permission';
+import { formatNotificationDateTime } from '../utils/dateUtils';
 
 interface RemindersViewProps {
   tasks: Task[];
@@ -28,6 +39,13 @@ interface RemindersViewProps {
   onOpenIncomingDocDetail: (id: string) => void;
   onOpenOutgoingDocDetail?: (id: string) => void;
   onCreateNotification: (title: string, message: string, userId?: string) => void;
+  notifications?: SystemNotification[];
+  onMarkNotificationAsRead?: (id: string) => void;
+  onMarkAllAsRead?: () => void;
+  onDeleteNotification?: (id: string) => void;
+  onClearAllNotifications?: () => void;
+  onNavigateToTarget?: (type: string, id: string, subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL') => void;
+  initialTab?: 'REMINDERS' | 'NOTIFICATIONS';
 }
 
 export const RemindersView: React.FC<RemindersViewProps> = ({
@@ -40,7 +58,17 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
   onOpenIncomingDocDetail,
   onOpenOutgoingDocDetail,
   onCreateNotification,
+  notifications = [],
+  onMarkNotificationAsRead,
+  onMarkAllAsRead,
+  onDeleteNotification,
+  onClearAllNotifications,
+  onNavigateToTarget,
+  initialTab = 'REMINDERS',
 }) => {
+  const [activeMainTab, setActiveMainTab] = useState<'REMINDERS' | 'NOTIFICATIONS'>(initialTab);
+  const [notifSearch, setNotifSearch] = useState('');
+  const [notifFilter, setNotifFilter] = useState<'ALL' | 'UNREAD' | 'APPROVAL' | 'ASSIGNMENT' | 'COMPLETED'>('ALL');
   const [nudgedIds, setNudgedIds] = useState<string[]>([]);
 
   const today = new Date().toISOString().split('T')[0];
@@ -142,6 +170,57 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
     );
   }, [outgoingDocs, isStaffUser, isClerkUser, currentUser?.id]);
 
+  const unreadCount = useMemo(() => notifications.filter((n) => !n.isRead).length, [notifications]);
+
+  const approvalNotifsCount = useMemo(
+    () => notifications.filter((n) => n.type === 'TASK_APPROVAL_REQUEST' || n.type === 'DOC_SIGN_REQUEST').length,
+    [notifications]
+  );
+
+  const completedNotifsCount = useMemo(
+    () => notifications.filter((n) => n.type === 'TASK_APPROVED' || n.type === 'DOC_SIGNED' || n.type === 'DOC_ISSUED').length,
+    [notifications]
+  );
+
+  const assignedNotifsCount = useMemo(
+    () =>
+      notifications.filter(
+        (n) => n.type === 'NEW_TASK' || n.type === 'TASK_ASSIGNED' || n.type === 'DOC_ASSIGNED' || n.type === 'DOC_INCOMING'
+      ).length,
+    [notifications]
+  );
+
+  const filteredNotificationList = useMemo(() => {
+    return notifications.filter((n) => {
+      // 1. Text filter
+      if (notifSearch.trim()) {
+        const query = notifSearch.toLowerCase();
+        const matchTitle = (n.title || '').toLowerCase().includes(query);
+        const matchMsg = (n.message || '').toLowerCase().includes(query);
+        const matchSender = (n.senderName || '').toLowerCase().includes(query);
+        if (!matchTitle && !matchMsg && !matchSender) return false;
+      }
+
+      // 2. Tab filter
+      if (notifFilter === 'UNREAD') return !n.isRead;
+      if (notifFilter === 'APPROVAL') {
+        return n.type === 'TASK_APPROVAL_REQUEST' || n.type === 'DOC_SIGN_REQUEST';
+      }
+      if (notifFilter === 'ASSIGNMENT') {
+        return (
+          n.type === 'NEW_TASK' ||
+          n.type === 'TASK_ASSIGNED' ||
+          n.type === 'DOC_ASSIGNED' ||
+          n.type === 'DOC_INCOMING'
+        );
+      }
+      if (notifFilter === 'COMPLETED') {
+        return n.type === 'TASK_APPROVED' || n.type === 'DOC_SIGNED' || n.type === 'DOC_ISSUED';
+      }
+      return true;
+    });
+  }, [notifications, notifSearch, notifFilter]);
+
   const handleNudge = (task: Task) => {
     if (!canNudge && !isClerkUser) return;
     const assignee = getUser(task.assigneeId);
@@ -225,7 +304,415 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
         </div>
       )}
 
-      {/* Grid of Reminder Cards */}
+      {/* Main Mode Navigation Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
+          <button
+            onClick={() => setActiveMainTab('REMINDERS')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeMainTab === 'REMINDERS'
+                ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-4 h-4 text-amber-600" />
+            <span>Nhiệm Vụ & Hạn Chót</span>
+            {overdueTasks.length > 0 && (
+              <span className="bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {overdueTasks.length} quá hạn
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveMainTab('NOTIFICATIONS')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeMainTab === 'NOTIFICATIONS'
+                ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Bell className="w-4 h-4 text-indigo-600" />
+            <span>Lịch Sử Thông Báo & Điều Hành</span>
+            {unreadCount > 0 ? (
+              <span className="bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+                {unreadCount} mới
+              </span>
+            ) : (
+              <span className="bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {notifications.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Global actions when in Notifications tab */}
+        {activeMainTab === 'NOTIFICATIONS' && (
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && onMarkAllAsRead && (
+              <button
+                onClick={onMarkAllAsRead}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Đánh dấu tất cả đã đọc</span>
+              </button>
+            )}
+            {notifications.length > 0 && onClearAllNotifications && (
+              <button
+                onClick={() => {
+                  if (confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử thông báo?')) {
+                    onClearAllNotifications();
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-700 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xóa tất cả</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* TAB 1: NOTIFICATIONS HISTORY */}
+      {activeMainTab === 'NOTIFICATIONS' && (
+        <div className="flex flex-col gap-6">
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                Tổng thông báo
+              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-black text-slate-800">{notifications.length}</span>
+                <span className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                  <Bell className="w-4 h-4" />
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-rose-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block mb-1">
+                Chưa đọc
+              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-black text-rose-600">{unreadCount}</span>
+                <span className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <Clock className="w-4 h-4" />
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-purple-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider block mb-1">
+                Ký duyệt & Nghiệm thu
+              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-black text-purple-700">{approvalNotifsCount}</span>
+                <span className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <Award className="w-4 h-4" />
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-2xs">
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block mb-1">
+                Đã duyệt & Phát hành
+              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-black text-emerald-700">{completedNotifsCount}</span>
+                <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle2 className="w-4 h-4" />
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Search Input */}
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/90 w-full md:w-80">
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={notifSearch}
+                onChange={(e) => setNotifSearch(e.target.value)}
+                placeholder="Tìm tiêu đề, nội dung, người gửi..."
+                className="bg-transparent text-xs outline-none w-full text-slate-700 placeholder-slate-400"
+              />
+              {notifSearch && (
+                <button onClick={() => setNotifSearch('')} className="text-xs text-slate-400 hover:text-slate-600 font-bold px-1">
+                  ×
+                </button>
+              )}
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 custom-scrollbar">
+              <button
+                onClick={() => setNotifFilter('ALL')}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer ${
+                  notifFilter === 'ALL'
+                    ? 'bg-slate-900 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Tất cả ({notifications.length})
+              </button>
+              <button
+                onClick={() => setNotifFilter('UNREAD')}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer ${
+                  notifFilter === 'UNREAD'
+                    ? 'bg-rose-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Chưa đọc ({unreadCount})
+              </button>
+              <button
+                onClick={() => setNotifFilter('APPROVAL')}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer ${
+                  notifFilter === 'APPROVAL'
+                    ? 'bg-purple-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Trình duyệt & Ký số ({approvalNotifsCount})
+              </button>
+              <button
+                onClick={() => setNotifFilter('ASSIGNMENT')}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer ${
+                  notifFilter === 'ASSIGNMENT'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Giao việc & Chỉ đạo ({assignedNotifsCount})
+              </button>
+              <button
+                onClick={() => setNotifFilter('COMPLETED')}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all cursor-pointer ${
+                  notifFilter === 'COMPLETED'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Đã duyệt & Phát hành ({completedNotifsCount})
+              </button>
+            </div>
+          </div>
+
+          {/* Notification History Cards */}
+          <div className="space-y-3">
+            {filteredNotificationList.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center flex flex-col items-center justify-center gap-3">
+                <Bell className="w-10 h-10 text-slate-300" />
+                <h3 className="font-bold text-sm text-slate-700">Không có thông báo nào phù hợp</h3>
+                <p className="text-xs text-slate-400 max-w-sm">
+                  {notifSearch ? 'Không tìm thấy thông báo khớp với từ khóa tìm kiếm.' : 'Hộp thư thông báo của bạn hiện đang trống.'}
+                </p>
+              </div>
+            ) : (
+              filteredNotificationList.map((n) => {
+                const timeInfo = formatNotificationDateTime(n.createdAt);
+
+                // Type details
+                let iconNode = <Bell className="w-5 h-5 text-indigo-600" />;
+                let iconBg = 'bg-indigo-50 border-indigo-100';
+                let typeBadge = 'Thông báo hệ thống';
+                let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+
+                if (n.type === 'TASK_APPROVAL_REQUEST') {
+                  iconNode = <Award className="w-5 h-5 text-purple-600" />;
+                  iconBg = 'bg-purple-50 border-purple-200';
+                  typeBadge = 'Trình nghiệm thu nhiệm vụ';
+                  badgeColor = 'bg-purple-100 text-purple-800 border-purple-200';
+                } else if (n.type === 'DOC_SIGN_REQUEST') {
+                  iconNode = <FileSignature className="w-5 h-5 text-violet-600" />;
+                  iconBg = 'bg-violet-50 border-violet-200';
+                  typeBadge = 'Trình ký duyệt văn bản đi';
+                  badgeColor = 'bg-violet-100 text-violet-800 border-violet-200';
+                } else if (n.type === 'DOC_SIGNED') {
+                  iconNode = <CheckCircle2 className="w-5 h-5 text-emerald-600" />;
+                  iconBg = 'bg-emerald-50 border-emerald-200';
+                  typeBadge = 'Lãnh đạo đã ký số duyệt';
+                  badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                } else if (n.type === 'TASK_APPROVED') {
+                  iconNode = <CheckCircle2 className="w-5 h-5 text-emerald-600" />;
+                  iconBg = 'bg-emerald-50 border-emerald-200';
+                  typeBadge = 'Đã nghiệm thu hoàn thành';
+                  badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                } else if (n.type === 'DOC_ISSUED') {
+                  iconNode = <Send className="w-5 h-5 text-blue-600" />;
+                  iconBg = 'bg-blue-50 border-blue-200';
+                  typeBadge = 'Văn bản đã phát hành';
+                  badgeColor = 'bg-blue-100 text-blue-800 border-blue-200';
+                } else if (n.type === 'NEW_TASK' || n.type === 'TASK_ASSIGNED') {
+                  iconNode = <FileText className="w-5 h-5 text-indigo-600" />;
+                  iconBg = 'bg-indigo-50 border-indigo-200';
+                  typeBadge = 'Giao nhiệm vụ mới';
+                  badgeColor = 'bg-indigo-100 text-indigo-800 border-indigo-200';
+                } else if (n.type === 'DOC_ASSIGNED' || n.type === 'DOC_INCOMING') {
+                  iconNode = <FileText className="w-5 h-5 text-sky-600" />;
+                  iconBg = 'bg-sky-50 border-sky-200';
+                  typeBadge = 'Văn bản đến';
+                  badgeColor = 'bg-sky-100 text-sky-800 border-sky-200';
+                } else if (n.type === 'TASK_REJECTED') {
+                  iconNode = <AlertTriangle className="w-5 h-5 text-rose-600" />;
+                  iconBg = 'bg-rose-50 border-rose-200';
+                  typeBadge = 'Yêu cầu hoàn thiện lại';
+                  badgeColor = 'bg-rose-100 text-rose-800 border-rose-200';
+                } else if (n.type === 'OVERDUE') {
+                  iconNode = <AlertTriangle className="w-5 h-5 text-rose-600" />;
+                  iconBg = 'bg-rose-50 border-rose-200';
+                  typeBadge = 'Đôn đốc quá hạn';
+                  badgeColor = 'bg-rose-100 text-rose-800 border-rose-200';
+                } else if (n.type === 'DEADLINE_TODAY') {
+                  iconNode = <Clock className="w-5 h-5 text-amber-600" />;
+                  iconBg = 'bg-amber-50 border-amber-200';
+                  typeBadge = 'Đến hạn trong ngày';
+                  badgeColor = 'bg-amber-100 text-amber-800 border-amber-200';
+                } else if (n.type === 'TASK_COMMENT') {
+                  iconNode = <MessageSquare className="w-5 h-5 text-emerald-600" />;
+                  iconBg = 'bg-emerald-50 border-emerald-200';
+                  typeBadge = 'Ý kiến trao đổi nhiệm vụ';
+                  badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                }
+
+                return (
+                  <div
+                    key={n.id}
+                    className={`bg-white rounded-2xl border p-5 shadow-2xs hover:shadow-md transition-all flex flex-col md:flex-row md:items-start justify-between gap-4 ${
+                      !n.isRead ? 'border-indigo-300 ring-2 ring-indigo-50 bg-indigo-50/20' : 'border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                      {/* Icon */}
+                      <div className={`w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 mt-0.5 ${iconBg}`}>
+                        {iconNode}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Header Badges with Exact Date & Time */}
+                        <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
+                            {typeBadge}
+                          </span>
+
+                          {!n.isRead ? (
+                            <span className="text-[10px] bg-rose-500 text-white font-bold px-2 py-0.5 rounded-full animate-pulse">
+                              Chưa đọc
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-full border border-slate-200">
+                              Đã đọc
+                            </span>
+                          )}
+
+                          {/* EXACT DATE AND TIME DISPLAY */}
+                          <div
+                            className="flex items-center gap-1.5 bg-slate-100 text-slate-700 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-slate-200/80 ml-auto md:ml-0"
+                            title={timeInfo.full}
+                          >
+                            <Calendar className="w-3 h-3 text-slate-500" />
+                            <span>{timeInfo.date}</span>
+                            <span className="text-slate-300">&bull;</span>
+                            <Clock className="w-3 h-3 text-slate-500" />
+                            <span>{timeInfo.time}</span>
+                            <span className="text-slate-400 font-normal">({timeInfo.relative})</span>
+                          </div>
+                        </div>
+
+                        {/* Title */}
+                        <h3 className={`text-sm leading-snug ${!n.isRead ? 'font-bold text-slate-900' : 'font-semibold text-slate-800'}`}>
+                          {n.title}
+                        </h3>
+
+                        {/* Message */}
+                        <p className="text-xs text-slate-600 mt-1.5 leading-relaxed font-normal">
+                          {n.message}
+                        </p>
+
+                        {/* Sender info */}
+                        {n.senderName && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
+                            <span className="font-semibold text-slate-700">Người gửi:</span>
+                            <span className="font-bold text-indigo-700">{n.senderName}</span>
+                            {n.senderRole && (
+                              <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.2 rounded border border-indigo-200">
+                                {n.senderRole}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex md:flex-col items-center md:items-end justify-between md:justify-start gap-2 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100 shrink-0">
+                      {n.linkType && n.targetId && (
+                        <button
+                          onClick={() => {
+                            if (onMarkNotificationAsRead && !n.isRead) onMarkNotificationAsRead(n.id);
+                            if (onNavigateToTarget) {
+                              const subTarget =
+                                n.subTarget ||
+                                (n.type === 'TASK_COMMENT'
+                                  ? 'COMMENTS'
+                                  : n.type === 'TASK_APPROVAL_REQUEST'
+                                  ? 'APPROVAL'
+                                  : undefined);
+                              onNavigateToTarget(n.linkType, n.targetId, subTarget);
+                            } else if (n.linkType === 'TASK') {
+                              onOpenTaskDetail(n.targetId);
+                            } else if (n.linkType === 'INCOMING_DOC') {
+                              onOpenIncomingDocDetail(n.targetId);
+                            } else if (n.linkType === 'OUTGOING_DOC' && onOpenOutgoingDocDetail) {
+                              onOpenOutgoingDocDetail(n.targetId);
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
+                        >
+                          <span>Mở xem chi tiết</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      <div className="flex items-center gap-1.5">
+                        {!n.isRead && onMarkNotificationAsRead && (
+                          <button
+                            onClick={() => onMarkNotificationAsRead(n.id)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                            title="Đánh dấu là đã đọc"
+                          >
+                            <Check className="w-3 h-3" />
+                            <span>Đã đọc</span>
+                          </button>
+                        )}
+
+                        {onDeleteNotification && (
+                          <button
+                            onClick={() => onDeleteNotification(n.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Xóa thông báo này khỏi lịch sử"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: REMINDERS & DEADLINES GRID */}
+      {activeMainTab === 'REMINDERS' && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Section 1: Quá hạn (Overdue Tasks) */}
         <div className="bg-white rounded-2xl border border-rose-200 shadow-xs p-5 flex flex-col">
@@ -588,6 +1075,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

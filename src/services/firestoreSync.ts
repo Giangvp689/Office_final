@@ -501,6 +501,21 @@ export class FirestoreSyncService {
     }
   }
 
+  public async deleteNotification(id: string): Promise<void> {
+    try {
+      await deleteDoc(doc(firestore, 'notifications', id));
+    } catch (e: any) {
+      if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
+        try {
+          handleFirestoreError(e, OperationType.DELETE, `notifications/${id}`);
+        } catch {
+          // Handled
+        }
+      }
+      console.warn('[Firestore deleteNotification error]:', e);
+    }
+  }
+
   public async saveAuditLog(log: AuditLog): Promise<void> {
     try {
       await setDoc(doc(firestore, 'audit_logs', log.id), log, { merge: true });

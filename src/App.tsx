@@ -46,6 +46,7 @@ export const App: React.FC = () => {
 
   // Navigation State
   const [currentSection, setCurrentSection] = useState<NavSection>('DASHBOARD');
+  const [reminderInitialTab, setReminderInitialTab] = useState<'REMINDERS' | 'NOTIFICATIONS'>('REMINDERS');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Active target for notification deep-linking (Facebook-style navigation)
@@ -68,10 +69,27 @@ export const App: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => db.getAuditLogs());
   const [notifications, setNotifications] = useState<SystemNotification[]>(() => db.getNotifications());
 
-  // Filter notifications specifically for the current authenticated user (or general broadcast)
+  // Filter notifications specifically for the current authenticated user (Actor/sender never receives their own notification)
   const userNotifications = useMemo(() => {
     if (!currentUser) return [];
-    return notifications.filter((n) => !n.userId || n.userId === currentUser.id);
+    return notifications
+      .filter((n) => {
+        // 1. CÁN BỘ / LÃNH ĐẠO GIAO VIỆC HOẶC THỰC HIỆN HÀNH ĐỘNG TUYỆT ĐỐI KHÔNG NHẬN THÔNG BÁO CỦA CHÍNH MÌNH
+        if (n.senderId && n.senderId === currentUser.id) {
+          return false;
+        }
+        // 2. Nếu có chỉ định đích danh cán bộ nhận
+        if (n.userId) {
+          return n.userId === currentUser.id;
+        }
+        // 3. Nếu gửi theo vai trò (ví dụ: Lãnh đạo nhận khi có yêu cầu trình duyệt, Văn thư nhận khi có VB đã ký)
+        if (n.targetRole) {
+          return n.targetRole === currentUser.role;
+        }
+        // 4. Các thông báo chung toàn cơ quan (chỉ hiển thị nếu không phải người gửi)
+        return true;
+      })
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   }, [notifications, currentUser]);
 
   // Reload data on changes
@@ -333,6 +351,11 @@ export const App: React.FC = () => {
           notifications={userNotifications}
           onMarkNotificationAsRead={(id) => db.markNotificationAsRead(id)}
           onMarkAllAsRead={() => db.markAllNotificationsAsRead(currentUser.id)}
+          onDeleteNotification={(id) => db.deleteNotification(id)}
+          onOpenNotificationHistory={() => {
+            setReminderInitialTab('NOTIFICATIONS');
+            setCurrentSection('REMINDERS');
+          }}
           onSelectNotificationTarget={handleSelectNotificationTarget}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -609,6 +632,13 @@ export const App: React.FC = () => {
               outgoingDocs={outgoingDocs}
               users={users}
               currentUser={currentUser}
+              notifications={userNotifications}
+              onMarkNotificationAsRead={(id) => db.markNotificationAsRead(id)}
+              onMarkAllAsRead={() => db.markAllNotificationsAsRead(currentUser.id)}
+              onDeleteNotification={(id) => db.deleteNotification(id)}
+              onClearAllNotifications={() => db.clearAllNotifications(currentUser.id)}
+              onNavigateToTarget={handleSelectNotificationTarget}
+              initialTab={reminderInitialTab}
               onOpenTaskDetail={(taskId) => {
                 if (taskId) setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
                 setCurrentSection('ALL_TASKS');
@@ -622,13 +652,16 @@ export const App: React.FC = () => {
                 setCurrentSection('OUTGOING_DOCS');
               }}
               onCreateNotification={(title, message, userId) => {
-                db.addNotification({
-                  title,
-                  message,
-                  userId,
-                  type: 'DEADLINE_TODAY',
-                  linkType: 'TASK',
-                });
+                db.addNotification(
+                  {
+                    title,
+                    message,
+                    userId,
+                    type: 'DEADLINE_TODAY',
+                    linkType: 'TASK',
+                  },
+                  currentUser
+                );
               }}
             />
           )}

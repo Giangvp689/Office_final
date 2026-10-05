@@ -185,14 +185,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }`}
             >
               <div className="flex items-center gap-3">
-                <Bell className="w-4 h-4" />
-                <span>Nhắc Việc & Trễ Hạn</span>
+                <Bell className="w-4 h-4 text-amber-600" />
+                <span>Thông Báo & Nhắc Hạn</span>
               </div>
-              {counts.overdue > 0 && (
-                <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-200">
-                  {counts.overdue}
-                </span>
-              )}
+              <div className="flex items-center gap-1">
+                {counts.reminders > 0 && (
+                  <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full animate-pulse" title="Thông báo mới chưa đọc">
+                    {counts.reminders}
+                  </span>
+                )}
+                {counts.overdue > 0 && (
+                  <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-1.5 py-0.2 rounded-full border border-rose-200" title="Công việc quá hạn">
+                    {counts.overdue} trễ
+                  </span>
+                )}
+              </div>
             </button>
           </div>
         </div>
