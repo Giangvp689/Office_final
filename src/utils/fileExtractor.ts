@@ -11,6 +11,7 @@ export interface ExtractedDocumentData {
   issueDate?: string;
   docType?: string;
   signer?: string;
+  signerPosition?: string;
   summary?: string;
 }
 
@@ -24,6 +25,7 @@ export function parseVietnameseDocMetadata(text: string, fallbackTitle: string) 
   let issueDate = '';
   let title = '';
   let signer = '';
+  let signerPosition = '';
   let summary = '';
 
   const lines = text
@@ -31,10 +33,12 @@ export function parseVietnameseDocMetadata(text: string, fallbackTitle: string) 
     .map((l) => l.trim())
     .filter(Boolean);
 
-  // 1. Find Số/Ký hiệu
+  // 1. Find Số/Ký hiệu (hỗ trợ cả chuẩn 72/2025/QH15, 124/UBND-VP, 45/QĐ-TTg, v.v.)
   const docNumMatch =
     text.match(/Số\s*:\s*([0-9A-ZÀ-Ỹa-zà-ỹ\-\.\/]+)/i) ||
-    text.match(/Số\s+([0-9]+\/[A-ZÀ-Ỹa-zà-ỹ\-\.\/]+)/i);
+    text.match(/Số\s+([0-9]+\/[A-ZÀ-Ỹa-zà-ỹ\-\.\/]+)/i) ||
+    text.match(/(?:^|\s)([0-9]+\/[0-9]+\/[A-Z0-9\-_]+)/m) ||
+    text.match(/(?:^|\s)([0-9]+\/[A-Z0-9\-]+(?:-[A-Z0-9]+)?)/m);
   if (docNumMatch) {
     documentNumber = docNumMatch[1].trim();
   }
@@ -54,6 +58,7 @@ export function parseVietnameseDocMetadata(text: string, fallbackTitle: string) 
     'BIÊN BẢN',
     'GIẤY MỜI',
     'NGHỊ QUYẾT',
+    'LUẬT',
   ];
   for (const dt of docTypes) {
     if (upperText.includes(dt)) {
@@ -67,40 +72,131 @@ export function parseVietnameseDocMetadata(text: string, fallbackTitle: string) 
       else if (dt === 'BIÊN BẢN') docType = 'Biên bản';
       else if (dt === 'GIẤY MỜI') docType = 'Giấy mời';
       else if (dt === 'NGHỊ QUYẾT') docType = 'Nghị quyết';
+      else if (dt === 'LUẬT') docType = 'Luật';
       else docType = dt.charAt(0) + dt.slice(1).toLowerCase();
       break;
     }
   }
 
-  // 3. Find Issuing Authority
-  const authorityKeywords = [
-    'ỦY BAN NHÂN DÂN',
-    'SỞ TÀI CHÍNH',
-    'SỞ TỔ CHỨC CÁN BỘ',
-    'SỞ NỘI VỤ',
-    'SỞ KẾ HOẠCH',
-    'SỞ XÂY DỰNG',
-    'SỞ THÔNG TIN',
-    'SỞ',
-    'BỘ',
-    'CỤC',
-    'CHI CỤC',
-    'BAN QUẢN LÝ',
-    'TỔNG CỤC',
-    'VĂN PHÒNG',
-    'CƠ QUAN',
-  ];
-  for (const line of lines.slice(0, 12)) {
-    const upperLine = line.toUpperCase();
-    if (authorityKeywords.some((kw) => upperLine.startsWith(kw) || upperLine.includes(kw))) {
-      if (!upperLine.includes('CỘNG HÒA') && !upperLine.includes('ĐỘC LẬP')) {
-        issuingAuthority = line;
-        break;
+  // 3. Find Issuing Authority (Cơ quan ban hành bên ngoài)
+  const upperNum = documentNumber.toUpperCase();
+  if (upperNum.includes('QH') || upperText.includes('QUỐC HỘI')) {
+    issuingAuthority = upperNum.includes('UBTVQH') || upperText.includes('ỦY BAN THƯỜNG VỤ')
+      ? 'Ủy ban Thường vụ Quốc hội'
+      : 'Quốc hội';
+    signerPosition = 'Chủ tịch Quốc hội';
+  } else if (upperNum.includes('TTG') || upperText.includes('THỦ TƯỚNG')) {
+    issuingAuthority = 'Thủ tướng Chính phủ';
+    signerPosition = 'Thủ tướng Chính phủ';
+  } else if (upperNum.includes('CP') || upperText.includes('CHÍNH PHỦ')) {
+    issuingAuthority = 'Chính phủ';
+    signerPosition = 'Thủ tướng Chính phủ';
+  } else if (upperNum.includes('BTC') || upperText.includes('BỘ TÀI CHÍNH')) {
+    issuingAuthority = 'Bộ Tài chính';
+    signerPosition = 'Bộ trưởng';
+  } else if (upperNum.includes('BCA') || upperText.includes('BỘ CÔNG AN')) {
+    issuingAuthority = 'Bộ Công an';
+    signerPosition = 'Bộ trưởng';
+  } else if (upperNum.includes('BNV') || upperText.includes('BỘ NỘI VỤ')) {
+    issuingAuthority = 'Bộ Nội vụ';
+    signerPosition = 'Bộ trưởng';
+  } else if (upperNum.includes('BTP') || upperText.includes('BỘ TƯ PHÁP')) {
+    issuingAuthority = 'Bộ Tư pháp';
+    signerPosition = 'Bộ trưởng';
+  } else if (upperNum.includes('BKHĐT') || upperText.includes('BỘ KẾ HOẠCH')) {
+    issuingAuthority = 'Bộ Kế hoạch và Đầu tư';
+    signerPosition = 'Bộ trưởng';
+  } else if (upperNum.includes('BTTTT') || upperNum.includes('MIC') || upperText.includes('BỘ THÔNG TIN')) {
+    issuingAuthority = 'Bộ Thông tin và Truyền thông';
+    signerPosition = 'Bộ trưởng';
+  } else if (upperNum.includes('UBND') || upperText.includes('ỦY BAN NHÂN DÂN')) {
+    issuingAuthority = 'Ủy ban nhân dân Tỉnh / Thành phố';
+    signerPosition = 'Chủ tịch UBND';
+  } else {
+    const authorityKeywords = [
+      'QUỐC HỘI',
+      'CHÍNH PHỦ',
+      'THỦ TƯỚNG',
+      'ỦY BAN NHÂN DÂN',
+      'TÒA ÁN NHÂN DÂN',
+      'VIỆN KIỂM SÁT',
+      'SỞ TÀI CHÍNH',
+      'SỞ TỔ CHỨC CÁN BỘ',
+      'SỞ NỘI VỤ',
+      'SỞ KẾ HOẠCH',
+      'SỞ XÂY DỰNG',
+      'SỞ THÔNG TIN',
+      'SỞ TƯ PHÁP',
+      'SỞ GIÁO DỤC',
+      'SỞ Y TẾ',
+      'SỞ',
+      'BỘ',
+      'CỤC',
+      'CHI CỤC',
+      'BAN QUẢN LÝ',
+      'TỔNG CỤC',
+      'VĂN PHÒNG',
+    ];
+    for (const line of lines.slice(0, 15)) {
+      const upperLine = line.toUpperCase();
+      if (authorityKeywords.some((kw) => upperLine.startsWith(kw) || upperLine.includes(kw))) {
+        if (!upperLine.includes('CỘNG HÒA') && !upperLine.includes('ĐỘC LẬP') && !upperLine.includes('VIỆT NAM')) {
+          issuingAuthority = line;
+          break;
+        }
       }
     }
   }
 
-  // 4. Find Issue Date
+  // 4. Find Signer & Signer Position từ phần cuối văn bản
+  // Tìm kiếm khối chữ ký ở phần cuối văn bản
+  const bottomLines = lines.slice(Math.max(0, lines.length - 20));
+  const sigKeywords = ['CHỦ TỊCH', 'THỦ TƯỚNG', 'BỘ TRƯỞNG', 'GIÁM ĐỐC', 'THỨ TRƯỞNG', 'PHÓ CHỦ TỊCH', 'PHÓ GIÁM ĐỐC', 'CHÁNH ÁN', 'CHÁNH VĂN PHÒNG', 'TM.', 'KT.', 'TL.'];
+  
+  const sigLineIdx = bottomLines.findIndex((l) => {
+    const u = l.toUpperCase();
+    return sigKeywords.some((kw) => u.includes(kw)) && !u.includes('KÍNH GỬI') && !u.includes('NƠI NHẬN');
+  });
+
+  if (sigLineIdx >= 0) {
+    const foundPos = bottomLines[sigLineIdx].replace(/TM\.|KT\.|TL\./gi, '').trim();
+    if (foundPos && foundPos.length < 50) {
+      signerPosition = foundPos;
+    }
+    // Dòng họ tên thường nằm dưới dòng chức danh
+    for (let i = sigLineIdx + 1; i < bottomLines.length; i++) {
+      const candidate = bottomLines[i];
+      if (/^\(.*\)$/.test(candidate) || candidate.toLowerCase().includes('nơi nhận') || candidate.toLowerCase().includes('lưu:')) {
+        continue;
+      }
+      const words = candidate.split(/\s+/);
+      if (words.length >= 2 && words.length <= 5 && !/[0-9:;_\-\/]/.test(candidate)) {
+        const isNameLike = words.every((w) => /^[A-ZÀ-Ỹ]/.test(w));
+        if (isNameLike) {
+          signer = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  // Nhận diện một số lãnh đạo cấp cao nếu xuất hiện trong văn bản
+  if (!signer) {
+    if (upperText.includes('TRẦN THANH MẪN')) signer = 'Trần Thanh Mẫn';
+    else if (upperText.includes('VƯƠNG ĐÌNH HUỆ')) signer = 'Vương Đình Huệ';
+    else if (upperText.includes('PHẠM MINH CHÍNH')) signer = 'Phạm Minh Chính';
+    else if (upperText.includes('NGUYỄN KHẮC ĐỊNH')) signer = 'Nguyễn Khắc Định';
+    else if (upperText.includes('TRẦN HỒNG HÀ')) signer = 'Trần Hồng Hà';
+    else if (upperText.includes('LÊ THÀNH LONG')) signer = 'Lê Thành Long';
+    else if (upperText.includes('HỒ ĐỨC PHỚC')) signer = 'Hồ Đức Phớc';
+    else if (upperText.includes('BÙI THANH SƠN')) signer = 'Bùi Thanh Sơn';
+  }
+
+  if (!signer && signerPosition) {
+    signer = signerPosition;
+  }
+
+  // 5. Find Issue Date
   const dateMatch = text.match(/ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/i);
   if (dateMatch) {
     const day = dateMatch[1].padStart(2, '0');
@@ -109,7 +205,7 @@ export function parseVietnameseDocMetadata(text: string, fallbackTitle: string) 
     issueDate = `${year}-${month}-${day}`;
   }
 
-  // 5. Find Title / Trích yếu
+  // 6. Find Title / Trích yếu
   const veViecMatch = text.match(/(?:Về việc|V\/v)\s+([^\n\r]+)/i);
   if (veViecMatch) {
     title = `${docType} V/v ${veViecMatch[1].trim()}`;
@@ -124,7 +220,7 @@ export function parseVietnameseDocMetadata(text: string, fallbackTitle: string) 
     title = fallbackTitle;
   }
 
-  // 6. Summary
+  // 7. Summary
   const informativeLines = lines.filter(
     (l) =>
       !l.includes('CỘNG HÒA') &&
@@ -145,6 +241,7 @@ export function parseVietnameseDocMetadata(text: string, fallbackTitle: string) 
     issueDate,
     title,
     signer,
+    signerPosition,
     summary,
   };
 }
@@ -200,6 +297,7 @@ export async function extractTextFromFile(file: File): Promise<ExtractedDocument
         issueDate: meta.issueDate,
         docType: meta.docType,
         signer: meta.signer,
+        signerPosition: meta.signerPosition,
         summary: meta.summary,
         success: true,
       };
@@ -227,6 +325,7 @@ export async function extractTextFromFile(file: File): Promise<ExtractedDocument
             issueDate: meta.issueDate,
             docType: meta.docType,
             signer: meta.signer,
+            signerPosition: meta.signerPosition,
             summary: meta.summary,
             success: true,
           };

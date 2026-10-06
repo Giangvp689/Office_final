@@ -116,6 +116,8 @@ export interface IncomingDocument {
   receivedDate: string; // YYYY-MM-DD
   issueDate?: string; // Ngày ban hành của cơ quan gửi
   issuingAuthority: string; // Đơn vị ban hành (e.g. UBND Tỉnh / Bộ GD&ĐT)
+  signer?: string; // Người ký tại cơ quan gửi đến
+  signerPosition?: string; // Chức vụ người ký tại cơ quan gửi đến
   summary: string; // Trích yếu nội dung
   docType: string; // Quyết định, Tờ trình, Công văn, Chỉ thị, Thông báo...
   urgency: UrgencyLevel;

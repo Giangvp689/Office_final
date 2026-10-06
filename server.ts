@@ -223,8 +223,99 @@ function classifyDocumentHeuristic(text: string, title?: string, departments?: a
     typeof s === 'object' && s.department && s.role !== 'CLERK' && !String(s.position || '').includes('Văn Thư') && (s.department.includes(primaryDepartment) || primaryDepartment.includes(s.department))
   ) || (availableStaff || []).find((s: any) => typeof s === 'object' && s.role !== 'CLERK' && !String(s.position || '').includes('Văn Thư'));
 
-  const docNumberMatch = (text + ' ' + (title || '')).match(/Số:?\s*([0-9]+\/[A-Z0-9\-\/]+)/i);
+  const docNumberMatch =
+    (text + ' ' + (title || '')).match(/(?:Số|Số\s*:|Số\s+ký\s+hiệu)\s*:?\s*([0-9]+\/[a-zA-Z0-9Đđ\-_/]+)/i) ||
+    (text + ' ' + (title || '')).match(/(?:^|\s)([0-9]+\/[0-9]+\/[A-Z0-9\-_]+)/m) ||
+    (text + ' ' + (title || '')).match(/(?:^|\s)([0-9]+\/[A-Z0-9\-]+(?:-[A-Z0-9]+)?)/m);
   const documentNumber = docNumberMatch ? docNumberMatch[1] : `${Math.floor(Math.random() * 200) + 10}/UBND-VP`;
+
+  const upperFullText = (text + ' ' + (title || '')).toUpperCase();
+  const upperDocNum = documentNumber.toUpperCase();
+
+  // Nhận diện cơ quan ban hành bên ngoài của văn bản đến
+  let issuingAuthority = '';
+  if (upperDocNum.includes('QH') || upperFullText.includes('QUỐC HỘI')) {
+    issuingAuthority = upperDocNum.includes('UBTVQH') || upperFullText.includes('ỦY BAN THƯỜNG VỤ') ? 'Ủy ban Thường vụ Quốc hội' : 'Quốc hội';
+  } else if (upperDocNum.includes('TTG') || upperFullText.includes('THỦ TƯỚNG')) {
+    issuingAuthority = 'Thủ tướng Chính phủ';
+  } else if (upperDocNum.includes('CP') || upperFullText.includes('CHÍNH PHỦ')) {
+    issuingAuthority = 'Chính phủ';
+  } else if (upperDocNum.includes('BTC') || upperFullText.includes('BỘ TÀI CHÍNH')) {
+    issuingAuthority = 'Bộ Tài chính';
+  } else if (upperDocNum.includes('BCA') || upperFullText.includes('BỘ CÔNG AN')) {
+    issuingAuthority = 'Bộ Công an';
+  } else if (upperDocNum.includes('BNV') || upperFullText.includes('BỘ NỘI VỤ')) {
+    issuingAuthority = 'Bộ Nội vụ';
+  } else if (upperDocNum.includes('BTP') || upperFullText.includes('BỘ TƯ PHÁP')) {
+    issuingAuthority = 'Bộ Tư pháp';
+  } else if (upperDocNum.includes('BKHĐT') || upperFullText.includes('BỘ KẾ HOẠCH')) {
+    issuingAuthority = 'Bộ Kế hoạch và Đầu tư';
+  } else if (upperDocNum.includes('BTTTT') || upperDocNum.includes('MIC') || upperFullText.includes('BỘ THÔNG TIN')) {
+    issuingAuthority = 'Bộ Thông tin và Truyền thông';
+  } else if (upperDocNum.includes('UBND') || upperFullText.includes('ỦY BAN NHÂN DÂN')) {
+    issuingAuthority = 'Ủy ban nhân dân Tỉnh / Thành phố';
+  } else if (upperDocNum.includes('STC') || fullText.includes('sở tài chính')) {
+    issuingAuthority = 'Sở Tài chính';
+  } else if (upperDocNum.includes('SNV') || fullText.includes('sở nội vụ')) {
+    issuingAuthority = 'Sở Nội vụ';
+  } else if (upperDocNum.includes('STTTT') || fullText.includes('sở thông tin')) {
+    issuingAuthority = 'Sở Thông tin và Truyền thông';
+  } else if (upperDocNum.includes('SXD') || fullText.includes('sở xây dựng')) {
+    issuingAuthority = 'Sở Xây dựng';
+  } else if (upperDocNum.includes('SYT') || fullText.includes('sở y tế')) {
+    issuingAuthority = 'Sở Y tế';
+  } else {
+    issuingAuthority = 'Cơ quan cấp trên / Đơn vị ban hành';
+  }
+
+  // Nhận diện người ký & chức vụ của cấp trên / đơn vị ban hành
+  let signer = '';
+  let signerPosition = '';
+  if (issuingAuthority === 'Quốc hội' || upperDocNum.includes('QH')) {
+    signerPosition = 'Chủ tịch Quốc hội';
+    if (upperFullText.includes('TRẦN THANH MẪN')) signer = 'Trần Thanh Mẫn';
+    else if (upperFullText.includes('VƯƠNG ĐÌNH HUỆ')) signer = 'Vương Đình Huệ';
+    else if (upperFullText.includes('NGUYỄN KHẮC ĐỊNH')) { signer = 'Nguyễn Khắc Định'; signerPosition = 'Phó Chủ tịch Quốc hội'; }
+  } else if (issuingAuthority === 'Thủ tướng Chính phủ' || issuingAuthority === 'Chính phủ' || upperDocNum.includes('TTG') || upperDocNum.includes('CP')) {
+    signerPosition = 'Thủ tướng Chính phủ';
+    if (upperFullText.includes('PHẠM MINH CHÍNH')) signer = 'Phạm Minh Chính';
+    else if (upperFullText.includes('NGUYỄN HÒA BÌNH')) { signer = 'Nguyễn Hòa Bình'; signerPosition = 'Phó Thủ tướng Thường trực'; }
+    else if (upperFullText.includes('TRẦN HỒNG HÀ')) { signer = 'Trần Hồng Hà'; signerPosition = 'Phó Thủ tướng'; }
+  } else if (issuingAuthority.startsWith('Bộ ')) {
+    signerPosition = upperFullText.includes('THỨ TRƯỞNG') ? 'Thứ trưởng' : 'Bộ trưởng';
+  } else if (issuingAuthority.includes('Ủy ban nhân dân')) {
+    signerPosition = upperFullText.includes('PHÓ CHỦ TỊCH') ? 'Phó Chủ tịch UBND' : 'Chủ tịch UBND';
+  } else if (issuingAuthority.startsWith('Sở ')) {
+    signerPosition = upperFullText.includes('PHÓ GIÁM ĐỐC') ? 'Phó Giám đốc Sở' : 'Giám đốc Sở';
+  } else {
+    signerPosition = 'Lãnh đạo đơn vị ban hành';
+  }
+
+  // Tìm kiếm khối chữ ký ở phần cuối văn bản
+  if (!signer) {
+    const rawLines = (text || '').split('\n').map((l: string) => l.trim()).filter(Boolean);
+    const bottomLines = rawLines.slice(Math.max(0, rawLines.length - 15));
+    const sigIdx = bottomLines.findIndex((l: string) => {
+      const u = l.toUpperCase();
+      return u.includes('CHỦ TỊCH') || u.includes('THỦ TƯỚNG') || u.includes('BỘ TRƯỞNG') || u.includes('GIÁM ĐỐC') || u.startsWith('TM.') || u.startsWith('KT.');
+    });
+    if (sigIdx >= 0) {
+      for (let i = sigIdx + 1; i < bottomLines.length; i++) {
+        const candidate = bottomLines[i];
+        if (!/^\(.*\)$/.test(candidate) && !candidate.toLowerCase().includes('nơi nhận')) {
+          const words = candidate.split(/\s+/);
+          if (words.length >= 2 && words.length <= 5 && !/[0-9:;_\-\/]/.test(candidate)) {
+            signer = candidate;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (!signer && signerPosition) {
+    signer = signerPosition;
+  }
 
   const dueDate = new Date(Date.now() + (urgency === 'HOA_TOC' ? 1 : urgency === 'KHAN' ? 3 : 7) * 86400000).toISOString().split('T')[0];
 
@@ -243,11 +334,11 @@ function classifyDocumentHeuristic(text: string, title?: string, departments?: a
     ],
     extractedEntities: {
       documentNumber,
-      issuingAuthority: 'Ủy ban nhân dân Tỉnh / Thành phố',
+      issuingAuthority,
       recipient: 'Các Sở, Ban, Ngành và Đơn vị trực thuộc',
       issueDate: todayStr,
-      signer: 'Lãnh đạo Cơ quan',
-      signerPosition: 'Giám đốc / Chủ tịch',
+      signer,
+      signerPosition,
       summary: (title || text || '').slice(0, 160) + ((title || text || '').length > 160 ? '...' : ''),
       keyTopics: (domainKeywords[primaryDomain] || []).filter(kw => fullText.includes(kw)).slice(0, 5),
       legalBases: ['Căn cứ Nghị định số 30/2020/NĐ-CP của Chính phủ về công tác văn thư'],
@@ -2639,23 +2730,31 @@ app.post('/api/ai/classify-document', async (req, res) => {
 
     const prompt = `Bạn là Mô hình Phân tích & Phân loại Nội dung Văn bản Hành chính (Vietnamese Administrative Text Classification Engine) theo quy định thể thức văn bản quản lý nhà nước (Nghị định 30/2020/NĐ-CP).
 
-Nhiệm vụ: Phân tích toàn diện văn bản dưới đây, trích xuất thực thể định danh (NER), dự báo phân bố xác suất lĩnh vực (Multi-class probability distribution), xác định thể loại, độ khẩn, độ mật, và đề xuất phân luồng xử lý tự động cho cơ quan.
+Nhiệm vụ: Phân tích toàn diện văn bản dưới đây, trích xuất thực thể định danh (NER), dự báo phân bố xác suất lĩnh vực (Multi-class probability distribution), xác định thể loại, độ khẩn, độ mật, và đề xuất phân luồng xử lý tự động cho cơ quan tiếp nhận.
 
 TÀI LIỆU CẦN PHÂN LOẠI:
 - Tên tệp / Tiêu đề: ${title || fileName || 'Văn bản chưa đặt tên'}
 - Ngày hiện tại: ${todayStr}
-- Danh sách phòng ban trong hệ thống: ${deptList}
-- Danh sách cán bộ trong hệ thống: ${staffList}
+- Danh sách phòng ban nội bộ cơ quan tiếp nhận: ${deptList}
+- Danh sách cán bộ nội bộ cơ quan tiếp nhận: ${staffList}
 - NỘI DUNG VĂN BẢN (Toàn văn hoặc trích đoạn):
 """
 ${text || title}
 """
 
+QUY TẮC BẮT BUỘC VỀ VĂN BẢN ĐẾN (INCOMING DOCUMENT):
+1. VĂN BẢN ĐẾN là văn bản do CƠ QUAN CẤP TRÊN HOẶC ĐƠN VỊ BÊN NGOÀI gửi đến (Ví dụ: Quốc hội, Chính phủ, Thủ tướng Chính phủ, các Bộ, UBND Tỉnh, Sở ban ngành...).
+- 'issuingAuthority': Là TÊN CƠ QUAN BAN HÀNH BÊN NGOÀI (Ví dụ: Nếu số ký hiệu chứa QH15 thì là Quốc hội; nếu TTg thì là Thủ tướng Chính phủ; nếu BTC thì là Bộ Tài chính...). KHÔNG ĐƯỢC nhầm là cơ quan tiếp nhận.
+- 'signer' và 'signerPosition': Phải trích xuất CHÍNH XÁC Họ tên và Chức vụ của LÃNH ĐẠO CƠ QUAN BÊN NGOÀI ĐÃ KÝ VĂN BẢN ĐÓ (Ví dụ: Chủ tịch Quốc hội Trần Thanh Mẫn, Thủ tướng Phạm Minh Chính, Bộ trưởng, Thứ trưởng, Chủ tịch UBND Tỉnh...).
+- TUYỆT ĐỐI KHÔNG LẤY TÊN CÁN BỘ TRONG HỆ THỐNG NỘI BỘ GÁN VÀO 'signer'! Lãnh đạo ký văn bản đến là của cơ quan gửi đến, KHÔNG THUỘC danh sách cán bộ nội bộ cơ quan mình.
+- Nếu không tìm thấy tên người ký cụ thể trong văn bản, hãy để 'signer' theo chức danh hoặc để trống, TUYỆT ĐỐI KHÔNG gán tên bất kỳ cán bộ nội bộ nào.
+2. Danh sách cán bộ trong hệ thống (${staffList}) CHỈ DÙNG để gợi ý 'suggestedAssigneeName' (chuyên viên nội bộ nhận nhiệm vụ tham mưu xử lý văn bản).
+
 YÊU CẦU: Trả về duy nhất định dạng JSON thuần túy (không bọc trong markdown hay text thừa) với cấu trúc sau:
 {
   "primaryDomain": "Tên 1 trong các lĩnh vực chính: 'Tài chính - Kế toán' | 'Tổ chức - Cán bộ' | 'Hành chính - Quản trị' | 'Kế hoạch - Đầu tư' | 'Pháp chế - Thanh tra' | 'Kỹ thuật - Công nghệ' | 'Giáo dục - Đào tạo' | 'Y tế - Sức khỏe' | 'Chính sách - Xã hội'",
   "confidenceScore": 95.8, // Điểm tin cậy tổng thể từ 0 đến 100
-  "docType": "Loại văn bản: 'Quyết định' | 'Chỉ thị' | 'Quy chế' | 'Kế hoạch' | 'Thông báo' | 'Tờ trình' | 'Công văn' | 'Báo cáo' | 'Biên bản' | 'Giấy mời' | 'Nghị quyết'",
+  "docType": "Loại văn bản: 'Quyết định' | 'Chỉ thị' | 'Quy chế' | 'Kế hoạch' | 'Thông báo' | 'Tờ trình' | 'Công văn' | 'Báo cáo' | 'Biên bản' | 'Giấy mời' | 'Nghị quyết' | 'Luật'",
   "urgency": "THUONG" | "KHAN" | "THUONG_KHAN" | "HOA_TOC",
   "urgencyRationale": "Giải thích căn cứ xếp mức độ khẩn (dựa trên mốc thời gian, từ khóa 'gấp', 'hỏa tốc', 'trước ngày...')",
   "securityLevel": "THUONG" | "MAT" | "TOI_MAT" | "TUYET_MAT",
@@ -2665,17 +2764,17 @@ YÊU CẦU: Trả về duy nhất định dạng JSON thuần túy (không bọc
     { "domain": "Tên lĩnh vực 3", "score": 2.5, "explanation": "Một phần nội dung đề cập..." }
   ],
   "extractedEntities": {
-    "documentNumber": "Số ký hiệu trích xuất (Ví dụ: 124/UBND-VP, 45/QĐ-BGDĐT) nếu có, hoặc tạo số giả định phù hợp",
+    "documentNumber": "Số ký hiệu trích xuất chuẩn xác (Ví dụ: 72/2025/QH15, 124/UBND-VP, 45/QĐ-TTg, 89/BC-STC) từ văn bản",
     "officialNumber": "Số đến hoặc số văn bản gốc",
-    "issuingAuthority": "Tên cơ quan ban hành (Ví dụ: Ủy ban nhân dân Thành phố Hà Nội, Bộ Tài chính...)",
+    "issuingAuthority": "Tên cơ quan ban hành bên ngoài (Ví dụ: Quốc hội, Chính phủ, Bộ Tài chính, Ủy ban nhân dân Tỉnh...)",
     "recipient": "Nơi nhận / Đơn vị tiếp nhận",
     "issueDate": "YYYY-MM-DD (ngày ban hành trích xuất từ văn bản)",
     "effectiveDate": "YYYY-MM-DD (ngày có hiệu lực)",
-    "signer": "Họ và tên người ký văn bản",
-    "signerPosition": "Chức vụ người ký (Ví dụ: Chủ tịch, Giám đốc Sở, Chánh Văn phòng...)",
+    "signer": "Họ và tên người ký văn bản của cơ quan ban hành (KHÔNG chọn cán bộ trong hệ thống nội bộ)",
+    "signerPosition": "Chức vụ người ký tại cơ quan gửi (Ví dụ: Chủ tịch Quốc hội, Thủ tướng Chính phủ, Bộ trưởng, Chủ tịch UBND...)",
     "summary": "Trích yếu nội dung văn bản súc tích từ 1 đến 3 câu",
     "keyTopics": ["từ khóa 1", "từ khóa 2", "từ khóa 3", "từ khóa 4", "từ khóa 5"],
-    "legalBases": ["Căn cứ Luật Ngân sách...", "Căn cứ Nghị định 30/2020/NĐ-CP..."]
+    "legalBases": ["Căn cứ Hiến pháp...", "Căn cứ Luật...", "Căn cứ Nghị định 30/2020/NĐ-CP..."]
   },
   "dispatchRecommendation": {
     "primaryDepartment": "Tên phòng ban phù hợp nhất từ danh sách phòng ban",

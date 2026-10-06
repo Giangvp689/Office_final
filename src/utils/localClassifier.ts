@@ -195,26 +195,151 @@ export function classifyDocumentLocally(options: {
   else if (fullText.includes('mật') || fullText.includes('kỷ luật') || fullText.includes('bổ nhiệm')) securityLevel = 'MAT';
 
   // 5. Named Entity Extraction (NER Regex & Heuristics)
-  // Number regex: e.g. 218/QĐ-STC, 45/TTr-TCCB, 102/CV-UBND-HT
-  const numMatch = rawText.match(/(?:Số|Số\s*:|Số\s+ký\s+hiệu)\s*:?\s*([0-9]+\/[a-zA-Z0-9Đđ\-_/]+)/i);
+  // Number regex: Hỗ trợ 72/2025/QH15, 45/QĐ-TTg, 124/UBND-VP, 89/BC-STC, v.v.
+  const numMatch =
+    rawText.match(/(?:Số|Số\s*:|Số\s+ký\s+hiệu)\s*:?\s*([0-9]+\/[a-zA-Z0-9Đđ\-_/]+)/i) ||
+    rawText.match(/(?:^|\s)([0-9]+\/[0-9]+\/[A-Z0-9\-_]+)/m) ||
+    rawText.match(/(?:^|\s)([0-9]+\/[A-Z0-9\-]+(?:-[A-Z0-9]+)?)/m);
   const docNumber = numMatch ? numMatch[1].trim() : `${Math.floor(Math.random() * 900 + 100)}/${matchedDocType === 'Quyết định' ? 'QĐ' : matchedDocType === 'Tờ trình' ? 'TTr' : 'CV'}-CQ`;
 
-  // Authority Regex:
-  let issuingAuthority = 'Ủy ban nhân dân Thành phố';
-  if (fullText.includes('sở tài chính')) issuingAuthority = 'Sở Tài chính';
-  else if (fullText.includes('phòng tổ chức cán bộ')) issuingAuthority = 'Phòng Tổ chức Cán bộ';
-  else if (fullText.includes('thanh tra thành phố')) issuingAuthority = 'Thanh tra Thành phố';
-  else if (fullText.includes('sở thông tin và truyền thông')) issuingAuthority = 'Sở Thông tin và Truyền thông';
-  else if (fullText.includes('văn phòng ubnd') || fullText.includes('văn phòng ủy ban')) issuingAuthority = 'Văn phòng UBND';
+  const upperRaw = rawText.toUpperCase();
+  const upperDocNum = docNumber.toUpperCase();
 
-  // Signer Regex:
-  let signer = 'Trần Văn Hùng';
-  let signerPosition = 'Thủ trưởng cơ quan';
-  if (fullText.includes('trần văn hùng')) { signer = 'Trần Văn Hùng'; signerPosition = 'Giám đốc Sở'; }
-  else if (fullText.includes('trần thị bích')) { signer = 'Trần Thị Bích'; signerPosition = 'Trưởng phòng TCCB'; }
-  else if (fullText.includes('vũ đức thịnh')) { signer = 'Vũ Đức Thịnh'; signerPosition = 'Chánh Thanh tra'; }
-  else if (fullText.includes('nguyễn thành trung')) { signer = 'Nguyễn Thành Trung'; signerPosition = 'Chủ tịch UBND'; }
-  else if (fullText.includes('phạm quốc khánh')) { signer = 'Phạm Quốc Khánh'; signerPosition = 'Giám đốc'; }
+  // Authority Regex (Cơ quan ban hành bên ngoài của Văn bản đến):
+  let issuingAuthority = '';
+  if (upperDocNum.includes('QH') || upperRaw.includes('QUỐC HỘI')) {
+    issuingAuthority = upperRaw.includes('ỦY BAN THƯỜNG VỤ') || upperDocNum.includes('UBTVQH')
+      ? 'Ủy ban Thường vụ Quốc hội'
+      : 'Quốc hội';
+  } else if (upperDocNum.includes('TTG') || upperRaw.includes('THỦ TƯỚNG CHÍNH PHỦ')) {
+    issuingAuthority = 'Thủ tướng Chính phủ';
+  } else if (upperDocNum.includes('CP') || upperRaw.includes('CHÍNH PHỦ')) {
+    issuingAuthority = 'Chính phủ';
+  } else if (upperDocNum.includes('BTC') || upperRaw.includes('BỘ TÀI CHÍNH')) {
+    issuingAuthority = 'Bộ Tài chính';
+  } else if (upperDocNum.includes('BCA') || upperRaw.includes('BỘ CÔNG AN')) {
+    issuingAuthority = 'Bộ Công an';
+  } else if (upperDocNum.includes('BNV') || upperRaw.includes('BỘ NỘI VỤ')) {
+    issuingAuthority = 'Bộ Nội vụ';
+  } else if (upperDocNum.includes('BTP') || upperRaw.includes('BỘ TƯ PHÁP')) {
+    issuingAuthority = 'Bộ Tư pháp';
+  } else if (upperDocNum.includes('BKHĐT') || upperRaw.includes('BỘ KẾ HOẠCH VÀ ĐẦU TƯ')) {
+    issuingAuthority = 'Bộ Kế hoạch và Đầu tư';
+  } else if (upperDocNum.includes('BTTTT') || upperDocNum.includes('MIC') || upperRaw.includes('BỘ THÔNG TIN')) {
+    issuingAuthority = 'Bộ Thông tin và Truyền thông';
+  } else if (upperDocNum.includes('BYT') || upperRaw.includes('BỘ Y TẾ')) {
+    issuingAuthority = 'Bộ Y tế';
+  } else if (upperDocNum.includes('BGDĐT') || upperRaw.includes('BỘ GIÁO DỤC')) {
+    issuingAuthority = 'Bộ Giáo dục và Đào tạo';
+  } else if (upperDocNum.includes('BXD') || upperRaw.includes('BỘ XÂY DỰNG')) {
+    issuingAuthority = 'Bộ Xây dựng';
+  } else if (upperDocNum.includes('BGTVT') || upperRaw.includes('BỘ GIAO THÔNG')) {
+    issuingAuthority = 'Bộ Giao thông Vận tải';
+  } else if (upperDocNum.includes('BTNMT') || upperRaw.includes('BỘ TÀI NGUYÊN')) {
+    issuingAuthority = 'Bộ Tài nguyên và Môi trường';
+  } else if (upperDocNum.includes('STC') || fullText.includes('sở tài chính')) {
+    issuingAuthority = 'Sở Tài chính';
+  } else if (upperDocNum.includes('SNV') || fullText.includes('sở nội vụ')) {
+    issuingAuthority = 'Sở Nội vụ';
+  } else if (upperDocNum.includes('STTTT') || fullText.includes('sở thông tin và truyền thông')) {
+    issuingAuthority = 'Sở Thông tin và Truyền thông';
+  } else if (upperDocNum.includes('SXD') || fullText.includes('sở xây dựng')) {
+    issuingAuthority = 'Sở Xây dựng';
+  } else if (upperDocNum.includes('SYT') || fullText.includes('sở y tế')) {
+    issuingAuthority = 'Sở Y tế';
+  } else if (upperDocNum.includes('SKHĐT') || fullText.includes('sở kế hoạch')) {
+    issuingAuthority = 'Sở Kế hoạch và Đầu tư';
+  } else if (upperDocNum.includes('UBND') || fullText.includes('ủy ban nhân dân')) {
+    issuingAuthority = 'Ủy ban nhân dân Tỉnh / Thành phố';
+  } else if (fullText.includes('thanh tra thành phố') || fullText.includes('thanh tra tỉnh')) {
+    issuingAuthority = 'Thanh tra Tỉnh / Thành phố';
+  } else if (fullText.includes('văn phòng ubnd') || fullText.includes('văn phòng ủy ban')) {
+    issuingAuthority = 'Văn phòng UBND';
+  } else {
+    // Quét dòng tiêu đề cơ quan ở 10 dòng đầu
+    const firstLines = rawText.split('\n').slice(0, 10);
+    for (const l of firstLines) {
+      const trimmed = l.trim();
+      const u = trimmed.toUpperCase();
+      if ((u.startsWith('BỘ ') || u.startsWith('ỦY BAN ') || u.startsWith('SỞ ') || u.startsWith('TÒA ÁN ') || u.startsWith('VIỆN ')) && !u.includes('CỘNG HÒA')) {
+        issuingAuthority = trimmed;
+        break;
+      }
+    }
+  }
+  if (!issuingAuthority) {
+    issuingAuthority = 'Cơ quan cấp trên / Đơn vị gửi đến';
+  }
+
+  // Signer & SignerPosition Regex (Người ký & Chức vụ của cơ quan cấp trên / đơn vị ban hành):
+  // TUYỆT ĐỐI KHÔNG GÁN BẤT KỲ CÁN BỘ NỘI BỘ NÀO VÀO NGƯỜI KÝ VĂN BẢN ĐẾN!
+  let signer = '';
+  let signerPosition = '';
+
+  if (issuingAuthority === 'Quốc hội' || upperDocNum.includes('QH')) {
+    signerPosition = 'Chủ tịch Quốc hội';
+    if (upperRaw.includes('TRẦN THANH MẪN')) signer = 'Trần Thanh Mẫn';
+    else if (upperRaw.includes('VƯƠNG ĐÌNH HUỆ')) signer = 'Vương Đình Huệ';
+    else if (upperRaw.includes('NGUYỄN KHẮC ĐỊNH')) { signer = 'Nguyễn Khắc Định'; signerPosition = 'Phó Chủ tịch Quốc hội'; }
+    else if (upperRaw.includes('TRẦN QUANG PHƯƠNG')) { signer = 'Trần Quang Phương'; signerPosition = 'Phó Chủ tịch Quốc hội'; }
+    else if (upperRaw.includes('NGUYỄN THỊ THANH')) { signer = 'Nguyễn Thị Thanh'; signerPosition = 'Phó Chủ tịch Quốc hội'; }
+  } else if (issuingAuthority === 'Ủy ban Thường vụ Quốc hội' || upperDocNum.includes('UBTVQH')) {
+    signerPosition = 'Chủ tịch Quốc hội';
+    if (upperRaw.includes('TRẦN THANH MẪN')) signer = 'Trần Thanh Mẫn';
+  } else if (issuingAuthority === 'Thủ tướng Chính phủ' || issuingAuthority === 'Chính phủ' || upperDocNum.includes('TTG') || upperDocNum.includes('CP')) {
+    signerPosition = 'Thủ tướng Chính phủ';
+    if (upperRaw.includes('PHẠM MINH CHÍNH')) signer = 'Phạm Minh Chính';
+    else if (upperRaw.includes('NGUYỄN HÒA BÌNH')) { signer = 'Nguyễn Hòa Bình'; signerPosition = 'Phó Thủ tướng Thường trực'; }
+    else if (upperRaw.includes('TRẦN HỒNG HÀ')) { signer = 'Trần Hồng Hà'; signerPosition = 'Phó Thủ tướng'; }
+    else if (upperRaw.includes('BÙI THANH SƠN')) { signer = 'Bùi Thanh Sơn'; signerPosition = 'Phó Thủ tướng'; }
+    else if (upperRaw.includes('LÊ THÀNH LONG')) { signer = 'Lê Thành Long'; signerPosition = 'Phó Thủ tướng'; }
+    else if (upperRaw.includes('HỒ ĐỨC PHỚC')) { signer = 'Hồ Đức Phớc'; signerPosition = 'Phó Thủ tướng'; }
+  } else if (issuingAuthority.startsWith('Bộ ')) {
+    signerPosition = upperRaw.includes('THỨ TRƯỞNG') || upperRaw.includes('KT. BỘ TRƯỞNG') ? 'Thứ trưởng' : 'Bộ trưởng';
+  } else if (issuingAuthority.includes('Ủy ban nhân dân')) {
+    signerPosition = upperRaw.includes('PHÓ CHỦ TỊCH') || upperRaw.includes('TM. ỦY BAN') ? 'Phó Chủ tịch UBND' : 'Chủ tịch UBND';
+  } else if (issuingAuthority.startsWith('Sở ')) {
+    signerPosition = upperRaw.includes('PHÓ GIÁM ĐỐC') || upperRaw.includes('KT. GIÁM ĐỐC') ? 'Phó Giám đốc Sở' : 'Giám đốc Sở';
+  } else if (issuingAuthority.includes('Thanh tra')) {
+    signerPosition = 'Chánh Thanh tra';
+  } else {
+    signerPosition = 'Lãnh đạo đơn vị ban hành';
+  }
+
+  // Quét khối chữ ký thực tế ở cuối văn bản
+  if (!signer) {
+    const rawLines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+    const bottomLines = rawLines.slice(Math.max(0, rawLines.length - 18));
+    const sigKeywords = ['CHỦ TỊCH', 'THỦ TƯỚNG', 'BỘ TRƯỞNG', 'GIÁM ĐỐC', 'THỨ TRƯỞNG', 'PHÓ CHỦ TỊCH', 'PHÓ GIÁM ĐỐC', 'CHÁNH ÁN', 'CHÁNH VĂN PHÒNG', 'TM.', 'KT.', 'TL.'];
+    const sigIdx = bottomLines.findIndex((l) => {
+      const u = l.toUpperCase();
+      return sigKeywords.some((kw) => u.includes(kw)) && !u.includes('KÍNH GỬI') && !u.includes('NƠI NHẬN');
+    });
+    if (sigIdx >= 0) {
+      const foundPos = bottomLines[sigIdx].replace(/TM\.|KT\.|TL\./gi, '').trim();
+      if (foundPos && foundPos.length < 50) {
+        signerPosition = foundPos;
+      }
+      for (let i = sigIdx + 1; i < bottomLines.length; i++) {
+        const candidate = bottomLines[i];
+        if (/^\(.*\)$/.test(candidate) || candidate.toLowerCase().includes('nơi nhận') || candidate.toLowerCase().includes('lưu:')) {
+          continue;
+        }
+        const words = candidate.split(/\s+/);
+        if (words.length >= 2 && words.length <= 5 && !/[0-9:;_\-\/]/.test(candidate)) {
+          const isNameLike = words.every((w) => /^[A-ZÀ-Ỹ]/.test(w));
+          if (isNameLike) {
+            signer = candidate;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (!signer && signerPosition) {
+    signer = signerPosition;
+  }
 
   // Extract date:
   const dateMatch = rawText.match(/ngày\s+([0-9]{1,2})\s+tháng\s+([0-9]{1,2})\s+năm\s+([0-9]{4})/i);

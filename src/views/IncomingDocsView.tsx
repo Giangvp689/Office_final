@@ -240,6 +240,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
             ...prev,
             officialNumber: res.documentNumber || prev.officialNumber,
             issuingAuthority: res.issuingAuthority || prev.issuingAuthority,
+            signer: res.signer || prev.signer,
+            signerPosition: res.signerPosition || prev.signerPosition,
             issueDate: res.issueDate || prev.issueDate,
             summary: res.summary || res.title || prev.summary,
           };
@@ -511,6 +513,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
         documentNumber: classResult.extractedEntities.documentNumber || prev?.documentNumber || '',
         officialNumber: classResult.extractedEntities.officialNumber || prev?.officialNumber || '',
         issuingAuthority: classResult.extractedEntities.issuingAuthority || prev?.issuingAuthority || '',
+        signer: classResult.extractedEntities.signer || prev?.signer || '',
+        signerPosition: classResult.extractedEntities.signerPosition || prev?.signerPosition || '',
         issueDate: classResult.extractedEntities.issueDate || prev?.issueDate || '',
         summary: classResult.extractedEntities.summary || prev?.summary || '',
         docType: classResult.docType || prev?.docType,
@@ -631,14 +635,6 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => setIsSamplePdfModalOpen(true)}
-            className="flex items-center gap-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-2xs transition-all cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-amber-700" />
-            <span>Kho Tệp Mẫu</span>
-          </button>
           {canRegisterIncomingDoc(currentUser) && (
             <button
               type="button"
@@ -829,6 +825,11 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         {doc.issueDate && (
                           <div className="text-[10px] text-slate-400 mt-0.5">
                             Ký ngày: {doc.issueDate}
+                          </div>
+                        )}
+                        {(doc.signer || doc.signerPosition) && (
+                          <div className="text-[10px] text-indigo-700 font-medium mt-0.5 truncate" title={`Người ký: ${doc.signer} (${doc.signerPosition})`}>
+                            Ký bởi: {doc.signer || doc.signerPosition}
                           </div>
                         )}
                         {doc.receptionMethod === 'EMAIL' && (
@@ -1113,6 +1114,15 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Số ký hiệu gốc</span>
                   <span className="text-xs font-mono font-bold text-slate-700">{selectedDoc.officialNumber || 'Chưa có'}</span>
                 </div>
+                {(selectedDoc.signer || selectedDoc.signerPosition) && (
+                  <div className="col-span-2 bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100 flex items-center justify-between text-xs">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Người ký (Cơ quan gửi):</span>
+                    <span className="font-bold text-slate-800">
+                      {selectedDoc.signer || 'Lãnh đạo cơ quan ban hành'}
+                      {selectedDoc.signerPosition ? ` (${selectedDoc.signerPosition})` : ''}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Ngày tiếp nhận</span>
                   <span className="text-xs font-semibold text-slate-700">{selectedDoc.receivedDate}</span>
@@ -1830,6 +1840,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                                       ...prev,
                                       officialNumber: res.documentNumber || prev.officialNumber,
                                       issuingAuthority: res.issuingAuthority || prev.issuingAuthority,
+                                      signer: res.signer || prev.signer,
+                                      signerPosition: res.signerPosition || prev.signerPosition,
                                       issueDate: res.issueDate || prev.issueDate,
                                       summary: res.summary || res.title || prev.summary,
                                     };
@@ -1923,6 +1935,33 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                       <option key={`auth-${idx}`} value={auth} />
                     ))}
                   </datalist>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Người ký (Cơ quan gửi đến)
+                    </label>
+                    <input
+                      type="text"
+                      value={editingDoc.signer || ''}
+                      onChange={(e) => setEditingDoc({ ...editingDoc, signer: e.target.value })}
+                      placeholder="VD: Trần Thanh Mẫn, Phạm Minh Chính..."
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Chức vụ người ký
+                    </label>
+                    <input
+                      type="text"
+                      value={editingDoc.signerPosition || ''}
+                      onChange={(e) => setEditingDoc({ ...editingDoc, signerPosition: e.target.value })}
+                      placeholder="VD: Chủ tịch Quốc hội, Thủ tướng, Bộ trưởng..."
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                    />
+                  </div>
                 </div>
 
                 <div>
