@@ -439,7 +439,7 @@ export const App: React.FC = () => {
                     docTypeRelation: 'INCOMING',
                     createdById: currentUser.id,
                     creatorId: currentUser.id,
-                    assigneeId: doc.assigneeId || currentUser.id,
+                    assigneeId: doc.assigneeId || users.find((u) => u.role === 'STAFF')?.id || users.find((u) => u.role === 'CLERK')?.id || 'usr-07',
                     coAssigneeIds: doc.coAssigneeIds || [],
                     priority: doc.urgency === 'HOA_TOC' ? 'URGENT' : doc.urgency === 'KHAN' ? 'HIGH' : 'MEDIUM',
                     startDate: new Date().toISOString().split('T')[0],

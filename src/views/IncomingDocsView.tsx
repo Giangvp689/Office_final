@@ -44,13 +44,15 @@ import {
   Scan,
   Lock,
   Mail,
+  Send,
+  ShieldAlert,
 } from 'lucide-react';
 import { summarizeDocumentWithAI, classifyDocumentWithAI } from '../services/aiService';
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { SamplePdfModal } from '../components/SamplePdfModal';
 import { EmailReceiverModal } from '../components/EmailReceiverModal';
-import { canAccessIncomingDoc, isLeaderOrAdmin, isClerk, canRegisterIncomingDoc, canDirectIncomingDoc, getAssignableStaffUsers } from '../utils/permission';
+import { canAccessIncomingDoc, isLeaderOrAdmin, isClerk, canRegisterIncomingDoc, canDirectIncomingDoc, getAssignableStaffUsers, getLeaderUsers } from '../utils/permission';
 import { dbService } from '../services/db';
 
 interface IncomingDocsViewProps {
@@ -91,9 +93,18 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
   const isSuperUser = isLeaderOrAdmin(currentUser) || isClerk(currentUser);
   const [docScope, setDocScope] = useState<'MY' | 'ALL'>(isSuperUser ? 'ALL' : 'MY');
-  const [myRoleFilter, setMyRoleFilter] = useState<'ALL' | 'PRIMARY' | 'COOPERATE'>('ALL');
+  const [myRoleFilter, setMyRoleFilter] = useState<'ALL' | 'PRIMARY' | 'COOPERATE' | 'LEADER_PENDING' | 'CLERK_PENDING'>('ALL');
 
   const [selectedDoc, setSelectedDoc] = useState<IncomingDocument | null>(null);
+
+  // Danh sách Lãnh đạo có thẩm quyền phê duyệt & chỉ đạo giao việc
+  const leaderUsersList = useMemo(() => getLeaderUsers(users), [users]);
+
+  // Clerk Submit to Leader State (Nghị định 30/2020/NĐ-CP)
+  const [isSubmitLeaderModalOpen, setIsSubmitLeaderModalOpen] = useState(false);
+  const [selectedLeaderToSubmit, setSelectedLeaderToSubmit] = useState('');
+  const [submitNote, setSubmitNote] = useState('');
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
 
   // Leader Directive & Direct Assignment State (Nghị định 30/2020/NĐ-CP)
   const [isDirectingOpen, setIsDirectingOpen] = useState(false);
@@ -143,6 +154,29 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       setNewlyAssignedTask(result.task);
       setAssignmentNotice(`Đã phê duyệt bút phê chỉ đạo và khởi tạo nhiệm vụ [${result.task.code}] cho ${getUser(selectedAssigneeId)?.fullName || 'cán bộ'}!`);
     }
+  };
+
+  // Văn thư xác nhận chuyển trình lên Lãnh đạo
+  const handleConfirmSubmitToLeader = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDoc || !selectedLeaderToSubmit) return;
+
+    const updated = dbService.clerkSubmitIncomingDocToLeader(
+      selectedDoc.id,
+      currentUser,
+      selectedLeaderToSubmit,
+      submitNote.trim()
+    );
+
+    if (updated) {
+      setSelectedDoc(updated);
+      onSaveDoc(updated);
+      const leaderName = getUser(selectedLeaderToSubmit)?.fullName || 'Lãnh đạo';
+      setSubmitNotice(`Đã chuyển trình văn bản [${updated.documentNumber}] lên Lãnh đạo ${leaderName} thành công!`);
+      setTimeout(() => setSubmitNotice(null), 4000);
+    }
+    setIsSubmitLeaderModalOpen(false);
+    setSubmitNote('');
   };
 
   // Authority suggestions from masterData + existing docs
@@ -272,6 +306,15 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
     if (myRoleFilter === 'COOPERATE' && !doc.coAssigneeIds?.includes(currentUser?.id || '')) {
       return false;
     }
+    if (myRoleFilter === 'LEADER_PENDING') {
+      const isPending = doc.status === 'PENDING_ASSIGN' || !doc.assigneeId;
+      const isForMe = doc.leaderId === currentUser?.id || !doc.leaderId;
+      if (!isPending || !isForMe) return false;
+    }
+    if (myRoleFilter === 'CLERK_PENDING') {
+      const isPending = doc.status === 'PENDING_ASSIGN' || !doc.assigneeId;
+      if (!isPending) return false;
+    }
 
     const matchSearch =
       doc.documentNumber.toLowerCase().includes(search.toLowerCase()) ||
@@ -306,6 +349,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
   const handleOpenAddModal = () => {
     const newDocId = 'vbd-' + Date.now();
+    const defaultLeader = leaderUsersList[0]?.id || '';
     setEditingDoc({
       id: newDocId,
       documentNumber: `${docs.length + 145}/VP-DV`,
@@ -317,10 +361,11 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       docType: 'Công văn',
       urgency: 'THUONG',
       securityLevel: 'THUONG',
-      assigneeId: currentUser?.id || '',
+      leaderId: defaultLeader,
+      assigneeId: '',
       coAssigneeIds: [],
       dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-      status: 'PROCESSING',
+      status: 'PENDING_ASSIGN',
       resultSummary: '',
       dossierId: dossiers[0]?.id || '',
       attachments: [],
@@ -335,7 +380,10 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   };
 
   const handleOpenEditModal = (doc: IncomingDocument) => {
-    setEditingDoc({ ...doc });
+    setEditingDoc({
+      ...doc,
+      leaderId: doc.leaderId || leaderUsersList[0]?.id || '',
+    });
     setFormAttachments([...(doc.attachments || [])]);
     setRawTextToAnalyze('');
     setAiError(null);
@@ -435,8 +483,12 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
     e.preventDefault();
     if (!editingDoc || !editingDoc.documentNumber || !editingDoc.summary) return;
 
+    // Phân quyền Nghị định 30: Văn thư chỉ tiếp nhận và trình lãnh đạo, không có quyền giao việc
+    const isUserClerk = isClerk(currentUser);
     const finalDoc: IncomingDocument = {
       ...(editingDoc as IncomingDocument),
+      assigneeId: isUserClerk ? '' : (editingDoc.assigneeId || ''),
+      status: isUserClerk ? 'PENDING_ASSIGN' : (editingDoc.status || 'PENDING_ASSIGN'),
       attachments: formAttachments,
     };
 
@@ -452,6 +504,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   // Import Document from Official Email Inbox (Nghị định 30/2020/NĐ-CP)
   const handleImportFromEmail = (docData: Partial<IncomingDocument>, attachments: AttachmentFile[]) => {
     const newDocId = 'inc-em-' + Date.now();
+    const defaultLeader = leaderUsersList[0]?.id || '';
     const newDoc: IncomingDocument = {
       id: newDocId,
       documentNumber: `${docs.length + 145}/VP-DV`,
@@ -463,10 +516,11 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       docType: docData.docType || 'Công văn',
       urgency: docData.urgency || 'THUONG',
       securityLevel: docData.securityLevel || 'THUONG',
-      assigneeId: currentUser?.id || '',
+      leaderId: defaultLeader,
+      assigneeId: '',
       coAssigneeIds: [],
       dueDate: docData.dueDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-      status: 'PROCESSING',
+      status: 'PENDING_ASSIGN',
       resultSummary: '',
       dossierId: dossiers[0]?.id || '',
       attachments: attachments || [],
@@ -684,10 +738,26 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
         </div>
       )}
 
+      {/* Submit to Leader Success Banner */}
+      {submitNotice && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-950 p-3.5 rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div className="text-xs font-bold">{submitNotice}</div>
+          </div>
+          <button
+            onClick={() => setSubmitNotice(null)}
+            className="text-amber-700 hover:text-amber-900 p-1 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Role Sub-filters for personalized assignment */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2">
-        <div className="flex items-center gap-1.5 bg-indigo-50/70 p-1 rounded-xl border border-indigo-100 text-xs">
-          <span className="text-[11px] font-bold text-indigo-900 px-2">Vai trò xử lý:</span>
+        <div className="flex items-center gap-1.5 bg-indigo-50/70 p-1 rounded-xl border border-indigo-100 text-xs flex-wrap">
+          <span className="text-[11px] font-bold text-indigo-900 px-2">Phân loại xử lý:</span>
           <button
             onClick={() => setMyRoleFilter('ALL')}
             className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
@@ -696,6 +766,33 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
           >
             Tất cả ({accessibleDocs.length})
           </button>
+
+          {/* Tab tiện ích cho LÃNH ĐẠO */}
+          {isLeaderOrAdmin(currentUser) && (
+            <button
+              onClick={() => setMyRoleFilter('LEADER_PENDING')}
+              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
+                myRoleFilter === 'LEADER_PENDING' ? 'bg-purple-700 text-white shadow-xs' : 'text-purple-800 hover:bg-purple-100'
+              }`}
+            >
+              <Sparkles className="w-3 h-3 text-purple-300" />
+              <span>Trình tôi duyệt ({accessibleDocs.filter((d) => (d.status === 'PENDING_ASSIGN' || !d.assigneeId) && (d.leaderId === currentUser.id || !d.leaderId)).length})</span>
+            </button>
+          )}
+
+          {/* Tab tiện ích cho VĂN THƯ */}
+          {isClerk(currentUser) && (
+            <button
+              onClick={() => setMyRoleFilter('CLERK_PENDING')}
+              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
+                myRoleFilter === 'CLERK_PENDING' ? 'bg-amber-600 text-white shadow-xs' : 'text-amber-800 hover:bg-amber-100'
+              }`}
+            >
+              <Clock className="w-3 h-3 text-amber-200" />
+              <span>Chờ Lãnh đạo chỉ đạo ({accessibleDocs.filter((d) => d.status === 'PENDING_ASSIGN' || !d.assigneeId).length})</span>
+            </button>
+          )}
+
           <button
             onClick={() => setMyRoleFilter('PRIMARY')}
             className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
@@ -904,8 +1001,20 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                               )}
                             </div>
                           </div>
+                        ) : doc.leaderId ? (
+                          <div className="flex items-start gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0 animate-pulse"></span>
+                            <div className="truncate max-w-[130px]">
+                              <span className="font-bold text-amber-800 text-[11px] block truncate" title={`Đã trình ${getUser(doc.leaderId)?.fullName || 'Lãnh đạo'}`}>
+                                Đã trình {getUser(doc.leaderId)?.fullName?.split(' ').slice(-2).join(' ') || 'Lãnh đạo'}
+                              </span>
+                              <span className="text-[10px] text-amber-600 block truncate">
+                                Chờ duyệt giao việc
+                              </span>
+                            </div>
+                          </div>
                         ) : (
-                          <span className="text-slate-400 italic">Chưa giao</span>
+                          <span className="text-slate-400 italic text-[11px]">Chờ Lãnh đạo</span>
                         )}
                       </td>
 
@@ -1305,6 +1414,9 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                           </option>
                         ))}
                       </select>
+                      <span className="text-[10px] text-purple-700 block mt-1 font-semibold">
+                        * Lãnh đạo chỉ giao việc cho Chuyên viên hoặc Văn thư; không giao việc cho Lãnh đạo khác.
+                      </span>
                     </div>
 
                     <div>
@@ -1394,6 +1506,63 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 )
               )}
 
+              {/* Thẻ hiển thị riêng cho Văn thư khi văn bản chưa được phân công */}
+              {isClerk(currentUser) && !selectedDoc.assigneeId && (
+                <div className="bg-amber-50/90 border-2 border-amber-300 p-4 rounded-2xl space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-amber-200">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-700 animate-pulse" />
+                      <span className="font-bold text-amber-950 text-xs uppercase tracking-wide">
+                        VĂN BẢN ĐÃ VÀO SỔ & CHỜ LÃNH ĐẠO DUYỆT
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 bg-amber-200 text-amber-900 rounded-full text-[10px] font-bold">
+                      Chờ chỉ đạo
+                    </span>
+                  </div>
+
+                  <div className="bg-white/90 border border-amber-200 rounded-xl p-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={getUser(selectedDoc.leaderId)?.avatar || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100'}
+                        className="w-10 h-10 rounded-full border border-amber-300 object-cover"
+                      />
+                      <div>
+                        <div className="text-[10px] text-amber-700 font-bold uppercase">Lãnh đạo được trình:</div>
+                        <div className="text-xs font-bold text-slate-900">
+                          {getUser(selectedDoc.leaderId)?.fullName || 'Chưa chọn Lãnh đạo'}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {getUser(selectedDoc.leaderId)?.position || 'Lãnh đạo cơ quan'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedLeaderToSubmit(selectedDoc.leaderId || leaderUsersList[0]?.id || '');
+                        setIsSubmitLeaderModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{selectedDoc.leaderId ? 'Đổi Lãnh đạo trình' : 'Trình Lãnh đạo'}</span>
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-amber-900 bg-amber-100/60 p-2.5 rounded-xl border border-amber-200/60 space-y-1">
+                    <div className="font-bold flex items-center gap-1">
+                      <ShieldAlert className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Quy chế hành chính (Nghị định 30/2020/NĐ-CP):</span>
+                    </div>
+                    <p>
+                      Văn thư tiếp nhận văn bản vào sổ và chọn Lãnh đạo để trình lên. Văn thư không có quyền giao việc. Vui lòng chờ <strong>{getUser(selectedDoc.leaderId)?.fullName || 'Lãnh đạo'}</strong> xem xét, phê duyệt bút phê và phân công cán bộ chuyên môn thực hiện.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Assignee & Dossier Info */}
               <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200">
                 <div>
@@ -1417,7 +1586,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <span className="text-amber-700 bg-amber-50 px-2 py-1 rounded text-xs font-semibold border border-amber-200">
                         Chờ Lãnh đạo cho ý kiến chỉ đạo & phân công
                       </span>
@@ -1425,9 +1594,22 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setIsDirectingOpen(true)}
-                          className="px-3 py-1 bg-purple-600 text-white font-bold text-xs rounded-lg cursor-pointer"
+                          className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-lg cursor-pointer transition-all"
                         >
                           Giao việc ngay
+                        </button>
+                      )}
+                      {isClerk(currentUser) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedLeaderToSubmit(selectedDoc.leaderId || leaderUsersList[0]?.id || '');
+                            setIsSubmitLeaderModalOpen(true);
+                          }}
+                          className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg cursor-pointer flex items-center gap-1 transition-all"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>{selectedDoc.leaderId ? 'Đổi Lãnh đạo trình' : 'Trình Lãnh đạo'}</span>
                         </button>
                       )}
                     </div>
@@ -1465,7 +1647,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     <CheckSquare className="w-4 h-4 text-purple-600" />
                     <span>Nhiệm vụ phân công & Tiến độ chuyên viên ({tasks.filter((t) => t.incomingDocId === selectedDoc.id || t.linkedDocId === selectedDoc.id || selectedDoc.linkedTaskIds?.includes(t.id)).length})</span>
                   </span>
-                  {selectedDoc.assigneeId && tasks.filter((t) => t.incomingDocId === selectedDoc.id || t.linkedDocId === selectedDoc.id || selectedDoc.linkedTaskIds?.includes(t.id)).length === 0 && (
+                  {canDirectIncomingDoc(currentUser) && selectedDoc.assigneeId && tasks.filter((t) => t.incomingDocId === selectedDoc.id || t.linkedDocId === selectedDoc.id || selectedDoc.linkedTaskIds?.includes(t.id)).length === 0 && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1499,7 +1681,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                             ? `Đã phân công cho cán bộ ${getUser(selectedDoc.assigneeId)?.fullName || 'chuyên viên'}, nhưng chưa mở bản ghi Nhiệm vụ (Task).`
                             : 'Chưa có nhiệm vụ nào được khởi tạo từ văn bản đến này.'}
                         </p>
-                        {selectedDoc.assigneeId && (
+                        {canDirectIncomingDoc(currentUser) && selectedDoc.assigneeId && (
                           <button
                             type="button"
                             onClick={() => {
@@ -2168,58 +2350,140 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Trạng thái xử lý</label>
-                  <select
-                    value={editingDoc.status || 'PROCESSING'}
-                    onChange={(e) => setEditingDoc({ ...editingDoc, status: e.target.value as IncomingDocStatus })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
-                  >
-                    <option value="PENDING_ASSIGN">Chờ phân công</option>
-                    <option value="PROCESSING">Đang xử lý</option>
-                    <option value="COMPLETED">Đã xử lý xong</option>
-                    <option value="OVERDUE">Quá hạn</option>
-                  </select>
+                  <label className="block font-bold text-slate-700 mb-1">Trạng thái văn bản</label>
+                  {isClerk(currentUser) ? (
+                    <div className="w-full p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-900 flex items-center justify-between">
+                      <span>Chờ Lãnh đạo duyệt & giao việc</span>
+                      <span className="text-[10px] bg-amber-200/80 text-amber-800 px-2 py-0.5 rounded-full uppercase">Tiếp nhận mới</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={editingDoc.status || 'PENDING_ASSIGN'}
+                      onChange={(e) => setEditingDoc({ ...editingDoc, status: e.target.value as IncomingDocStatus })}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
+                    >
+                      <option value="PENDING_ASSIGN">Chờ Lãnh đạo duyệt & giao việc</option>
+                      <option value="PROCESSING">Đang xử lý</option>
+                      <option value="COMPLETED">Đã xử lý xong</option>
+                      <option value="OVERDUE">Quá hạn</option>
+                    </select>
+                  )}
                 </div>
               </div>
 
-              {/* Row 5: Assignee & Dossier Binding */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Cán bộ chuyên môn chủ trì xử lý (Loại trừ Văn thư)
-                  </label>
-                  <select
-                    value={editingDoc.assigneeId || ''}
-                    onChange={(e) => setEditingDoc({ ...editingDoc, assigneeId: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium cursor-pointer"
-                  >
-                    <option value="">-- Chọn cán bộ chuyên môn phụ trách --</option>
-                    {assignableStaffList.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.position || (u.role === 'CLERK' ? 'Văn thư' : 'Chuyên viên')} - {u.department || 'Phòng Chuyên Môn'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* Row 5: Submission & Workflow Routing (Nghị định 30/2020/NĐ-CP) */}
+              {isClerk(currentUser) ? (
+                /* GIAO DIỆN VĂN THƯ: Chỉ chọn Lãnh đạo để trình lên, không có quyền giao việc */
+                <div className="bg-amber-50/70 border-2 border-amber-200 p-3.5 rounded-2xl space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-amber-950 text-xs mb-1 uppercase tracking-wide flex items-center gap-1.5">
+                        <Send className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Trình Lãnh đạo phê duyệt & giao việc</span>
+                        <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={editingDoc.leaderId || ''}
+                        onChange={(e) => setEditingDoc({ ...editingDoc, leaderId: e.target.value })}
+                        className="w-full p-2.5 bg-white border border-amber-300 rounded-xl text-xs font-bold text-amber-950 cursor-pointer outline-none shadow-2xs"
+                      >
+                        <option value="">-- Chọn Lãnh đạo để trình lên --</option>
+                        {leaderUsersList.map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.fullName} ({l.position || 'Lãnh đạo'} - {l.department || 'Ban Giám đốc'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Gắn vào Hồ Sơ vụ việc
-                  </label>
-                  <select
-                    value={editingDoc.dossierId || ''}
-                    onChange={(e) => setEditingDoc({ ...editingDoc, dossierId: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium cursor-pointer"
-                  >
-                    <option value="">-- Chưa gắn hồ sơ --</option>
-                    {dossiers.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.code} - {d.title.slice(0, 30)}...
-                      </option>
-                    ))}
-                  </select>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1 text-xs">
+                        Gắn vào Hồ Sơ vụ việc (tùy chọn)
+                      </label>
+                      <select
+                        value={editingDoc.dossierId || ''}
+                        onChange={(e) => setEditingDoc({ ...editingDoc, dossierId: e.target.value })}
+                        className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium cursor-pointer"
+                      >
+                        <option value="">-- Chưa gắn hồ sơ --</option>
+                        {dossiers.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.code} - {d.title.slice(0, 30)}...
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-amber-900 bg-amber-100/60 p-2 rounded-xl flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>
+                      <strong>Quy chế hành chính:</strong> Văn thư tiếp nhận văn bản vào sổ và chọn Lãnh đạo để trình lên. Văn thư không có quyền giao việc cho cán bộ; Lãnh đạo sẽ trực tiếp phê duyệt và giao việc cho cán bộ chuyên môn.
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* GIAO DIỆN LÃNH ĐẠO / ADMIN: Có thể chỉ định Lãnh đạo phụ trách và phân công cán bộ chủ trì */
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">
+                      Lãnh đạo phụ trách chỉ đạo
+                    </label>
+                    <select
+                      value={editingDoc.leaderId || ''}
+                      onChange={(e) => setEditingDoc({ ...editingDoc, leaderId: e.target.value })}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-purple-950 cursor-pointer"
+                    >
+                      <option value="">-- Chọn Lãnh đạo phụ trách --</option>
+                      {leaderUsersList.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.fullName} ({l.position || 'Lãnh đạo'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">
+                      Cán bộ chủ trì (Chuyên viên / Văn thư)
+                    </label>
+                    <select
+                      value={editingDoc.assigneeId || ''}
+                      onChange={(e) => setEditingDoc({ ...editingDoc, assigneeId: e.target.value })}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                    >
+                      <option value="">-- Chưa giao việc / Chọn cán bộ --</option>
+                      {assignableStaffList.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName} ({u.position || (u.role === 'CLERK' ? 'Văn thư' : 'Chuyên viên')} - {u.department || 'Phòng Chuyên Môn'})
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      * Chỉ giao cho Chuyên viên hoặc Văn thư
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">
+                      Gắn vào Hồ Sơ vụ việc
+                    </label>
+                    <select
+                      value={editingDoc.dossierId || ''}
+                      onChange={(e) => setEditingDoc({ ...editingDoc, dossierId: e.target.value })}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium cursor-pointer"
+                    >
+                      <option value="">-- Chưa gắn hồ sơ --</option>
+                      {dossiers.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.code} - {d.title.slice(0, 30)}...
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Result Summary Note */}
               <div>
@@ -2336,6 +2600,96 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Modal Văn thư chọn Lãnh đạo để trình lên (Nghị định 30/2020/NĐ-CP) */}
+      {isSubmitLeaderModalOpen && selectedDoc && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <form
+            onSubmit={handleConfirmSubmitToLeader}
+            className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                  <Send className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Trình Lãnh Đạo Phê Duyệt & Giao Việc</h3>
+                  <p className="text-[11px] text-slate-500 font-mono">Số đến: {selectedDoc.documentNumber}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSubmitLeaderModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-950">
+                <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>Quy chế hành chính (Nghị định 30/2020/NĐ-CP):</span>
+              </div>
+              <p>
+                Văn thư tiếp nhận văn bản vào sổ và chọn Lãnh đạo phụ trách để trình lên. Lãnh đạo sẽ trực tiếp phê duyệt bút phê và phân công chuyên viên xử lý; văn thư không có thẩm quyền tự giao việc.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Chọn Lãnh đạo trình phê duyệt <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  required
+                  value={selectedLeaderToSubmit}
+                  onChange={(e) => setSelectedLeaderToSubmit(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-purple-950 focus:bg-white focus:ring-2 focus:ring-amber-500/20 outline-none cursor-pointer"
+                >
+                  <option value="">-- Chọn Lãnh đạo nhận trình duyệt --</option>
+                  {leaderUsersList.map((leader) => (
+                    <option key={leader.id} value={leader.id}>
+                      {leader.fullName} - {leader.position || 'Lãnh đạo'} ({leader.department || 'Ban Giám đốc'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Ý kiến đề xuất / Ghi chú của Văn thư (tùy chọn)
+                </label>
+                <textarea
+                  rows={2}
+                  value={submitNote}
+                  onChange={(e) => setSubmitNote(e.target.value)}
+                  placeholder="Ví dụ: Kính trình Giám đốc xem xét cho ý kiến chỉ đạo, thời hạn gấp ngày..."
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-medium focus:bg-white focus:ring-2 focus:ring-amber-500/20 outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsSubmitLeaderModalOpen(false)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Xác nhận trình Lãnh đạo</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

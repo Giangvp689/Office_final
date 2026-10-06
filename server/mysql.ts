@@ -142,6 +142,28 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
     return;
   }
 
+  // Drop restrictive foreign key constraints on attachments if existing
+  try {
+    const [fks] = (await p.query(`
+      SELECT CONSTRAINT_NAME 
+      FROM information_schema.TABLE_CONSTRAINTS 
+      WHERE TABLE_SCHEMA = DATABASE() 
+        AND TABLE_NAME = 'attachments' 
+        AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+    `)) as any;
+    if (Array.isArray(fks)) {
+      for (const fk of fks) {
+        try {
+          await p.query(`ALTER TABLE attachments DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``);
+          console.log(`[MySQL Migration]: Dropped restrictive foreign key \`${fk.CONSTRAINT_NAME}\` from attachments`);
+        } catch {}
+      }
+    }
+  } catch {}
+  try {
+    await p.query('ALTER TABLE attachments DROP FOREIGN KEY fk_attachments_user');
+  } catch {}
+
   // Table definitions with required columns
   const tableSchemas: Record<string, { createSql: string; columns: { name: string; type: string }[] }> = {
     departments: {
@@ -632,6 +654,10 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
   // Ensure tables and columns
   await ensureAllTableSchemas(p);
 
+  try {
+    await p.query('SET FOREIGN_KEY_CHECKS = 0');
+  } catch {}
+
   // Seed missing records across all tables (INSERT IGNORE safely skips existing IDs)
     for (const d of INITIAL_DEPARTMENTS) {
       await p.query(
@@ -834,6 +860,10 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
         ]
       );
     }
+
+  try {
+    await p.query('SET FOREIGN_KEY_CHECKS = 1');
+  } catch {}
 
   return { success: true, message: 'Đã khởi tạo thành công cấu trúc CSDL và nạp dữ liệu mẫu!' };
 }

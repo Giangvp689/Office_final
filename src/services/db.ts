@@ -1523,6 +1523,64 @@ class DatabaseService {
   }
 
   /**
+   * VĂN THƯ TRÌNH LÃNH ĐẠO PHÊ DUYỆT & CHỈ ĐẠO (Nghị định 30/2020/NĐ-CP):
+   * - Văn thư chỉ có thẩm quyền tiếp nhận, vào sổ và chọn Lãnh đạo phụ trách để trình lên.
+   * - Tuyệt đối không tự ý phân công giao việc cho cán bộ chuyên môn.
+   */
+  public clerkSubmitIncomingDocToLeader(
+    docId: string,
+    clerk: User,
+    leaderId: string,
+    submissionNote?: string
+  ): IncomingDocument | undefined {
+    const docs = this.getIncomingDocs();
+    const doc = docs.find((d) => d.id === docId);
+    if (!doc) return undefined;
+
+    const leader = this.getUserById(leaderId);
+    const leaderName = leader?.fullName || 'Lãnh đạo cơ quan';
+    const now = new Date().toISOString();
+
+    const updatedDoc: IncomingDocument = {
+      ...doc,
+      leaderId,
+      status: 'PENDING_ASSIGN',
+      assigneeId: undefined,
+      updatedAt: now,
+    };
+
+    this.saveIncomingDoc(updatedDoc, clerk);
+
+    // Gửi thông báo đến Lãnh đạo được trình
+    this.addNotification(
+      {
+        id: `nt-sub-${Date.now()}`,
+        userId: leaderId,
+        title: `Trình phê duyệt VB đến: ${doc.documentNumber}`,
+        message: `Văn thư ${clerk.fullName} đã tiếp nhận và trình văn bản [${doc.documentNumber} - ${doc.issuingAuthority}] xin ý kiến chỉ đạo: "${doc.summary.slice(0, 100)}..."${submissionNote ? ` (Đề xuất: ${submissionNote})` : ''}`,
+        type: 'DOC_ASSIGNED',
+        linkType: 'INCOMING_DOC',
+        targetId: doc.id,
+        isRead: false,
+        createdAt: now,
+      },
+      clerk
+    );
+
+    // Ghi nhật ký hệ thống
+    this.addAuditLog(
+      'UPDATE',
+      'INCOMING_DOCUMENT',
+      doc.id,
+      doc.documentNumber,
+      `Văn thư ${clerk.fullName} đã tiếp nhận vào sổ và trình Lãnh đạo ${leaderName} phê duyệt, cho ý kiến chỉ đạo.`,
+      clerk
+    );
+
+    return updatedDoc;
+  }
+
+  /**
    * LÃNH ĐẠO phê duyệt bút phê chỉ đạo và giao việc từ Văn bản đến
    * Theo NĐ 30/2020/NĐ-CP: Tự động khởi tạo Nhiệm vụ (Task) gắn với Hồ sơ vụ việc (Dossier) và phân công cán bộ
    */
