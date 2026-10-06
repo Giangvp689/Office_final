@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Mail,
@@ -18,7 +18,6 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { IncomingDocument, AttachmentFile } from '../types';
-import { SAMPLE_DOCUMENTS, generateSamplePdf } from '../utils/samplePdfGenerator';
 
 interface EmailItem {
   id: string;
@@ -33,70 +32,9 @@ interface EmailItem {
   urgency: 'THUONG' | 'KHAN' | 'HOA_TOC';
   attachmentName: string;
   attachmentSize: number;
-  samplePresetId?: string;
+  attachmentUrl?: string;
+  realAttachments?: AttachmentFile[];
 }
-
-const OFFICIAL_INBOX_EMAILS: EmailItem[] = [
-  {
-    id: 'em-01',
-    senderName: 'Văn Phòng UBND Tỉnh',
-    senderEmail: 'ubnd.tinh@hanam.gov.vn',
-    subject: '[HỎA TỐC] Công văn 1428/UBND-VP: Triển khai các biện pháp bảo đảm an toàn thông tin mạng & số hóa hồ sơ năm 2025',
-    receivedAt: 'Hôm nay, 08:15',
-    summary: 'Chỉ đạo khẩn trương rà soát an toàn thông tin 100% hệ thống và chuẩn hóa lưu trữ điện tử theo Nghị định 30/2020/NĐ-CP.',
-    docNumber: '1428/UBND-VP',
-    authority: 'ỦY BAN NHÂN DÂN THÀNH PHỐ',
-    docType: 'Công văn',
-    urgency: 'HOA_TOC',
-    attachmentName: 'CongVan_1428_UBND_HoaToc_SoHoa.pdf',
-    attachmentSize: 345000,
-    samplePresetId: 'cong-van-hoa-toc',
-  },
-  {
-    id: 'em-02',
-    senderName: 'Sở Tài Chính Thành Phố',
-    senderEmail: 'sotaichinh@hanam.gov.vn',
-    subject: '[KHẨN] Quyết định 356/QĐ-STC: Phê duyệt dự toán và phân bổ kinh phí nâng cấp hạ tầng số, ứng dụng Trí tuệ nhân tạo (AI)',
-    receivedAt: 'Hôm qua, 14:30',
-    summary: 'Phê duyệt dự toán kinh phí triển khai Dự án Nâng cấp hệ thống Quản lý Văn bản và Điều hành tích hợp AI OCR thông minh.',
-    docNumber: '356/QĐ-STC',
-    authority: 'SỞ TÀI CHÍNH',
-    docType: 'Quyết định',
-    urgency: 'KHAN',
-    attachmentName: 'QuyetDinh_356_STC_KinhPhiAI.pdf',
-    attachmentSize: 420000,
-    samplePresetId: 'quyet-dinh-kinh-phi',
-  },
-  {
-    id: 'em-03',
-    senderName: 'Văn Phòng UBND Thành Phố',
-    senderEmail: 'vp.ubnd@hanam.gov.vn',
-    subject: 'Thông báo số 89/TB-VPUBND: Tổ chức Hội nghị tập huấn sử dụng Hệ thống Quản lý văn bản điện tử và Trợ lý AI',
-    receivedAt: '2 ngày trước, 09:00',
-    summary: 'Kế hoạch tổ chức hội nghị tập huấn quét OCR, phân loại luồng tiếp nhận bằng AI và tra cứu văn bản thông minh cho các Sở, Ban, Ngành.',
-    docNumber: '89/TB-VPUBND',
-    authority: 'VĂN PHÒNG ỦY BAN NHÂN DÂN',
-    docType: 'Thông báo',
-    urgency: 'THUONG',
-    attachmentName: 'ThongBao_89_VP_TapHuanAI.pdf',
-    attachmentSize: 280000,
-    samplePresetId: 'thong-bao-tap-huan',
-  },
-  {
-    id: 'em-04',
-    senderName: 'Trung Tâm Dịch Vụ Công Trực Tuyến',
-    senderEmail: 'dvc.tructuyen@hanam.gov.vn',
-    subject: 'Công văn 245/DVCTT: Đề xuất phương án liên thông hồ sơ thủ tục hành chính một cửa và số hóa kết quả',
-    receivedAt: '3 ngày trước, 16:45',
-    summary: 'Phối hợp triển khai tiếp nhận và trả kết quả bản điện tử qua Cổng Dịch vụ công quốc gia và hệ thống thông tin một cửa điện tử.',
-    docNumber: '245/DVCTT',
-    authority: 'TRUNG TÂM DỊCH VỤ CÔNG TRỰC TUYẾN',
-    docType: 'Công văn',
-    urgency: 'THUONG',
-    attachmentName: 'CongVan_245_DVCTT_LienThongSoHoa.pdf',
-    attachmentSize: 310000,
-  },
-];
 
 interface EmailReceiverModalProps {
   isOpen: boolean;
@@ -114,6 +52,8 @@ export const EmailReceiverModal: React.FC<EmailReceiverModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'INBOX' | 'MANUAL'>('INBOX');
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+  const [realInboundEmails, setRealInboundEmails] = useState<EmailItem[]>([]);
+  const [isLoadingRealEmails, setIsLoadingRealEmails] = useState(false);
 
   // Manual Paste Form State
   const [pasteSender, setPasteSender] = useState('');
@@ -121,28 +61,81 @@ export const EmailReceiverModal: React.FC<EmailReceiverModalProps> = ({
   const [pasteContent, setPasteContent] = useState('');
   const [isProcessingPaste, setIsProcessingPaste] = useState(false);
 
+  const fetchRealInboundEmails = async () => {
+    setIsLoadingRealEmails(true);
+    try {
+      const res = await fetch('/api/inbound-emails');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+        const mapped: EmailItem[] = data.data.map((item: any) => ({
+          id: item.id,
+          senderName: item.senderName || item.senderEmail,
+          senderEmail: item.senderEmail,
+          subject: item.subject,
+          receivedAt: item.receivedAt,
+          summary: item.text ? item.text.slice(0, 200) : item.subject,
+          docNumber: `${Math.floor(Math.random() * 800 + 100)}/CV-EMAIL`,
+          authority: item.senderName || item.senderEmail,
+          docType: 'Công văn',
+          urgency: (item.subject?.toUpperCase().includes('HỎA TỐC') ? 'HOA_TOC' : item.subject?.toUpperCase().includes('KHẨN') ? 'KHAN' : 'THUONG') as any,
+          attachmentName: item.attachments?.[0]?.fileName || 'Van_ban_dinh_kem.pdf',
+          attachmentSize: item.attachments?.[0]?.fileSize || 350000,
+          attachmentUrl: item.attachments?.[0]?.fileUrl || '',
+          realAttachments: item.attachments || [],
+        }));
+        setRealInboundEmails(mapped);
+      } else {
+        setRealInboundEmails([]);
+      }
+    } catch (err) {
+      console.warn('Could not fetch real inbound emails:', err);
+    } finally {
+      setIsLoadingRealEmails(false);
+    }
+  };
+
+  const [isTriggeringTest, setIsTriggeringTest] = useState(false);
+  const handleTriggerTestInbound = async () => {
+    setIsTriggeringTest(true);
+    try {
+      const res = await fetch('/api/test-inbound-email', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        await fetchRealInboundEmails();
+      }
+    } catch (err) {
+      console.warn('Test inbound email failed:', err);
+    } finally {
+      setIsTriggeringTest(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchRealInboundEmails();
+    }
+  }, [isOpen]);
+
+  const allEmails = realInboundEmails;
+
   if (!isOpen) return null;
 
   const handleSelectEmail = (em: EmailItem) => {
-    // Generate valid sample PDF binary attachment
-    let pdfUrl = '';
-    const preset = SAMPLE_DOCUMENTS.find((p) => p.id === em.samplePresetId);
-    if (preset) {
-      const { url } = generateSamplePdf(preset);
-      pdfUrl = url;
-    }
-
-    const newAttachment: AttachmentFile = {
-      id: 'att-em-' + Date.now(),
-      fileName: em.attachmentName,
-      fileSize: em.attachmentSize,
-      fileType: 'pdf',
-      fileUrl: pdfUrl,
-      category: 'VAN_BAN_DEN',
-      uploadedByName: em.senderName,
-      uploadedAt: new Date().toISOString(),
-      tags: ['Email công vụ', em.docType, em.urgency],
-    };
+    const attachments: AttachmentFile[] = (em.realAttachments && em.realAttachments.length > 0)
+      ? em.realAttachments
+      : [
+          {
+            id: 'att-em-' + Date.now(),
+            fileName: em.attachmentName,
+            fileSize: em.attachmentSize,
+            fileType: em.attachmentName.split('.').pop()?.toLowerCase() || 'pdf',
+            fileUrl: em.attachmentUrl || '',
+            category: 'VAN_BAN_DEN',
+            uploadedByName: em.senderName,
+            uploadedAt: new Date().toISOString(),
+            tags: ['Email công vụ', 'Resend Inbound'],
+          },
+        ];
 
     const docData: Partial<IncomingDocument> = {
       officialNumber: em.docNumber,
@@ -158,7 +151,7 @@ export const EmailReceiverModal: React.FC<EmailReceiverModalProps> = ({
       issueDate: new Date().toISOString().split('T')[0],
     };
 
-    onImportDoc(docData, [newAttachment]);
+    onImportDoc(docData, attachments);
     onClose();
   };
 
@@ -276,7 +269,16 @@ export const EmailReceiverModal: React.FC<EmailReceiverModalProps> = ({
               }`}
             >
               <Inbox className="w-4 h-4" />
-              <span>Hộp Thư Công Văn Mới ({OFFICIAL_INBOX_EMAILS.length})</span>
+              <span>Hộp Thư Công Văn Mới ({allEmails.length})</span>
+            </button>
+
+            <button
+              onClick={() => fetchRealInboundEmails()}
+              disabled={isLoadingRealEmails}
+              className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-all cursor-pointer"
+              title="Làm mới hộp thư"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRealEmails ? 'animate-spin' : ''}`} />
             </button>
 
             <button
@@ -313,27 +315,76 @@ export const EmailReceiverModal: React.FC<EmailReceiverModalProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-3">
-                {OFFICIAL_INBOX_EMAILS.map((em) => (
-                  <div
-                    key={em.id}
-                    className={`p-4.5 rounded-2xl border transition-all ${
-                      selectedEmailId === em.id
-                        ? 'bg-sky-50/60 border-sky-400 ring-2 ring-sky-200 shadow-sm'
-                        : 'bg-white hover:bg-slate-50/80 border-slate-200 shadow-2xs'
-                    }`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                      <div className="space-y-1.5 min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-xs text-slate-900">{em.senderName}</span>
-                          <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                            &lt;{em.senderEmail}&gt;
-                          </span>
-                          <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {em.receivedAt}
-                          </span>
+              {allEmails.length === 0 ? (
+                <div className="py-12 px-6 text-center bg-slate-50/80 rounded-3xl border border-dashed border-slate-300 space-y-4">
+                  <div className="w-16 h-16 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center mx-auto shadow-xs">
+                    <Inbox className="w-8 h-8" />
+                  </div>
+                  <div className="max-w-md mx-auto space-y-1.5">
+                    <h4 className="text-sm font-bold text-slate-800">
+                      Hòm Thư Công Vụ Trực Tuyến Chưa Có Email Mới
+                    </h4>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Hệ thống đang kết nối trực tiếp với máy chủ <strong>Resend</strong> qua địa chỉ hòm thư <strong>vanban@trg.id.vn</strong> (đã tắt toàn bộ dữ liệu mẫu).
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Khi có người gửi email đến bất kỳ địa chỉ nào @trg.id.vn hoặc gửi qua Webhook Resend, email thật sẽ xuất hiện tại đây ngay lập tức.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-3 pt-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => fetchRealInboundEmails()}
+                      disabled={isLoadingRealEmails}
+                      className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRealEmails ? 'animate-spin' : ''}`} />
+                      <span>Làm Mới Hộp Thư</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTriggerTestInbound}
+                      disabled={isTriggeringTest}
+                      className="px-4 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                      title="Bấm để kiểm tra gửi 1 email công văn thật vào Webhook Resend của hệ thống"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{isTriggeringTest ? 'Đang gửi qua Webhook...' : 'Thử Gửi 1 Email Đến Webhook'}</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {allEmails.map((em) => {
+                    const isReal = true;
+                    return (
+                    <div
+                      key={em.id}
+                      className={`p-4.5 rounded-2xl border transition-all ${
+                        selectedEmailId === em.id
+                          ? 'bg-sky-50/60 border-sky-400 ring-2 ring-sky-200 shadow-sm'
+                          : 'bg-white hover:bg-slate-50/80 border-slate-200 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                        <div className="space-y-1.5 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-xs text-slate-900">{em.senderName}</span>
+                            <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                              &lt;{em.senderEmail}&gt;
+                            </span>
+                            {isReal && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Nhận thật qua Resend
+                              </span>
+                            )}
+                            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {em.receivedAt}
+                            </span>
                           {em.urgency === 'HOA_TOC' && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
                               HỎA TỐC
@@ -381,10 +432,12 @@ export const EmailReceiverModal: React.FC<EmailReceiverModalProps> = ({
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           )}
+        </div>
+      )}
 
           {/* TAB 2: MANUAL EMAIL PASTE */}
           {activeTab === 'MANUAL' && (

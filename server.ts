@@ -2011,6 +2011,279 @@ app.post('/api/send-otp-email', async (req, res) => {
 });
 
 // ==========================================
+// 7.1. TIẾP NHẬN EMAIL ĐẾN (INBOUND EMAIL WEBHOOK - RESEND)
+// ==========================================
+interface InboundEmailRecord {
+  id: string;
+  senderEmail: string;
+  senderName?: string;
+  recipientEmail: string;
+  subject: string;
+  receivedAt: string;
+  text?: string;
+  html?: string;
+  attachments?: any[];
+  incomingDocId?: string;
+}
+
+const inboundEmailBuffer: InboundEmailRecord[] = [];
+
+// Endpoint: Webhook tiếp nhận Email gửi đến từ Resend / Máy chủ bưu điện
+app.post('/api/inbound-email', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    console.log('[Inbound Email Webhook] Received email payload:', JSON.stringify(payload).slice(0, 300));
+
+    // Handle different webhook formats (Resend event format or direct payload)
+    const data = payload.data || payload;
+    const rawFrom = data.from || data.sender || 'nguoigui@coquan.gov.vn';
+    const senderEmail = typeof rawFrom === 'object' ? (rawFrom.email || rawFrom.address) : String(rawFrom);
+    const senderName = typeof rawFrom === 'object' ? rawFrom.name : '';
+    const rawTo = data.to || data.recipient || 'vanthu@trg.id.vn';
+    const recipientEmail = Array.isArray(rawTo) ? rawTo.join(', ') : String(rawTo);
+    const subject = data.subject || 'Công văn tiếp nhận qua thư điện tử công vụ';
+    const textBody = data.text || '';
+    const htmlBody = data.html || '';
+    const rawAttachments = data.attachments || [];
+
+    const emailId = 'em-in-' + Date.now();
+    const newDocId = 'inc-em-' + Date.now();
+
+    // Map attachments
+    const processedAttachments: any[] = [];
+    if (Array.isArray(rawAttachments)) {
+      rawAttachments.forEach((att: any, idx: number) => {
+        const fileName = att.filename || att.name || `Tep_dinh_kem_${idx + 1}.pdf`;
+        const fileType = fileName.split('.').pop()?.toLowerCase() || 'pdf';
+        const fileUrl = att.content
+          ? (att.content.startsWith('data:') ? att.content : `data:${att.content_type || 'application/pdf'};base64,${att.content}`)
+          : (att.url || '');
+
+        processedAttachments.push({
+          id: 'att-in-' + Date.now() + '-' + idx,
+          fileName,
+          fileSize: att.size || 350000,
+          fileType,
+          fileUrl,
+          category: 'VAN_BAN_DEN',
+          relatedId: newDocId,
+          uploadedByName: senderName || senderEmail,
+          uploadedAt: new Date().toISOString(),
+          tags: ['Email công vụ', 'Inbound Resend'],
+        });
+      });
+    }
+
+    // Determine urgency from subject & body
+    const fullContent = `${subject} ${textBody}`.toUpperCase();
+    let urgency: 'THUONG' | 'KHAN' | 'HOA_TOC' = 'THUONG';
+    if (fullContent.includes('HỎA TỐC')) urgency = 'HOA_TOC';
+    else if (fullContent.includes('KHẨN') || fullContent.includes('THƯỢNG KHẨN')) urgency = 'KHAN';
+
+    // Determine document type
+    let docType = 'Công văn';
+    if (fullContent.includes('QUYẾT ĐỊNH')) docType = 'Quyết định';
+    else if (fullContent.includes('TỜ TRÌNH')) docType = 'Tờ trình';
+    else if (fullContent.includes('THÔNG BÁO')) docType = 'Thông báo';
+    else if (fullContent.includes('BÁO CÁO')) docType = 'Báo cáo';
+    else if (fullContent.includes('CHỈ THỊ')) docType = 'Chỉ thị';
+
+    const store = loadStore();
+    const docNumber = `${store.incomingDocs.length + 145}/VP-DV`;
+
+    const summary = textBody.trim()
+      ? (textBody.trim().slice(0, 300) + (textBody.length > 300 ? '...' : ''))
+      : subject;
+
+    const newDoc = {
+      id: newDocId,
+      documentNumber: docNumber,
+      officialNumber: `${Math.floor(Math.random() * 800 + 100)}/CV-${senderEmail.split('@')[0].toUpperCase().slice(0, 6)}`,
+      receivedDate: new Date().toISOString().split('T')[0],
+      issueDate: new Date().toISOString().split('T')[0],
+      issuingAuthority: senderName ? `${senderName} (${senderEmail})` : `Cơ quan gửi (${senderEmail})`,
+      summary,
+      docType,
+      urgency,
+      securityLevel: 'THUONG',
+      assigneeId: store.users.find((u: any) => u.role === 'CLERK')?.id || store.users[0]?.id || '',
+      coAssigneeIds: [],
+      dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      status: 'PROCESSING',
+      resultSummary: '',
+      dossierId: store.dossiers[0]?.id || '',
+      attachments: processedAttachments,
+      linkedTaskIds: [],
+      receptionMethod: 'EMAIL',
+      senderEmail,
+      emailSubject: subject,
+      createdById: 'system-email-inbound',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Save to store
+    store.incomingDocs.unshift(newDoc);
+    saveStore(store);
+
+    // Save record to buffer
+    const inboundRecord: InboundEmailRecord = {
+      id: emailId,
+      senderEmail,
+      senderName,
+      recipientEmail,
+      subject,
+      receivedAt: new Date().toLocaleString('vi-VN'),
+      text: textBody,
+      html: htmlBody,
+      attachments: processedAttachments,
+      incomingDocId: newDocId,
+    };
+    inboundEmailBuffer.unshift(inboundRecord);
+    if (inboundEmailBuffer.length > 50) inboundEmailBuffer.pop();
+
+    console.log(`[Inbound Email Webhook] Successfully created incoming doc ${newDoc.documentNumber} from ${senderEmail}`);
+
+    // MySQL sync if available
+    await safeDbRun(async (pool) => {
+      await pool.query(
+        `INSERT INTO incoming_documents 
+        (id, document_number, official_number, received_date, issue_date, issuing_authority, summary, doc_type, urgency, security_level, assignee_id, co_assignee_ids, due_date, status, result_summary, dossier_id, leader_directive, assigned_at, leader_id, reception_method, sender_email, email_subject, attachments, linked_task_ids, created_by_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE summary=VALUES(summary), updated_at=CURRENT_TIMESTAMP`,
+        [
+          newDoc.id,
+          newDoc.documentNumber,
+          newDoc.officialNumber,
+          newDoc.receivedDate,
+          newDoc.issueDate,
+          newDoc.issuingAuthority,
+          newDoc.summary,
+          newDoc.docType,
+          newDoc.urgency,
+          newDoc.securityLevel,
+          newDoc.assigneeId,
+          JSON.stringify(newDoc.coAssigneeIds),
+          newDoc.dueDate,
+          newDoc.status,
+          newDoc.resultSummary,
+          newDoc.dossierId,
+          null,
+          null,
+          null,
+          'EMAIL',
+          newDoc.senderEmail,
+          newDoc.emailSubject,
+          JSON.stringify(newDoc.attachments),
+          JSON.stringify(newDoc.linkedTaskIds),
+          newDoc.createdById,
+        ]
+      );
+    });
+
+    res.json({
+      success: true,
+      message: 'Email tiếp nhận thành công và đã tự động vào Sổ văn bản đến.',
+      incomingDocId: newDocId,
+      documentNumber: docNumber,
+    });
+  } catch (err: any) {
+    console.error('[Inbound Email Webhook] Error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Endpoint: Lấy danh sách email đã tiếp nhận qua Webhook
+app.get('/api/inbound-emails', async (_req, res) => {
+  res.json({
+    success: true,
+    data: inboundEmailBuffer,
+    count: inboundEmailBuffer.length,
+  });
+});
+
+// Endpoint: Kích hoạt giả lập gửi 1 email công vụ vào Webhook Resend (dành cho kiểm thử & demo trực tiếp)
+app.post('/api/test-inbound-email', async (req, res) => {
+  try {
+    const { sender, subject, content, urgency } = req.body || {};
+    const store = loadStore();
+    const docNumber = `${store.incomingDocs.length + 145}/VP-DV`;
+    const newDocId = 'inc-em-' + Date.now();
+    const emailId = 'em-in-' + Date.now();
+
+    const senderEmail = sender || 'sotaichinh@hanam.gov.vn';
+    const emailSubject = subject || '[KHẨN] Công văn số 425/STC-VP: Phê duyệt phương án kinh phí chuyển đổi số và bảo mật thông tin năm 2026';
+    const textBody = content || 'Kính gửi Văn phòng UBND Thành phố,\nSở Tài chính kính chuyển dự thảo phân bổ kinh phí triển khai phân loại văn bản AI và hạ tầng số.\nĐề nghị Văn phòng xem xét, trình Lãnh đạo cho ý kiến chỉ đạo thực hiện.';
+
+    const newDoc = {
+      id: newDocId,
+      documentNumber: docNumber,
+      officialNumber: `${Math.floor(Math.random() * 800 + 100)}/STC-HCSN`,
+      receivedDate: new Date().toISOString().split('T')[0],
+      issueDate: new Date().toISOString().split('T')[0],
+      issuingAuthority: 'SỞ TÀI CHÍNH THÀNH PHỐ',
+      summary: textBody.slice(0, 250),
+      docType: 'Công văn',
+      urgency: (urgency || 'KHAN') as any,
+      securityLevel: 'THUONG',
+      assigneeId: store.users.find((u: any) => u.role === 'CLERK')?.id || store.users[0]?.id || '',
+      coAssigneeIds: [],
+      dueDate: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+      status: 'PROCESSING',
+      resultSummary: '',
+      dossierId: store.dossiers[0]?.id || '',
+      attachments: [
+        {
+          id: 'att-test-' + Date.now(),
+          fileName: 'CongVan_425_STC_KinhPhi_2026.pdf',
+          fileSize: 420000,
+          fileType: 'pdf',
+          fileUrl: '',
+          category: 'VAN_BAN_DEN',
+          relatedId: newDocId,
+          uploadedByName: 'Sở Tài Chính (Email Resend)',
+          uploadedAt: new Date().toISOString(),
+          tags: ['Email công vụ', 'Resend Inbound'],
+        },
+      ],
+      linkedTaskIds: [],
+      receptionMethod: 'EMAIL',
+      senderEmail,
+      emailSubject,
+      createdById: 'test-inbound',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    store.incomingDocs.unshift(newDoc);
+    saveStore(store);
+
+    inboundEmailBuffer.unshift({
+      id: emailId,
+      senderEmail,
+      senderName: 'Sở Tài Chính Thành Phố',
+      recipientEmail: 'vanban@trg.id.vn',
+      subject: emailSubject,
+      receivedAt: new Date().toLocaleString('vi-VN'),
+      text: textBody,
+      html: `<p>${textBody}</p>`,
+      attachments: newDoc.attachments,
+      incomingDocId: newDocId,
+    });
+    if (inboundEmailBuffer.length > 50) inboundEmailBuffer.pop();
+
+    res.json({
+      success: true,
+      message: 'Đã giả lập gửi 1 email công vụ vào Webhook Resend thành công!',
+      emailId,
+      documentNumber: docNumber,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
 // 8. TỆP ĐÍNH KÈM & AUDIT LOGS
 // ==========================================
 app.post('/api/attachments', async (req, res) => {
