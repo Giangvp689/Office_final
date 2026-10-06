@@ -74,18 +74,23 @@ syncStoreWithMySql().then(({ connected }) => {
 let aiClient: GoogleGenAI | null = null;
 function getAIClient(): GoogleGenAI {
   const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
-  if (!apiKey) {
-    throw new Error('Chưa cấu hình GEMINI_API_KEY trong file .env. Hãy điền khóa API vào file .env rồi khởi động lại server.');
-  }
   if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
+    aiClient = apiKey
+      ? new GoogleGenAI({
+          apiKey,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            },
+          },
+        })
+      : new GoogleGenAI({
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            },
+          },
+        });
   }
   return aiClient;
 }

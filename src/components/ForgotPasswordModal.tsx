@@ -364,7 +364,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                     setIdentifier(e.target.value);
                     if (error) setError(null);
                   }}
-                  placeholder="Nhập email cán bộ (ví dụ: giangvp689@gmail.com hoặc duc.hoang@hanam.gov.vn)"
+                  placeholder="Nhập địa chỉ email cán bộ đã đăng ký"
                   required
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 text-sm focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 transition-all font-medium"
                 />
