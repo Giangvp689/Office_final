@@ -159,8 +159,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [editingTask, setEditingTask] = useState<Partial<Task> | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Danh sách Cán bộ Chuyên viên & Văn thư đủ điều kiện nhận nhiệm vụ (Loại trừ toàn bộ Lãnh đạo & Quản trị viên)
-  const assignableStaffList = useMemo(() => getAssignableStaffUsers(users, currentUser), [users, currentUser]);
+  // Danh sách Cán bộ Chuyên viên đủ điều kiện nhận nhiệm vụ (Loại trừ Văn thư CLERK)
+  const assignableStaffList = useMemo(() => getAssignableStaffUsers(users), [users]);
   // Danh sách Lãnh đạo có thẩm quyền giao việc & phê duyệt nghiệm thu
   const leaderUsersList = useMemo(() => getLeaderUsers(users), [users]);
 
@@ -377,40 +377,33 @@ export const TasksView: React.FC<TasksViewProps> = ({
     (t) => t.createdById === currentUser?.id || t.creatorId === currentUser?.id
   );
 
-  const filteredTasks = useMemo(() => {
-    return accessibleTasks
-      .filter((t) => {
-        // Mode filtering
-        if (activeTab === 'ASSIGNED_TO_ME') {
-          if (assignedSubFilter === 'PRIMARY') {
-            if (t.assigneeId !== currentUser?.id) return false;
-          } else if (assignedSubFilter === 'COOPERATE') {
-            if (!t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
-          } else {
-            if (t.assigneeId !== currentUser?.id && !t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
-          }
-        } else if (activeTab === 'DELEGATED_BY_ME') {
-          if (t.createdById !== currentUser?.id && t.creatorId !== currentUser?.id) return false;
-        }
+  const filteredTasks = accessibleTasks.filter((t) => {
+    // Mode filtering
+    if (activeTab === 'ASSIGNED_TO_ME') {
+      if (assignedSubFilter === 'PRIMARY') {
+        if (t.assigneeId !== currentUser?.id) return false;
+      } else if (assignedSubFilter === 'COOPERATE') {
+        if (!t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
+      } else {
+        if (t.assigneeId !== currentUser?.id && !t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
+      }
+    } else if (activeTab === 'DELEGATED_BY_ME') {
+      if (t.createdById !== currentUser?.id && t.creatorId !== currentUser?.id) return false;
+    }
 
-        const matchSearch =
-          t.title.toLowerCase().includes(search.toLowerCase()) ||
-          t.code.toLowerCase().includes(search.toLowerCase()) ||
-          (t.description && t.description.toLowerCase().includes(search.toLowerCase()));
+    const matchSearch =
+      t.title.toLowerCase().includes(search.toLowerCase()) ||
+      t.code.toLowerCase().includes(search.toLowerCase()) ||
+      (t.description && t.description.toLowerCase().includes(search.toLowerCase()));
 
-        const matchPriority = filterPriority === 'ALL' || t.priority === filterPriority;
-        const matchStatus = filterStatus === 'ALL' || t.status === filterStatus;
+    const matchPriority = filterPriority === 'ALL' || t.priority === filterPriority;
+    const matchStatus = filterStatus === 'ALL' || t.status === filterStatus;
 
-        return matchSearch && matchPriority && matchStatus;
-      })
-      .sort((a, b) => {
-        const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
-        const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
-        return timeB - timeA;
-      });
-  }, [accessibleTasks, activeTab, assignedSubFilter, currentUser?.id, search, filterPriority, filterStatus]);
+    return matchSearch && matchPriority && matchStatus;
+  });
 
   const handleOpenAddModal = () => {
+    const defaultAssignee = assignableStaffList[0]?.id || '';
     setEditingTask({
       id: 'task-' + Date.now(),
       code: `CV-${new Date().getFullYear()}-${String(tasks.length + 1).padStart(2, '0')}`,
@@ -418,7 +411,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       description: '',
       creatorId: currentUser?.id || '',
       createdById: currentUser?.id || '',
-      assigneeId: assignableStaffList[0]?.id || '',
+      assigneeId: defaultAssignee,
       coAssigneeIds: [],
       startDate: today,
       dueDate: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
@@ -458,28 +451,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
       return;
     }
 
-    const targetAssigneeId = editingTask.assigneeId || assignableStaffList[0]?.id || '';
+    const targetAssigneeId = (editingTask.assigneeId || '').trim();
     if (!targetAssigneeId) {
-      setFormError('⚠️ Vui lòng chọn Cán bộ chủ trì thực hiện nhiệm vụ.');
+      setFormError('⚠️ Vui lòng chọn Cán bộ / Chuyên viên chủ trì thực hiện nhiệm vụ.');
       return;
     }
 
     const chosenAssignee = users.find((u) => u.id === targetAssigneeId);
     if (chosenAssignee && (chosenAssignee.role === 'LEADER' || chosenAssignee.role === 'ADMIN')) {
-      setFormError('⚠️ Quy chế hành chính: Lãnh đạo chỉ giao việc cho Chuyên viên (STAFF) hoặc Văn thư (CLERK), không giao việc cho Lãnh đạo.');
+      setFormError('⚠️ Theo quy chế điều hành, Lãnh đạo chỉ giao việc cho Chuyên viên (STAFF) hoặc Văn thư (CLERK), không thể giao việc cho Lãnh đạo khác.');
       return;
-    }
-
-    // Kiểm tra cán bộ phối hợp không có Lãnh đạo
-    if (editingTask.coAssigneeIds && editingTask.coAssigneeIds.length > 0) {
-      const hasLeaderCoAssignee = editingTask.coAssigneeIds.some((id) => {
-        const u = users.find((user) => user.id === id);
-        return u && (u.role === 'LEADER' || u.role === 'ADMIN');
-      });
-      if (hasLeaderCoAssignee) {
-        setFormError('⚠️ Cán bộ phối hợp chỉ bao gồm Chuyên viên hoặc Văn thư, không bao gồm Lãnh đạo.');
-        return;
-      }
     }
 
     setFormError(null);
@@ -493,7 +474,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
       creatorId: editingTask.creatorId || editingTask.createdById || currentUser?.id || '',
       createdById: editingTask.createdById || editingTask.creatorId || currentUser?.id || '',
       assigneeId: targetAssigneeId,
-      coAssigneeIds: editingTask.coAssigneeIds || [],
+      coAssigneeIds: (editingTask.coAssigneeIds || []).filter((id) => {
+        const u = users.find((user) => user.id === id);
+        return u && u.role !== 'LEADER' && u.role !== 'ADMIN';
+      }),
       priority: editingTask.priority || 'MEDIUM',
       startDate: editingTask.startDate || today,
       dueDate: editingTask.dueDate || today,
@@ -1344,34 +1328,59 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       )}
 
-      {/* Task Detail Modal & Interactive Directives Chat Modal - Căn giữa màn hình, mở rộng chuẩn công vụ */}
+      {/* Task Detail & Work Processing Modal - Centered & Spacious */}
       {selectedTask && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 md:p-8 z-50 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-5xl max-h-[92vh] rounded-3xl shadow-2xl flex flex-col p-6 sm:p-8 overflow-y-auto custom-scrollbar border border-slate-200">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
-              <div className="flex items-center gap-2">
-                <CheckSquare className="w-5 h-5 text-indigo-600" />
-                <div>
-                  <span className="font-black text-slate-800 text-base block">
-                    [{selectedTask.code}] {selectedTask.title}
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    Phân công & Trao đổi chỉ đạo nhiệm vụ trực tiếp
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 md:p-8 z-50 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-5xl max-h-[92vh] rounded-2xl md:rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header - Fixed top */}
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3 min-w-0 pr-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 shadow-xs">
+                  <CheckSquare className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <span className="font-mono text-xs font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg shrink-0">
+                      {selectedTask.code}
+                    </span>
+                    <span className="font-black text-slate-900 text-base truncate">
+                      {selectedTask.title}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 block truncate">
+                    Bàn làm việc điều hành & Xử lý công việc trực tiếp
                   </span>
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedTask(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const taskToDelete = selectedTask;
+                    if (confirm(`Bạn có chắc muốn xóa công việc ${taskToDelete.title}? Thao tác này sẽ xóa vĩnh viễn trên toàn hệ thống.`)) {
+                      setSelectedTask(null);
+                      onDeleteTask(taskToDelete.id);
+                    }
+                  }}
+                  title="Xóa công việc này"
+                  className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Xóa việc</span>
+                </button>
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-100 rounded-xl cursor-pointer transition-colors"
+                  title="Đóng (Esc)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Check privacy permission for currentUser */}
             {!canAccessTask(selectedTask, currentUser) ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 my-auto">
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 my-auto overflow-y-auto">
                 <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mb-4 shadow-xs">
                   <Lock className="w-8 h-8" />
                 </div>
@@ -1392,8 +1401,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </div>
             ) : (
               <>
-                {/* Content Body */}
-                <div className="space-y-5 text-xs flex-1">
+                {/* Content Body - Scrollable */}
+                <div className="p-6 overflow-y-auto custom-scrollbar space-y-5 flex-1 text-xs">
               {/* Stepper Progress & Status Flow */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
@@ -2378,26 +2387,33 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button
-                onClick={() => setSelectedTask(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
-              >
-                Đóng lại
-              </button>
-              {canCreateOrAssignTask(currentUser) && (
+            {/* Footer - Fixed bottom */}
+            <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between shrink-0">
+              <div className="text-[11px] text-slate-500">
+                {selectedTask.dossierId ? (
+                  <span>Hồ sơ liên kết: <strong className="font-mono text-indigo-700">{selectedTask.dossierId}</strong></span>
+                ) : (
+                  <span>Chưa gắn hồ sơ vụ việc</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
                     const t = selectedTask;
                     setSelectedTask(null);
                     handleOpenEditModal(t);
                   }}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer transition-colors shadow-xs"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
                 >
                   Chỉnh sửa nhiệm vụ
                 </button>
-              )}
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs cursor-pointer transition-colors"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
             </>
             )}
@@ -2405,10 +2421,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       )}
 
-      {/* Add / Edit Task Modal - Căn giữa màn hình rộng rãi */}
+      {/* Add / Edit Task Modal */}
       {isModalOpen && editingTask && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 md:p-8 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2.5">
                 <CheckSquare className="w-5 h-5 text-indigo-600" />
@@ -2557,7 +2573,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                 <div>
                   <label className="block font-bold text-indigo-800 mb-1">
-                    ⭐ Cán bộ chủ trì thực hiện (Chuyên viên / Văn thư) <span className="text-rose-500">*</span>
+                    ⭐ Cán bộ chủ trì thực hiện <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={editingTask.assigneeId || ''}
@@ -2567,12 +2583,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     <option value="">-- Chọn cán bộ chủ trì (Chuyên viên / Văn thư) --</option>
                     {assignableStaffList.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.position || u.role || 'Chuyên viên'}) - {getDeptString(u.department)}
+                        {u.fullName} ({u.position || (u.role === 'CLERK' ? 'Văn thư' : 'Chuyên viên')}) - {getDeptString(u.department)}
                       </option>
                     ))}
                   </select>
                   <span className="text-[10px] text-slate-500 block mt-1">
-                    * Quy chế hành chính: Lãnh đạo giao việc cho Chuyên viên hoặc Văn thư. Tuyệt đối không giao việc cho Lãnh đạo.
+                    * Lãnh đạo chỉ giao việc cho Chuyên viên hoặc Văn thư xử lý (không giao cho Lãnh đạo khác).
                   </span>
                 </div>
               </div>

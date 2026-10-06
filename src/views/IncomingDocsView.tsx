@@ -1301,7 +1301,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         <option value="">-- Chọn cán bộ chủ trì (Chuyên viên / Văn thư) --</option>
                         {assignableStaffList.map((u) => (
                           <option key={u.id} value={u.id}>
-                            {u.fullName} ({u.position || u.role} - {u.department || 'Phòng Chuyên Môn'})
+                            {u.fullName} ({u.position || (u.role === 'CLERK' ? 'Văn thư' : 'Chuyên viên')} - {u.department || 'Phòng Chuyên Môn'})
                           </option>
                         ))}
                       </select>
@@ -2196,7 +2196,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                     <option value="">-- Chọn cán bộ chuyên môn phụ trách --</option>
                     {assignableStaffList.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.position || u.role || 'STAFF'}) - {u.department || 'Phòng Chuyên Môn'}
+                        {u.fullName} ({u.position || (u.role === 'CLERK' ? 'Văn thư' : 'Chuyên viên')} - {u.department || 'Phòng Chuyên Môn'})
                       </option>
                     ))}
                   </select>

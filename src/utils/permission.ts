@@ -72,15 +72,12 @@ export function canCreateOrAssignTask(user?: User | null): boolean {
 
 /**
  * QUY CHẾ ĐIỀU HÀNH CÔNG VIỆC:
- * Kiểm tra xem một người dùng có thể là ĐỐI TƯỢNG ĐƯỢC GIAO NHIỆM VỤ CHUYÊN MÔN hay không.
- * - LÃNH ĐẠO (LEADER) TUYỆT ĐỐI KHÔNG BỊ GIAO VIỆC NHƯ MỘT NHÂN VIÊN: Lãnh đạo là người chỉ đạo điều hành,
- *   không phải đối tượng nhận phân công công việc từ lãnh đạo khác.
- * - Đối tượng nhận việc chỉ là Cán bộ Chuyên viên (STAFF) hoặc Văn thư cơ quan (CLERK).
+ * Kiểm tra xem một người dùng có thể là ĐỐI TƯỢNG ĐƯỢC GIAO NHIỆM VỤ hay không.
+ * - Quy chế hành chính: Lãnh đạo (LEADER) chỉ giao việc cho Chuyên viên (STAFF) hoặc Văn thư (CLERK).
+ * - Lãnh đạo (LEADER) và Quản trị viên (ADMIN) là cấp lãnh đạo chỉ đạo/giao việc, KHÔNG phải đối tượng nhận phân công công việc từ lãnh đạo khác.
  */
-export function canUserBeAssignedTask(user?: User | null, assigner?: User | null): boolean {
+export function canUserBeAssignedTask(user?: User | null): boolean {
   if (!user || user.status === 'INACTIVE') return false;
-  // Tuyệt đối không giao việc cho Lãnh đạo (LEADER) hay Quản trị viên (ADMIN)
-  if (user.role === 'LEADER' || user.role === 'ADMIN') return false;
   return user.role === 'STAFF' || user.role === 'CLERK';
 }
 
@@ -88,10 +85,9 @@ export function canUserBeAssignedTask(user?: User | null, assigner?: User | null
  * Lọc danh sách nhân sự có thể làm Cán bộ Chủ trì hoặc Phối hợp giải quyết công việc.
  * - Chuyên viên (STAFF): Thụ lý các nhiệm vụ chuyên môn, tờ trình, đề án.
  * - Văn thư (CLERK): Thụ lý các nhiệm vụ văn thư lưu trữ, số hóa, nộp lưu, thống kê văn bưu.
- * - LÃNH ĐẠO (LEADER) & QUẢN TRỊ VIÊN (ADMIN): Tuyệt đối LOẠI TRỪ khỏi danh sách nhận việc!
- *   Lãnh đạo giữ vai trò giao việc, chỉ đạo và nghiệm thu, không bị giao việc.
+ * - LOẠI TRỪ TUYỆT ĐỐI LÃNH ĐẠO (LEADER) và Quản trị viên (ADMIN) khỏi danh sách nhận việc.
  */
-export function getAssignableStaffUsers(users: User[] = [], _assigner?: User | null): User[] {
+export function getAssignableStaffUsers(users: User[] = []): User[] {
   if (!Array.isArray(users)) return [];
   return users.filter(
     (u) => u && u.status !== 'INACTIVE' && (u.role === 'STAFF' || u.role === 'CLERK')
