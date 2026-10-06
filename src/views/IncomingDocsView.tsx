@@ -140,9 +140,13 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       alert('⚠️ Quy chế hành chính: Lãnh đạo chỉ giao việc cho Chuyên viên (STAFF) hoặc Văn thư (CLERK), không giao việc cho Lãnh đạo.');
       return;
     }
+    const cleanCoAssigneeIds = (selectedCoAssigneeIds || []).filter((id) => {
+      const u = users.find((user) => user.id === id);
+      return u && u.role !== 'LEADER' && u.role !== 'ADMIN';
+    });
     const result = dbService.leaderAssignIncomingDoc(selectedDoc.id, currentUser, {
       assigneeId: selectedAssigneeId,
-      coAssigneeIds: selectedCoAssigneeIds,
+      coAssigneeIds: cleanCoAssigneeIds,
       dueDate: selectedDueDate || selectedDoc.dueDate,
       directive: leaderDirectiveText.trim(),
       dossierId: selectedDossierId || selectedDoc.dossierId,
@@ -485,14 +489,42 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
 
     // Phân quyền Nghị định 30: Văn thư chỉ tiếp nhận và trình lãnh đạo, không có quyền giao việc
     const isUserClerk = isClerk(currentUser);
+
+    if (isUserClerk && !editingDoc.leaderId) {
+      alert('⚠️ Quy chế hành chính: Văn thư tiếp nhận văn bản vào sổ và chọn Lãnh đạo để trình lên. Vui lòng chọn Lãnh đạo nhận trình duyệt.');
+      return;
+    }
+
     const finalDoc: IncomingDocument = {
       ...(editingDoc as IncomingDocument),
       assigneeId: isUserClerk ? '' : (editingDoc.assigneeId || ''),
+      coAssigneeIds: isUserClerk ? [] : (editingDoc.coAssigneeIds || []),
       status: isUserClerk ? 'PENDING_ASSIGN' : (editingDoc.status || 'PENDING_ASSIGN'),
       attachments: formAttachments,
     };
 
     onSaveDoc(finalDoc);
+
+    // Nếu là Văn thư tiếp nhận và trình Lãnh đạo: Gửi thông báo trực tiếp đến Lãnh đạo được chọn
+    if (isUserClerk && finalDoc.leaderId) {
+      const leader = getUser(finalDoc.leaderId);
+      const leaderName = leader?.fullName || 'Lãnh đạo cơ quan';
+      dbService.addNotification(
+        {
+          userId: finalDoc.leaderId,
+          title: `Trình phê duyệt VB đến: ${finalDoc.documentNumber}`,
+          message: `Văn thư ${currentUser.fullName} đã tiếp nhận vào sổ và trình văn bản [${finalDoc.documentNumber} - ${finalDoc.issuingAuthority}] xin ý kiến chỉ đạo: "${finalDoc.summary.slice(0, 100)}..."`,
+          type: 'DOC_ASSIGNED',
+          linkType: 'INCOMING_DOC',
+          targetId: finalDoc.id,
+        },
+        currentUser
+      );
+
+      setSubmitNotice(`Đã tiếp nhận văn bản [${finalDoc.documentNumber}] vào sổ và chuyển trình lên Lãnh đạo ${leaderName} phê duyệt & giao việc thành công!`);
+      setTimeout(() => setSubmitNotice(null), 4500);
+    }
+
     setIsModalOpen(false);
     setEditingDoc(null);
     setFormAttachments([]);
@@ -2510,10 +2542,23 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm hover:shadow-md cursor-pointer transition-all flex items-center gap-1.5"
+                  className={`px-5 py-2 text-white font-bold rounded-xl text-xs shadow-sm hover:shadow-md cursor-pointer transition-all flex items-center gap-1.5 ${
+                    isClerk(currentUser)
+                      ? 'bg-amber-600 hover:bg-amber-700 active:scale-95'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
                 >
-                  <FileCheck className="w-4 h-4" />
-                  <span>Lưu Văn Bản Đến</span>
+                  {isClerk(currentUser) ? (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Tiếp Nhận & Trình Lãnh Đạo</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileCheck className="w-4 h-4" />
+                      <span>Lưu Văn Bản Đến</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

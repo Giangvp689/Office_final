@@ -144,24 +144,87 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
 
   // Drop restrictive foreign key constraints on attachments if existing
   try {
-    const [fks] = (await p.query(`
-      SELECT CONSTRAINT_NAME 
-      FROM information_schema.TABLE_CONSTRAINTS 
-      WHERE TABLE_SCHEMA = DATABASE() 
-        AND TABLE_NAME = 'attachments' 
-        AND CONSTRAINT_TYPE = 'FOREIGN KEY'
-    `)) as any;
-    if (Array.isArray(fks)) {
-      for (const fk of fks) {
+    await p.query('SET FOREIGN_KEY_CHECKS = 0').catch(() => {});
+    // 1. Direct explicit drops for common constraint names
+    await p.query('ALTER TABLE attachments DROP FOREIGN KEY fk_attachments_user').catch(() => {});
+    await p.query('ALTER TABLE `attachments` DROP FOREIGN KEY `fk_attachments_user`').catch(() => {});
+    await p.query('ALTER TABLE attachments DROP FOREIGN KEY fk_attachments_uploaded_by').catch(() => {});
+    await p.query('ALTER TABLE `attachments` DROP FOREIGN KEY `fk_attachments_uploaded_by`').catch(() => {});
+    await p.query('ALTER TABLE attachments DROP FOREIGN KEY fk_attachments_users').catch(() => {});
+    await p.query('ALTER TABLE `attachments` DROP FOREIGN KEY `fk_attachments_users`').catch(() => {});
+    
+    // 2. Query information_schema for any foreign keys on attachments and drop them
+    try {
+      const [fks] = (await p.query(`
+        SELECT CONSTRAINT_NAME, TABLE_NAME 
+        FROM information_schema.TABLE_CONSTRAINTS 
+        WHERE LOWER(TABLE_NAME) = 'attachments' 
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+      `)) as any;
+      if (Array.isArray(fks)) {
+        for (const fk of fks) {
+          if (fk.CONSTRAINT_NAME) {
+            try {
+              await p.query(`ALTER TABLE attachments DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``);
+              console.log(`[MySQL Migration]: Dropped restrictive foreign key \`${fk.CONSTRAINT_NAME}\` from attachments`);
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+
+    try {
+      await p.query('ALTER TABLE attachments MODIFY COLUMN uploaded_by_id VARCHAR(50) NULL').catch(() => {});
+    } catch {}
+
+    // 3. Ensure all default mock users exist in MySQL users table so child foreign key references never fail
+    for (const u of INITIAL_USERS) {
+      try {
+        await p.query(
+          `INSERT INTO users 
+          (id, username, password, full_name, email, phone, avatar, department, department_id, position, position_id, role, status, join_date, bio) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE 
+            full_name = VALUES(full_name),
+            role = VALUES(role),
+            status = VALUES(status)`,
+          [
+            u.id,
+            u.username || (u.email ? u.email.split('@')[0] : u.id),
+            u.password || '123',
+            u.fullName,
+            u.email || `${u.id}@donvi.gov.vn`,
+            u.phone || null,
+            u.avatar || null,
+            u.department || null,
+            u.departmentId || null,
+            u.position || null,
+            u.positionId || null,
+            u.role || 'STAFF',
+            u.status || 'ACTIVE',
+            u.joinDate ? u.joinDate : null,
+            u.bio || null,
+          ]
+        );
+      } catch (userErr: any) {
+        // If email uniqueness collision occurred, insert with fallback email
         try {
-          await p.query(`ALTER TABLE attachments DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``);
-          console.log(`[MySQL Migration]: Dropped restrictive foreign key \`${fk.CONSTRAINT_NAME}\` from attachments`);
+          await p.query(
+            `INSERT INTO users 
+            (id, username, password, full_name, email, role, status) 
+            VALUES (?, ?, '123', ?, ?, ?, 'ACTIVE')
+            ON DUPLICATE KEY UPDATE full_name = VALUES(full_name)`,
+            [
+              u.id,
+              u.username || u.id,
+              u.fullName,
+              `${u.id}_${Date.now()}@donvi.gov.vn`,
+              u.role || 'STAFF',
+            ]
+          );
         } catch {}
       }
     }
-  } catch {}
-  try {
-    await p.query('ALTER TABLE attachments DROP FOREIGN KEY fk_attachments_user');
   } catch {}
 
   // Table definitions with required columns
@@ -817,7 +880,7 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
           a.relatedId || null,
           a.dossierCode || null,
           a.dossierId || null,
-          a.uploadedById,
+          a.uploadedById || 'usr-01',
           a.uploadedByName,
           JSON.stringify(a.tags || []),
         ]

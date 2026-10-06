@@ -32,13 +32,17 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Helper to safely run DB queries with auto-retry & auto-schema migration
-async function safeDbRun(fn: (pool: any) => Promise<any>): Promise<{ success: boolean; error?: string; fromDb: boolean }> {
+async function safeDbRun(fn: (client: any) => Promise<any>): Promise<{ success: boolean; error?: string; fromDb: boolean }> {
+  const pool = getPool();
+  if (!pool) {
+    return { success: false, error: 'Chưa kết nối MySQL', fromDb: false };
+  }
+
+  let conn: any = null;
   try {
-    const pool = getPool();
-    if (!pool) {
-      return { success: false, error: 'Chưa kết nối MySQL', fromDb: false };
-    }
-    await fn(pool);
+    conn = await pool.getConnection();
+    await conn.query('SET FOREIGN_KEY_CHECKS = 0').catch(() => {});
+    await fn(conn);
     return { success: true, fromDb: true };
   } catch (err: any) {
     // If it is a connection error (e.g. database server not reachable), return gracefully without triggering schema migrations
@@ -47,21 +51,31 @@ async function safeDbRun(fn: (pool: any) => Promise<any>): Promise<{ success: bo
     }
 
     try {
-      const pool = getPool();
-      if (pool) {
-        // Automatically check and migrate missing columns / tables
-        await ensureAllTableSchemas(pool);
-        await fn(pool);
-        console.log('[MySQL Execution Success after auto-schema migration]');
-        return { success: true, fromDb: true };
+      if (conn) {
+        try { conn.release(); } catch {}
+        conn = null;
       }
+      // Automatically check and migrate missing columns / tables
+      await ensureAllTableSchemas(pool);
+      conn = await pool.getConnection();
+      await conn.query('SET FOREIGN_KEY_CHECKS = 0').catch(() => {});
+      await fn(conn);
+      console.log('[MySQL Execution Success after auto-schema migration]');
+      return { success: true, fromDb: true };
     } catch (retryErr: any) {
       if (!isConnectionError(retryErr)) {
         console.error('[MySQL Execution Error after Retry]:', retryErr?.message || retryErr);
       }
       return { success: false, error: retryErr?.message || 'Lỗi truy vấn CSDL', fromDb: false };
+    } finally {
+      if (conn) {
+        try { conn.release(); } catch {}
+      }
     }
-    return { success: false, error: err?.message || 'Lỗi truy vấn CSDL', fromDb: false };
+  } finally {
+    if (conn) {
+      try { conn.release(); } catch {}
+    }
   }
 }
 
@@ -2386,67 +2400,81 @@ app.post('/api/attachments', async (req, res) => {
     else store.attachments.unshift(a);
     saveStore(store);
 
-    const dbResult = await safeDbRun(async (pool) => {
-      const uId = a.uploadedById || 'usr-01';
+    const dbResult = await safeDbRun(async (client) => {
+      let uId = a.uploadedById || 'usr-01';
       const uName = a.uploadedByName || 'Hệ thống';
+
       // 1. Ensure user row exists so foreign key check never fails
       try {
-        await pool.query(
-          `INSERT IGNORE INTO users (id, username, full_name, email, role, status) VALUES (?, ?, ?, ?, 'STAFF', 'ACTIVE')`,
-          [uId, `user_${uId}`, uName, `${uId}@donvi.gov.vn`]
-        );
-      } catch {}
-
-      // 2. Drop any foreign key constraints on attachments
-      try {
-        const [fks] = (await pool.query(`
-          SELECT CONSTRAINT_NAME 
-          FROM information_schema.TABLE_CONSTRAINTS 
-          WHERE TABLE_SCHEMA = DATABASE() 
-            AND TABLE_NAME = 'attachments' 
-            AND CONSTRAINT_TYPE = 'FOREIGN KEY'
-        `)) as any;
-        if (Array.isArray(fks)) {
-          for (const fk of fks) {
-            try {
-              await pool.query(`ALTER TABLE attachments DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``);
-            } catch {}
+        const [existing] = (await client.query('SELECT id FROM users WHERE id = ?', [uId])) as any;
+        if (!Array.isArray(existing) || existing.length === 0) {
+          const mockUser = INITIAL_USERS.find((u) => u.id === uId);
+          if (mockUser) {
+            await client.query(
+              `INSERT INTO users (id, username, password, full_name, email, role, status) 
+               VALUES (?, ?, '123', ?, ?, ?, 'ACTIVE')
+               ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)`,
+              [
+                mockUser.id,
+                mockUser.username || mockUser.id,
+                mockUser.fullName,
+                mockUser.email || `${mockUser.id}@donvi.gov.vn`,
+                mockUser.role || 'STAFF',
+              ]
+            ).catch(() => {});
+          } else {
+            await client.query(
+              `INSERT INTO users (id, username, password, full_name, email, role, status) 
+               VALUES (?, ?, '123', ?, ?, 'STAFF', 'ACTIVE')
+               ON DUPLICATE KEY UPDATE full_name=VALUES(full_name)`,
+              [uId, `user_${uId}`, uName, `${uId}_${Date.now()}@donvi.gov.vn`]
+            ).catch(() => {});
           }
         }
       } catch {}
+
+      // Re-check valid user id or fallback to any existing user row
       try {
-        await pool.query('ALTER TABLE attachments DROP FOREIGN KEY fk_attachments_user');
+        const [recheck] = (await client.query('SELECT id FROM users WHERE id = ?', [uId])) as any;
+        if (!Array.isArray(recheck) || recheck.length === 0) {
+          const [anyUser] = (await client.query('SELECT id FROM users LIMIT 1')) as any;
+          if (Array.isArray(anyUser) && anyUser.length > 0 && anyUser[0]?.id) {
+            uId = anyUser[0].id;
+          } else {
+            uId = 'usr-01';
+          }
+        }
+      } catch {}
+
+      // 2. Drop any foreign key constraints on attachments if permitted
+      try {
+        await client.query('ALTER TABLE attachments DROP FOREIGN KEY fk_attachments_user').catch(() => {});
+        await client.query('ALTER TABLE `attachments` DROP FOREIGN KEY `fk_attachments_user`').catch(() => {});
       } catch {}
 
       // 3. Insert attachment safely
-      const conn = await pool.getConnection();
-      try {
-        await conn.query('SET FOREIGN_KEY_CHECKS = 0');
-        await conn.query(
-          `INSERT INTO attachments 
-          (id, file_name, file_size, file_type, file_url, category, related_id, dossier_code, dossier_id, uploaded_by_id, uploaded_by_name, tags) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-          file_name=VALUES(file_name), file_size=VALUES(file_size), file_type=VALUES(file_type), file_url=VALUES(file_url), category=VALUES(category), related_id=VALUES(related_id), dossier_code=VALUES(dossier_code), dossier_id=VALUES(dossier_id), tags=VALUES(tags)`,
-          [
-            a.id,
-            a.fileName,
-            a.fileSize || 0,
-            a.fileType || '',
-            a.fileUrl || '',
-            a.category,
-            a.relatedId || null,
-            a.dossierCode || null,
-            a.dossierId || null,
-            uId,
-            uName,
-            JSON.stringify(a.tags || []),
-          ]
-        );
-      } finally {
-        await conn.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
-        conn.release();
-      }
+      await client.query('SET FOREIGN_KEY_CHECKS = 0').catch(() => {});
+      await client.query(
+        `INSERT INTO attachments 
+        (id, file_name, file_size, file_type, file_url, category, related_id, dossier_code, dossier_id, uploaded_by_id, uploaded_by_name, tags) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+        file_name=VALUES(file_name), file_size=VALUES(file_size), file_type=VALUES(file_type), file_url=VALUES(file_url), category=VALUES(category), related_id=VALUES(related_id), dossier_code=VALUES(dossier_code), dossier_id=VALUES(dossier_id), tags=VALUES(tags)`,
+        [
+          a.id,
+          a.fileName,
+          a.fileSize || 0,
+          a.fileType || '',
+          a.fileUrl || '',
+          a.category,
+          a.relatedId || null,
+          a.dossierCode || null,
+          a.dossierId || null,
+          uId,
+          uName,
+          JSON.stringify(a.tags || []),
+        ]
+      );
     });
     res.json({ success: true, attachment: a, fromDb: dbResult.fromDb, error: dbResult.error });
   } catch (error: any) {

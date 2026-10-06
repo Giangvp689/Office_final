@@ -45,7 +45,7 @@ import { classifyDocumentLocally } from '../utils/localClassifier';
 import { SamplePdfModal } from '../components/SamplePdfModal';
 import { EmailReceiverModal } from '../components/EmailReceiverModal';
 import { Download, ShieldAlert, Mail, Edit3 } from 'lucide-react';
-import { isLeaderOrAdmin, isClerk } from '../utils/permission';
+import { isLeaderOrAdmin, isClerk, getLeaderUsers, getAssignableStaffUsers } from '../utils/permission';
 import { db } from '../services/db';
 
 interface ClassificationStudioViewProps {
@@ -294,8 +294,14 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     actionType: 'DOC' | 'TASK';
   } | null>(null);
 
+  // Danh sách Lãnh đạo cơ quan để Văn thư trình lên
+  const leaderUsersList = React.useMemo(() => getLeaderUsers(users), [users]);
+  // Danh sách Cán bộ có thể giao việc: Chuyên viên (STAFF) hoặc Văn thư (CLERK) - LOẠI TRỪ TOÀN BỘ LÃNH ĐẠO
+  const assignableStaffList = React.useMemo(() => getAssignableStaffUsers(users), [users]);
+
   // User-editable dispatch recommendations (gives Clerks / Leaders full control over AI proposals)
   const [editableDepartment, setEditableDepartment] = useState<string>('Phòng Kế hoạch - Tài chính');
+  const [editableLeaderId, setEditableLeaderId] = useState<string>('');
   const [editableAssigneeId, setEditableAssigneeId] = useState<string>('');
   const [editableDossierChoice, setEditableDossierChoice] = useState<string>('NONE'); // 'NONE' | 'NEW' | dossierId
   const [editableDueDate, setEditableDueDate] = useState<string>('');
@@ -315,6 +321,10 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     const dept = rec.primaryDepartment || 'Văn phòng Cơ quan';
     setEditableDepartment(dept);
 
+    // Default leader to submit to
+    const defaultLeader = leaderUsersList[0]?.id || '';
+    setEditableLeaderId(defaultLeader);
+
     // Sync extracted entities to editable states
     setEditableDocNumber(res.extractedEntities.documentNumber || '');
     setEditableAuthority(res.extractedEntities.issuingAuthority || '');
@@ -324,12 +334,11 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     setEditableSummary(res.extractedEntities.summary || '');
     setIsEditingNer(false);
 
-    // Filter staff for recommendation
-    const matched = users.find(
+    // Filter staff for recommendation (chỉ chọn từ assignableStaffList)
+    const matched = assignableStaffList.find(
       (u) =>
-        u.role === 'STAFF' &&
         u.fullName.toLowerCase().includes(rec.suggestedAssigneeName?.toLowerCase() || '')
-    ) || users.find((u) => u.role === 'STAFF' && u.department === dept);
+    ) || assignableStaffList.find((u) => u.department === dept) || assignableStaffList[0];
     setEditableAssigneeId(matched ? matched.id : '');
 
     // Dossier selection: ONLY OPEN / IN_PROGRESS DOSSIERS! Never closed or archived dossiers!
@@ -556,6 +565,11 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     const finalIssueDate = editableIssueDate.trim() || classificationResult.extractedEntities.issueDate || new Date().toISOString().split('T')[0];
     const finalSummary = editableSummary.trim() || classificationResult.extractedEntities.summary || inputTitle || 'Văn bản đã qua phân loại AI';
 
+    const isUserClerk = isClerk(currentUser);
+    const targetLeaderId = editableLeaderId || leaderUsersList[0]?.id || '';
+    const targetLeader = leaderUsersList.find((l) => l.id === targetLeaderId);
+    const leaderName = targetLeader?.fullName || 'Lãnh đạo cơ quan';
+
     const newDoc: IncomingDocument = {
       id: 'doc-in-ai-' + Date.now(),
       documentNumber: finalDocNumber,
@@ -569,7 +583,9 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       docType: classificationResult.docType,
       urgency: classificationResult.urgency,
       securityLevel: classificationResult.securityLevel,
-      assigneeId: matchedAssignee?.id || '',
+      leaderId: targetLeaderId,
+      assigneeId: isUserClerk ? '' : (editableAssigneeId || ''),
+      coAssigneeIds: [],
       dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
       status: 'PENDING_ASSIGN',
       dossierId: finalDossierId,
@@ -581,7 +597,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
           fileType: 'pdf',
           fileUrl: uploadedFileDataUrl || '',
           category: 'VAN_BAN_DEN',
-          uploadedById: currentUser?.id || 'usr-01',
+          uploadedById: currentUser?.id || 'usr-03',
           uploadedByName: currentUser?.fullName || 'Văn thư cơ quan',
           uploadedAt: new Date().toISOString(),
           tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified', 'Cloud Firestore'],
@@ -591,36 +607,55 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
 
     onSaveIncomingDoc(newDoc);
     setSavedIncomingDoc(newDoc);
-    setSuccessActionMsg(`Đã tiếp nhận văn bản [${newDoc.documentNumber}] vào Sổ Văn Bản Đến thành công!`);
+
+    // Gửi thông báo đến Lãnh đạo được trình
+    if (targetLeaderId) {
+      db.addNotification(
+        {
+          userId: targetLeaderId,
+          title: `Trình phê duyệt VB đến: ${newDoc.documentNumber}`,
+          message: `Văn thư ${currentUser?.fullName} đã tiếp nhận vào sổ và trình văn bản [${newDoc.documentNumber} - ${newDoc.issuingAuthority}] xin ý kiến chỉ đạo: "${newDoc.summary.slice(0, 100)}..."`,
+          type: 'DOC_ASSIGNED',
+          linkType: 'INCOMING_DOC',
+          targetId: newDoc.id,
+        },
+        currentUser
+      );
+    }
+
+    setSuccessActionMsg(`Đã tiếp nhận văn bản [${newDoc.documentNumber}] vào Sổ Văn Bản Đến và chuyển trình Lãnh đạo ${leaderName}!`);
 
     // Display modal notification with clear exit / navigation options
     setSuccessModal({
       isOpen: true,
-      title: 'Đã Lưu Vào Sổ Văn Bản Đến Thành Công!',
-      message: `Đã nạp văn bản đến số [${newDoc.documentNumber}] vào hệ thống với trạng thái Chờ Lãnh đạo cho ý kiến chỉ đạo. Đơn vị chủ trì: ${editableDepartment}. Cán bộ thụ lý đề xuất: ${matchedAssignee?.fullName || 'Chưa chỉ định'}. Hồ sơ vụ việc: ${dossierDisplayName}. Hạn xử lý: ${newDoc.dueDate}.`,
+      title: 'Đã Tiếp Nhận & Kính Trình Lãnh Đạo Thành Công!',
+      message: `Đã nạp văn bản đến số [${newDoc.documentNumber}] vào hệ thống với trạng thái Chờ Lãnh đạo cho ý kiến chỉ đạo. Lãnh đạo kính trình: ${leaderName}. Đơn vị chủ trì đề xuất: ${editableDepartment}. Hồ sơ vụ việc: ${dossierDisplayName}. Hạn xử lý: ${newDoc.dueDate}.`,
       docNumber: newDoc.documentNumber,
       targetSection: 'INCOMING_DOCS',
       actionType: 'DOC',
     });
   };
 
-  // Quick Action 2: Create Dossier, Incoming Doc & Processing Task (For Both Clerk & Leader)
+  // Quick Action 2: Tiếp nhận & Trình Lãnh đạo (Văn thư) HOẶC Mở Hồ sơ & Giao việc (Lãnh đạo)
   const handleCreateDossierAndTask = () => {
     if (!classificationResult) return;
 
     if (savedDossierTask) {
       setSuccessModal({
         isOpen: true,
-        title: 'Hồ Sơ & Nhiệm Vụ Đã Được Tạo Thành Công',
-        message: `Hồ sơ [${savedDossierTask.dossierCode}] và nhiệm vụ xử lý [${savedDossierTask.taskCode}] đã được giao cho cán bộ ${savedDossierTask.assigneeName}. Đồng chí có thể bấm xem ngay trong danh sách nhiệm vụ!`,
+        title: 'Hồ Sơ Đã Được Xử Lý Thành Công',
+        message: `Hồ sơ [${savedDossierTask.dossierCode}] đã được ghi nhận. Đồng chí có thể bấm xem ngay!`,
         dossierCode: savedDossierTask.dossierCode,
-        targetSection: 'ALL_TASKS',
-        actionType: 'TASK',
+        targetSection: 'INCOMING_DOCS',
+        actionType: 'DOC',
       });
       return;
     }
 
-    const isLeader = isLeaderOrAdmin(currentUser);
+    const isUserClerk = isClerk(currentUser);
+    const targetLeaderId = editableLeaderId || leaderUsersList[0]?.id || '';
+    const targetLeader = leaderUsersList.find((l) => l.id === targetLeaderId);
+    const leaderName = targetLeader?.fullName || 'Lãnh đạo cơ quan';
 
     // 1. Determine Dossier
     let finalDossierId: string | undefined = undefined;
@@ -671,9 +706,11 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         docType: classificationResult.docType,
         urgency: classificationResult.urgency,
         securityLevel: classificationResult.securityLevel,
-        assigneeId: editableAssigneeId || '',
+        leaderId: targetLeaderId,
+        assigneeId: isUserClerk ? '' : (editableAssigneeId || ''),
+        coAssigneeIds: [],
         dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
-        status: 'PROCESSING',
+        status: 'PENDING_ASSIGN',
         dossierId: finalDossierId,
         attachments: [
           {
@@ -692,19 +729,68 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       setSavedIncomingDoc(targetDoc);
     }
 
-    // 3. Determine Assignee
-    const assignedStaff = users.find((u) => u.id === editableAssigneeId) || users.find((u) => u.role === 'STAFF') || currentUser;
-    const assigneeName = assignedStaff?.fullName || 'Cán bộ phụ trách';
-    const assigneeId = assignedStaff?.id || currentUser?.id || '';
+    // QUY TRÌNH DÀNH RIÊNG CHO VĂN THƯ (Nghị định 30/2020/NĐ-CP):
+    // Văn thư tiếp nhận văn bản vào sổ, mở hồ sơ và chọn Lãnh đạo để trình lên.
+    // Văn thư TUYỆT ĐỐI KHÔNG TẠO TASK GIAO VIỆC CHO CÁN BỘ.
+    if (isUserClerk) {
+      if (targetLeaderId) {
+        db.addNotification(
+          {
+            userId: targetLeaderId,
+            title: `Trình phê duyệt VB đến: ${targetDoc.documentNumber}`,
+            message: `Văn thư ${currentUser?.fullName} đã tiếp nhận vào sổ và trình văn bản [${targetDoc.documentNumber} - ${targetDoc.issuingAuthority}] xin ý kiến chỉ đạo: "${targetDoc.summary.slice(0, 100)}..."`,
+            type: 'DOC_ASSIGNED',
+            linkType: 'INCOMING_DOC',
+            targetId: targetDoc.id,
+          },
+          currentUser
+        );
+      }
+
+      setSavedDossierTask({
+        dossierCode: finalDossierCode,
+        taskCode: 'CHO_LANH_DAO_GIAO_VIEC',
+        assigneeName: leaderName,
+      });
+
+      setSuccessActionMsg(`Đã tiếp nhận văn bản [${targetDoc.documentNumber}], mở Hồ sơ [${finalDossierCode}] và chuyển trình Lãnh đạo ${leaderName}!`);
+
+      setSuccessModal({
+        isOpen: true,
+        title: 'Đã Tiếp Nhận & Kính Trình Lãnh Đạo Phê Duyệt!',
+        message: `Đã vào sổ văn bản đến [${targetDoc.documentNumber}], mở Hồ sơ [${finalDossierCode}] và chuyển trình Lãnh đạo ${leaderName} phê duyệt, cho ý kiến chỉ đạo. Theo quy chế hành chính, Văn thư không có thẩm quyền giao việc cho cán bộ; Lãnh đạo sẽ trực tiếp phê duyệt và giao việc.`,
+        docNumber: targetDoc.documentNumber,
+        dossierCode: finalDossierCode,
+        targetSection: 'INCOMING_DOCS',
+        actionType: 'DOC',
+      });
+      return;
+    }
+
+    // QUY TRÌNH DÀNH CHO LÃNH ĐẠO / ADMIN:
+    // Lãnh đạo mới có thẩm quyền phân công và giao việc (Tạo Task).
+    // QUY TẮC: Lãnh đạo chỉ giao cho Chuyên viên (STAFF) hoặc Văn thư (CLERK); KHÔNG giao cho Lãnh đạo khác!
+    const assignedStaff = assignableStaffList.find((u) => u.id === editableAssigneeId) || assignableStaffList[0];
+    if (!assignedStaff) {
+      alert('Vui lòng chọn cán bộ chuyên viên hoặc văn thư để giao việc.');
+      return;
+    }
+
+    if (assignedStaff.role === 'LEADER' || assignedStaff.role === 'ADMIN') {
+      alert('⚠️ Quy chế hành chính: Lãnh đạo chỉ giao việc cho Chuyên viên (STAFF) hoặc Văn thư (CLERK), không giao việc cho Lãnh đạo khác.');
+      return;
+    }
+
+    const assigneeName = assignedStaff.fullName;
+    const assigneeId = assignedStaff.id;
     const newTaskId = 'task-ai-' + Date.now();
     const newTaskCode = `CV-${new Date().getFullYear()}-${Math.floor(Math.random() * 900 + 100)}`;
 
-    // 4. Create Task object (Persisted to Firestore and local database)
     const newTask: Task = {
       id: newTaskId,
       code: newTaskCode,
       title: `[${classificationResult.primaryDomain}] Xử lý ${classificationResult.docType}: ${(inputTitle || classificationResult.extractedEntities.summary).slice(0, 50)}...`,
-      description: `Nhiệm vụ điều phối xử lý văn bản đến số ${targetDoc.documentNumber} (${targetDoc.issuingAuthority}): ${classificationResult.dispatchRecommendation.routingReason}`,
+      description: `[CHỈ ĐẠO CỦA LÃNH ĐẠO ${currentUser?.fullName}]: Yêu cầu chủ trì nghiên cứu và tham mưu xử lý văn bản đến số ${targetDoc.documentNumber} (${targetDoc.issuingAuthority}). ${classificationResult.dispatchRecommendation.routingReason}`,
       dossierId: finalDossierId,
       incomingDocId: targetDoc.id,
       linkedDocId: targetDoc.id,
@@ -739,61 +825,38 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       ],
     };
 
-    // Save Task to Database & Firebase
     onSaveTask(newTask);
 
-    // Link Task ID back to incoming doc
     const updatedLinkedTasks = Array.from(new Set([...(targetDoc.linkedTaskIds || []), newTaskId]));
     targetDoc.linkedTaskIds = updatedLinkedTasks;
     targetDoc.status = 'PROCESSING';
+    targetDoc.assigneeId = assigneeId;
     onSaveIncomingDoc(targetDoc);
 
-    // 5. Send Real Notifications
-    // To assignee
-    if (assigneeId && assigneeId !== currentUser?.id) {
-      db.addNotification(
-        {
-          userId: assigneeId,
-          title: `⚡ Phân công xử lý văn bản: [${newTask.code}]`,
-          message: `${currentUser ? `${currentUser.fullName} (${currentUser.role === 'CLERK' ? 'Văn thư' : 'Lãnh đạo'})` : 'Cơ quan'} đã tạo nhiệm vụ xử lý văn bản đến [${targetDoc.documentNumber}]: "${newTask.title}". Hạn hoàn thành: ${newTask.dueDate}.`,
-          type: 'NEW_TASK',
-          linkType: 'TASK',
-          targetId: newTaskId,
-        },
-        currentUser
-      );
-    }
-
-    // To Leaders if Clerk performed dispatch
-    if (!isLeader) {
-      const leaders = users.filter((u) => (u.role === 'LEADER' || u.role === 'ADMIN') && u.id !== currentUser?.id);
-      leaders.forEach((leaderUser) => {
-        db.addNotification(
-          {
-            userId: leaderUser.id,
-            title: `📬 Văn thư đã tiếp nhận & phân công nhiệm vụ: [${newTask.code}]`,
-            message: `Văn thư ${currentUser?.fullName} đã tiếp nhận VB đến [${targetDoc.documentNumber}], mở hồ sơ ${dossierDisplayName} và phân công cán bộ ${assigneeName} chủ trì xử lý theo kết quả phân loại AI.`,
-            type: 'DOC_INCOMING',
-            linkType: 'TASK',
-            targetId: newTaskId,
-          },
-          currentUser
-        );
-      });
-    }
+    // Gửi thông báo đến Cán bộ được giao việc
+    db.addNotification(
+      {
+        userId: assigneeId,
+        title: `⚡ Phân công xử lý văn bản: [${newTask.code}]`,
+        message: `Lãnh đạo ${currentUser?.fullName} đã giao bạn chủ trì nhiệm vụ xử lý văn bản đến [${targetDoc.documentNumber}]: "${newTask.title}". Hạn hoàn thành: ${newTask.dueDate}.`,
+        type: 'NEW_TASK',
+        linkType: 'TASK',
+        targetId: newTaskId,
+      },
+      currentUser
+    );
 
     setSavedDossierTask({
       dossierCode: finalDossierCode,
       taskCode: newTask.code,
       assigneeName: assigneeName,
     });
-    setSuccessActionMsg(`Đã mở Hồ sơ [${finalDossierCode}], lưu văn bản [${targetDoc.documentNumber}] và giao nhiệm vụ [${newTask.code}] cho [${assigneeName}]!`);
+    setSuccessActionMsg(`Lãnh đạo đã mở Hồ sơ [${finalDossierCode}], lưu văn bản [${targetDoc.documentNumber}] và giao nhiệm vụ [${newTask.code}] cho [${assigneeName}]!`);
 
-    // Display modal notification with clear exit / navigation options
     setSuccessModal({
       isOpen: true,
-      title: 'Đã Mở Hồ Sơ & Phân Công Nhiệm Vụ Thành Công!',
-      message: `Đã vào sổ văn bản đến [${targetDoc.documentNumber}], mở Hồ sơ [${finalDossierCode}] và khởi tạo công việc mới [${newTask.code}] giao cho đồng chí ${assigneeName} (Đơn vị: ${editableDepartment}). Hạn hoàn thành: ${newTask.dueDate}. Dữ liệu đã được đồng bộ lên Firebase Cloud Firestore!`,
+      title: 'Đã Phê Duyệt Bút Phê & Giao Việc Thành Công!',
+      message: `Đã vào sổ văn bản đến [${targetDoc.documentNumber}], mở Hồ sơ [${finalDossierCode}] và khởi tạo công việc mới [${newTask.code}] giao cho đồng chí ${assigneeName} (${assignedStaff.position || 'Chuyên viên'} - ${assignedStaff.department || editableDepartment}). Hạn hoàn thành: ${newTask.dueDate}.`,
       dossierCode: finalDossierCode,
       targetSection: 'ALL_TASKS',
       actionType: 'TASK',

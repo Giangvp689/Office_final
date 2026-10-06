@@ -1554,23 +1554,20 @@ class DatabaseService {
     // Gửi thông báo đến Lãnh đạo được trình
     this.addNotification(
       {
-        id: `nt-sub-${Date.now()}`,
         userId: leaderId,
         title: `Trình phê duyệt VB đến: ${doc.documentNumber}`,
         message: `Văn thư ${clerk.fullName} đã tiếp nhận và trình văn bản [${doc.documentNumber} - ${doc.issuingAuthority}] xin ý kiến chỉ đạo: "${doc.summary.slice(0, 100)}..."${submissionNote ? ` (Đề xuất: ${submissionNote})` : ''}`,
         type: 'DOC_ASSIGNED',
         linkType: 'INCOMING_DOC',
         targetId: doc.id,
-        isRead: false,
-        createdAt: now,
       },
       clerk
     );
 
     // Ghi nhật ký hệ thống
-    this.addAuditLog(
+    this.logAction(
       'UPDATE',
-      'INCOMING_DOCUMENT',
+      'INCOMING_DOC',
       doc.id,
       doc.documentNumber,
       `Văn thư ${clerk.fullName} đã tiếp nhận vào sổ và trình Lãnh đạo ${leaderName} phê duyệt, cho ý kiến chỉ đạo.`,
@@ -1599,8 +1596,18 @@ class DatabaseService {
     const doc = docs.find((d) => d.id === docId);
     if (!doc) return undefined;
 
-    const now = new Date().toISOString();
+    if (leader.role !== 'LEADER' && leader.role !== 'ADMIN') {
+      console.warn('⚠️ Chỉ Lãnh đạo mới có quyền duyệt bút phê và giao việc!');
+      return undefined;
+    }
+
     const assignee = this.getUserById(assignment.assigneeId);
+    if (assignee && (assignee.role === 'LEADER' || assignee.role === 'ADMIN')) {
+      console.warn('⚠️ Lãnh đạo không được giao việc cho Lãnh đạo khác! Chỉ giao cho Chuyên viên hoặc Văn thư.');
+      return undefined;
+    }
+
+    const now = new Date().toISOString();
     const assigneeName = assignee?.fullName || 'Cán bộ';
 
     // 1. Tự động tạo Nhiệm vụ mới liên kết chặt chẽ

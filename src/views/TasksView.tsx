@@ -71,6 +71,8 @@ import {
   canSubmitTaskForApproval,
   canNudgeOrRemindStaff,
   isClerk,
+  canEditTask,
+  canDeleteTask,
 } from '../utils/permission';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { generateTaskResultReportPdf } from '../utils/samplePdfGenerator';
@@ -403,6 +405,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   });
 
   const handleOpenAddModal = () => {
+    if (!canCreateOrAssignTask(currentUser)) {
+      alert('⚠️ Quy chế hành chính: Văn thư không có thẩm quyền tạo hoặc giao việc. Chỉ Lãnh đạo mới có thẩm quyền phân công nhiệm vụ cho cán bộ.');
+      return;
+    }
     const defaultAssignee = assignableStaffList[0]?.id || '';
     setEditingTask({
       id: 'task-' + Date.now(),
@@ -431,6 +437,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
   };
 
   const handleOpenEditModal = (task: Task) => {
+    if (!canEditTask(task, currentUser)) {
+      alert('⚠️ Quy chế hành chính: Văn thư và Chuyên viên không có thẩm quyền điều chỉnh phân công nhiệm vụ. Chỉ Lãnh đạo mới có thẩm quyền điều chỉnh!');
+      return;
+    }
     setEditingTask({ ...task });
     setAiError(null);
     setFormError(null);
@@ -441,6 +451,11 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const handleSave = (e?: React.FormEvent) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!editingTask) return;
+
+    if (!canCreateOrAssignTask(currentUser)) {
+      setFormError('⚠️ Quy chế hành chính: Văn thư không có thẩm quyền giao việc. Chỉ Lãnh đạo mới có quyền phân công nhiệm vụ.');
+      return;
+    }
 
     let finalTitle = (editingTask.title || '').trim();
     if (!finalTitle && editingTask.description?.trim()) {
@@ -1220,24 +1235,28 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             className="flex items-center justify-end gap-1.5"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <button
-                              onClick={() => handleOpenEditModal(t)}
-                              title="Sửa công việc"
-                              className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg cursor-pointer transition-colors"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (confirm(`Bạn có chắc muốn xóa công việc ${t.title}?`)) {
-                                  onDeleteTask(t.id);
-                                }
-                              }}
-                              title="Xóa công việc"
-                              className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg cursor-pointer transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {canEditTask(t, currentUser) && (
+                              <button
+                                onClick={() => handleOpenEditModal(t)}
+                                title="Sửa công việc"
+                                className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg cursor-pointer transition-colors"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {canDeleteTask(currentUser) && (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Bạn có chắc muốn xóa công việc ${t.title}?`)) {
+                                    onDeleteTask(t.id);
+                                  }
+                                }}
+                                title="Xóa công việc"
+                                className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg cursor-pointer transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -2397,16 +2416,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const t = selectedTask;
-                    setSelectedTask(null);
-                    handleOpenEditModal(t);
-                  }}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
-                >
-                  Chỉnh sửa nhiệm vụ
-                </button>
+                {canEditTask(selectedTask, currentUser) && (
+                  <button
+                    onClick={() => {
+                      const t = selectedTask;
+                      setSelectedTask(null);
+                      handleOpenEditModal(t);
+                    }}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
+                  >
+                    Chỉnh sửa nhiệm vụ
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedTask(null)}
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs cursor-pointer transition-colors"

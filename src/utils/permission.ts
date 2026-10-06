@@ -71,6 +71,25 @@ export function canCreateOrAssignTask(user?: User | null): boolean {
 }
 
 /**
+ * Thẩm quyền Chỉnh sửa / Điều chỉnh phân công nhiệm vụ:
+ * - Chỉ Lãnh đạo (LEADER) hoặc Quản trị viên (ADMIN) mới có thẩm quyền phân công và điều chỉnh nhiệm vụ.
+ * - Văn thư (CLERK) và Chuyên viên (STAFF) không có quyền thay đổi phân công nhiệm vụ.
+ */
+export function canEditTask(task?: Task | null, user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'ADMIN' || user.role === 'LEADER';
+}
+
+/**
+ * Thẩm quyền Xóa nhiệm vụ:
+ * - Chỉ Lãnh đạo (LEADER) hoặc Quản trị viên (ADMIN) mới có thẩm quyền xóa nhiệm vụ.
+ */
+export function canDeleteTask(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'ADMIN' || user.role === 'LEADER';
+}
+
+/**
  * QUY CHẾ ĐIỀU HÀNH CÔNG VIỆC:
  * Kiểm tra xem một người dùng có thể là ĐỐI TƯỢNG ĐƯỢC GIAO NHIỆM VỤ hay không.
  * - Quy chế hành chính: Lãnh đạo (LEADER) chỉ giao việc cho Chuyên viên (STAFF) hoặc Văn thư (CLERK).

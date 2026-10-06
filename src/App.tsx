@@ -426,6 +426,10 @@ export const App: React.FC = () => {
               onDeleteDoc={(id) => db.deleteIncomingDoc(id, currentUser)}
               onDraftOutgoingDoc={handleDraftOutgoingDocFromIncomingDoc}
               onCreateTaskFromDoc={(doc) => {
+                if (currentUser.role === 'CLERK') {
+                  alert('⚠️ Quy chế hành chính: Văn thư không có thẩm quyền giao việc. Chỉ Lãnh đạo mới có quyền phân công nhiệm vụ.');
+                  return;
+                }
                 const newTaskId = 'task-' + Date.now();
                 db.saveTask(
                   {
