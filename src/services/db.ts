@@ -49,7 +49,7 @@ class DatabaseService {
   private mySqlConnected: boolean = false;
   private mySqlInfo: any = null;
   private firestoreConnected: boolean = false;
-  private dataSourceMode: 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID' = 'FIREBASE_ONLY';
+  private dataSourceMode: 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID' = 'MYSQL';
   private memoryStore: Record<string, string> = {};
 
   private getDeletedTaskIds(): Set<string> {
@@ -72,13 +72,18 @@ class DatabaseService {
     this.cleanStorageOnBoot();
     this.initIfEmpty();
     const savedMode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
-    this.dataSourceMode = (savedMode as any) || 'FIREBASE_ONLY';
+    this.dataSourceMode = (savedMode as any) || 'MYSQL';
 
     if (this.dataSourceMode === 'FIREBASE_ONLY') {
       this.initFirestoreSync();
-    } else {
+    } else if (this.dataSourceMode === 'HYBRID') {
       this.checkAndSyncMySql();
       this.initFirestoreSync();
+      this.fetchAndRefreshAuditLogs();
+    } else {
+      // Pure MYSQL Mode (Không gọi Firestore, tránh bị lỗi Quota Exceeded)
+      firestoreSync.stopListening();
+      this.checkAndSyncMySql();
       this.fetchAndRefreshAuditLogs();
     }
   }
@@ -231,8 +236,20 @@ class DatabaseService {
     } catch {}
   }
 
+  public isPureMySqlMode(): boolean {
+    return this.dataSourceMode === 'MYSQL';
+  }
+
+  public shouldSyncFirestore(): boolean {
+    return this.dataSourceMode !== 'MYSQL';
+  }
+
   private async initFirestoreSync() {
     if (typeof window === 'undefined') return;
+    if (this.dataSourceMode === 'MYSQL') {
+      firestoreSync.stopListening();
+      return;
+    }
     try {
       this.firestoreConnected = await firestoreSync.checkConnection();
 
@@ -565,13 +582,13 @@ class DatabaseService {
 
   public isFirebaseOnlyMode(): boolean {
     const mode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
-    if (!mode) return true; // Default to Firebase Only
+    if (!mode) return false;
     return mode === 'FIREBASE_ONLY';
   }
 
   public getDataSourceMode(): 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID' {
     const mode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
-    if (!mode) return 'FIREBASE_ONLY';
+    if (!mode) return 'MYSQL';
     return mode as 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID';
   }
 
@@ -581,7 +598,13 @@ class DatabaseService {
     if (mode === 'FIREBASE_ONLY') {
       this.initFirestoreSync();
       this.reloadFromFirestore();
+    } else if (mode === 'MYSQL') {
+      // Pure MySQL mode: stop Firestore listening completely to prevent quota exhaustion
+      firestoreSync.stopListening();
+      this.firestoreConnected = false;
+      this.checkAndSyncMySql();
     } else {
+      this.initFirestoreSync();
       this.checkAndSyncMySql();
     }
     this.notify();

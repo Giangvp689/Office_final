@@ -87,7 +87,7 @@ export function canUserBeAssignedTask(user?: User | null): boolean {
  * - Văn thư (CLERK): Thụ lý các nhiệm vụ văn thư lưu trữ, số hóa, nộp lưu, thống kê văn bưu.
  * - LOẠI TRỪ TUYỆT ĐỐI LÃNH ĐẠO (LEADER) và Quản trị viên (ADMIN) khỏi danh sách nhận việc.
  */
-export function getAssignableStaffUsers(users: User[] = []): User[] {
+export function getAssignableStaffUsers(users: User[] = [], _currentUser?: User | null): User[] {
   if (!Array.isArray(users)) return [];
   return users.filter(
     (u) => u && u.status !== 'INACTIVE' && (u.role === 'STAFF' || u.role === 'CLERK')

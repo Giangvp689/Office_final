@@ -40,7 +40,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
   onDataResetOrRestored,
   currentUser,
 }) => {
-  const [activeTab, setActiveTab] = useState<'FIREBASE' | 'MYSQL' | 'EMAIL' | 'BACKUP'>('FIREBASE');
+  const [activeTab, setActiveTab] = useState<'FIREBASE' | 'MYSQL' | 'EMAIL' | 'BACKUP'>('MYSQL');
   const [jsonText, setJsonText] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [dbStatus, setDbStatus] = useState<{ connected: boolean; tablesCount?: number; error?: string; config?: any } | null>(null);
@@ -72,6 +72,21 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
   const [database, setDatabase] = useState('vanphong_so');
   const [configSaveMsg, setConfigSaveMsg] = useState<string | null>(null);
   const [rulesCopied, setRulesCopied] = useState(false);
+  const [currentMode, setCurrentMode] = useState<'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID'>(() => db.getDataSourceMode());
+
+  const handleSwitchMode = async (mode: 'FIREBASE_ONLY' | 'MYSQL') => {
+    db.setDataSourceMode(mode);
+    setCurrentMode(mode);
+    if (mode === 'MYSQL') {
+      setActiveTab('MYSQL');
+      await db.checkAndSyncMySql();
+      checkStatus();
+    } else {
+      setActiveTab('FIREBASE');
+      await checkFirebase();
+    }
+    onDataResetOrRestored();
+  };
 
   const handleCopyRules = () => {
     const rulesCode = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
@@ -337,6 +352,52 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
 
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-5 text-xs custom-scrollbar">
+          {/* Chuyển đổi chế độ Cơ sở dữ liệu: MySQL thuần vs Firebase */}
+          <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-400 font-medium">Chế độ CSDL đang chạy:</span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1.5 ${
+                    currentMode === 'MYSQL'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-orange-500/20 text-orange-300 border border-orange-500/40'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${currentMode === 'MYSQL' ? 'bg-emerald-400 animate-pulse' : 'bg-orange-400'}`}></span>
+                  {currentMode === 'MYSQL' ? 'MySQL Thuần (Không dùng Firebase)' : 'Firebase Firestore Cloud'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 mt-1">
+                {currentMode === 'MYSQL'
+                  ? '✅ Toàn bộ văn bản, hồ sơ và file PDF lưu trực tiếp vào MySQL. Không lo hạn ngạch quota, không sợ chập chờn, tốc độ tức thì!'
+                  : '⚠️ Đang bật đồng bộ Firebase. Nếu Firebase bị hết lượt truy cập quota, hãy bấm chuyển sang MySQL thuần ngay bên cạnh.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {currentMode !== 'MYSQL' ? (
+                <button
+                  type="button"
+                  onClick={() => handleSwitchMode('MYSQL')}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95"
+                >
+                  <Server className="w-3.5 h-3.5" />
+                  <span>Chuyển sang MySQL Thuần</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleSwitchMode('FIREBASE_ONLY')}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-[11px] rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 border border-slate-700"
+                >
+                  <Flame className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Chuyển về Firebase</span>
+                </button>
+              )}
+            </div>
+          </div>
+
           {activeTab === 'FIREBASE' && (
             <div className="space-y-4">
               {/* Live Firebase Cloud Status */}
