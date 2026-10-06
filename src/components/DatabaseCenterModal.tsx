@@ -60,6 +60,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
 
   // Firebase status
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState(false);
+  const [isFirebasePulling, setIsFirebasePulling] = useState(false);
   const [firebaseSyncMsg, setFirebaseSyncMsg] = useState<string | null>(null);
   const [firestoreConnected, setFirestoreConnected] = useState(false);
 
@@ -150,6 +151,52 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
       setFirebaseSyncMsg(`Lỗi đồng bộ: ${err.message || err}`);
     } finally {
       setIsFirebaseSyncing(false);
+    }
+  };
+
+  const handlePullFromFirebase = async () => {
+    setIsFirebasePulling(true);
+    setFirebaseSyncMsg(null);
+    try {
+      const data = await firestoreSync.fetchAllFromFirestore();
+      if (data) {
+        if (data.users && data.users.length > 0) {
+          localStorage.setItem('qlvb_users_v2', JSON.stringify(data.users));
+        }
+        if (data.tasks && data.tasks.length > 0) {
+          localStorage.setItem('qlvb_tasks_v2', JSON.stringify(data.tasks));
+        }
+        if (data.incomingDocs && data.incomingDocs.length > 0) {
+          localStorage.setItem('qlvb_incoming_docs_v2', JSON.stringify(data.incomingDocs));
+        }
+        if (data.outgoingDocs && data.outgoingDocs.length > 0) {
+          localStorage.setItem('qlvb_outgoing_docs_v2', JSON.stringify(data.outgoingDocs));
+        }
+        if (data.dossiers && data.dossiers.length > 0) {
+          localStorage.setItem('qlvb_dossiers_v2', JSON.stringify(data.dossiers));
+        }
+        if (data.attachments && data.attachments.length > 0) {
+          localStorage.setItem('qlvb_attachments_v2', JSON.stringify(data.attachments));
+        }
+        if (data.notifications && data.notifications.length > 0) {
+          localStorage.setItem('qlvb_notifications_v2', JSON.stringify(data.notifications));
+        }
+        if (data.masterData) {
+          localStorage.setItem('qlvb_master_data_v2', JSON.stringify(data.masterData));
+        }
+        if (data.auditLogs && data.auditLogs.length > 0) {
+          localStorage.setItem('qlvb_audit_logs_v2', JSON.stringify(data.auditLogs.slice(0, 500)));
+        }
+        setFirebaseSyncMsg(`✓ Đã tải và cập nhật thành công ${data.tasks?.length || 0} công việc/nhiệm vụ, ${data.incomingDocs?.length || 0} văn bản đến từ Firebase Firestore!`);
+        setFirestoreConnected(true);
+        onDataResetOrRestored();
+      } else {
+        setFirebaseSyncMsg('Không nhận được dữ liệu từ Firestore hoặc Firestore chưa có bản ghi.');
+      }
+    } catch (err: any) {
+      setFirebaseSyncMsg(`Lỗi khi tải từ Firestore: ${err.message || err}`);
+    } finally {
+      setIsFirebasePulling(false);
     }
   };
 
@@ -382,14 +429,26 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleSyncToFirebase}
-                    disabled={isFirebaseSyncing}
-                    className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-xl text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>{isFirebaseSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ Toàn Bộ Dữ Liệu Lên Firestore'}</span>
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={handlePullFromFirebase}
+                      disabled={isFirebasePulling}
+                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-100 font-bold rounded-xl text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm border border-slate-600"
+                      title="Kéo toàn bộ nhiệm vụ, văn bản đến/đi từ Firebase Firestore về trình duyệt này"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{isFirebasePulling ? 'Đang tải...' : 'Tải Dữ Liệu Từ Firestore Về'}</span>
+                    </button>
+
+                    <button
+                      onClick={handleSyncToFirebase}
+                      disabled={isFirebaseSyncing}
+                      className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-xl text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isFirebaseSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ Lên Firestore'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {firebaseSyncMsg && (

@@ -32,6 +32,7 @@ import {
 import {
   User,
   IncomingDocument,
+  Task,
   Dossier,
   DocumentClassificationResult,
   UrgencyLevel,
@@ -41,7 +42,6 @@ import {
 import { classifyDocumentWithAI } from '../services/aiService';
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { classifyDocumentLocally } from '../utils/localClassifier';
-import { SamplePdfModal } from '../components/SamplePdfModal';
 import { EmailReceiverModal } from '../components/EmailReceiverModal';
 import { Download, ShieldAlert, Mail, Edit3 } from 'lucide-react';
 import { isLeaderOrAdmin, isClerk } from '../utils/permission';
@@ -57,187 +57,6 @@ interface ClassificationStudioViewProps {
   onSaveTask: (task: any) => void;
   onNavigateSection: (section: any) => void;
 }
-
-// Preset samples of administrative documents across various domains for instant testing
-const PRESET_SAMPLES = [
-  {
-    id: 'sample-1',
-    name: '1. Quyết định phân bổ ngân sách & chi tiêu (Tài chính - Kế toán)',
-    domain: 'Tài chính - Kế toán',
-    urgency: 'THUONG',
-    docType: 'Quyết định',
-    title: 'Quyết định V/v Phân bổ dự toán ngân sách chi thường xuyên Quý II/2025',
-    text: `ỦY BAN NHÂN DÂN THÀNH PHỐ HÀ NỘI
-SỞ TÀI CHÍNH
-Số: 218/QĐ-STC
-
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
-Hà Nội, ngày 15 tháng 04 năm 2025
-
-QUYẾT ĐỊNH
-Về việc phân bổ dự toán ngân sách nhà nước chi thường xuyên Quý II năm 2025
-
-GIÁM ĐỐC SỞ TÀI CHÍNH
-- Căn cứ Luật Ngân sách nhà nước số 83/2015/QH13;
-- Căn cứ Nghị định số 163/2016/NĐ-CP quy định chi tiết thi hành Luật Ngân sách nhà nước;
-- Căn cứ Quyết định số 12/2024/QĐ-UBND quy định chức năng, nhiệm vụ của Sở Tài chính;
-- Xét đề nghị của Trưởng phòng Quản lý Ngân sách và Kế toán trưởng.
-
-QUYẾT ĐỊNH:
-Điều 1. Phân bổ dự toán chi thường xuyên nguồn vốn ngân sách nhà nước đợt 2 năm 2025 cho các đơn vị trực thuộc với tổng kinh phí là 4.500.000.000 đồng (Bốn tỷ năm trăm triệu đồng chẵn).
-Điều 2. Phòng Kế hoạch - Tài chính và Kế toán trưởng có trách nhiệm kiểm tra chứng từ giải ngân, thực hiện thanh quyết toán đúng mục lục ngân sách và các định mức tiêu chuẩn hiện hành trước ngày 30/06/2025.
-Điều 3. Chánh Văn phòng, Trưởng phòng Quản lý Ngân sách và các thủ trưởng cơ quan trực thuộc chịu trách nhiệm thi hành Quyết định này.
-
-Nơi nhận:
-- Như Điều 3;
-- Kho bạc Nhà nước Hà Nội;
-- Lưu: VT, QLNS.
-
-GIÁM ĐỐC
-(Đã ký)
-Trần Văn Hùng`,
-  },
-  {
-    id: 'sample-2',
-    name: '2. Tờ trình bổ nhiệm chức vụ & quy hoạch (Tổ chức - Cán bộ)',
-    domain: 'Tổ chức - Cán bộ',
-    urgency: 'KHAN',
-    docType: 'Tờ trình',
-    title: 'Tờ trình V/v Bổ nhiệm chức vụ Phó Trưởng phòng Hành chính Tổng hợp',
-    text: `CƠ QUAN VĂN PHÒNG ĐIỀU HÀNH
-PHÒNG TỔ CHỨC CÁN BỘ
-Số: 45/TTr-TCCB
-
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
-Ngày 20 tháng 05 năm 2025
-
-TỜ TRÌNH
-Về việc bổ nhiệm chức vụ Phó Trưởng phòng Hành chính Tổng hợp
-
-Kính gửi: Ban Giám đốc Cơ quan
-
-- Căn cứ Luật Cán bộ, công chức năm 2008 và Luật sửa đổi, bổ sung một số điều năm 2019;
-- Căn cứ Nghị định số 138/2020/NĐ-CP quy định về tuyển dụng, sử dụng và quản lý công chức;
-- Căn cứ Nghị quyết của Đảng ủy cơ quan về công tác cán bộ;
-- Căn cứ nhu cầu công tác và năng lực thực tiễn của công chức.
-
-Phòng Tổ chức Cán bộ kính trình Ban Giám đốc xem xét bổ nhiệm đồng chí Lê Hoàng Nam, sinh ngày 12/08/1988, Thạc sĩ Quản lý công, hiện là Chuyên viên chính, giữ chức vụ Phó Trưởng phòng Hành chính Tổng hợp.
-Thời hạn bổ nhiệm: 05 năm kể từ ngày 01/06/2025.
-Hồ sơ gồm có: Sơ yếu lý lịch 2C/TCTW, Bản kiểm điểm cá nhân, Giấy khám sức khỏe, Bản sao văn bằng chứng chỉ và Biên bản lấy phiếu tín nhiệm tại đơn vị (đạt 100% phiếu đồng ý).
-
-Kính đề nghị Ban Giám đốc xem xét, phê duyệt ban hành Quyết định.
-
-TRƯỞNG PHÒNG TỔ CHỨC CÁN BỘ
-(Đã ký)
-Trần Thị Bích`,
-  },
-  {
-    id: 'sample-3',
-    name: '3. Công văn HỎA TỐC phòng cháy chữa cháy (Hành chính - Quản trị / Hỏa Tốc)',
-    domain: 'Hành chính - Quản trị',
-    urgency: 'HOA_TOC',
-    docType: 'Công văn',
-    title: 'Công văn HỎA TỐC V/v Tăng cường an toàn PCCC và sẵn sàng trực ban khẩn cấp trong mùa nắng nóng',
-    text: `ỦY BAN NHÂN DÂN THÀNH PHỐ
-VĂN PHÒNG UBND
-Số: 102/CV-UBND-HT
-
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
-HÀ NỘI, ngày 10 tháng 06 năm 2025
-
-HỎA TỐC
-
-CÔNG VĂN
-V/v Tăng cường kiểm tra phòng cháy chữa cháy và trực ban 24/24h
-
-Kính gửi: Thủ trưởng các Sở, Ban, Ngành, Chủ tịch UBND các Quận, Huyện
-
-Trước tình hình thời tiết nắng nóng gay gắt kéo dài, tiềm ẩn nguy cơ cháy nổ cao tại các trụ sở cơ quan, khu dân cư và trung tâm lưu trữ tài liệu:
-Chủ tịch Ủy ban nhân dân Thành phố yêu cầu Thủ trưởng các cơ quan, đơn vị khẩn trương triển khai ngay các nhiệm vụ sau:
-1. Tiến hành rà soát, kiểm tra toàn bộ hệ thống điện, thiết bị báo cháy tự động, bình chữa cháy cầm tay tại cơ quan trước 17h00 ngày hôm nay 10/06/2025.
-2. Thiết lập đường dây nóng và tổ chức lực lượng trực ban phòng ngừa cháy nổ 24/24 giờ liên tục.
-3. Báo cáo tình hình kiểm tra và phương án xử lý sự cố gửi về Văn phòng UBND Thành phố trước 08h00 ngày 11/06/2025 để tổng hợp báo cáo Thường trực Thành ủy.
-
-Yêu cầu các đơn vị thực hiện nghiêm túc, không được chậm trễ.
-
-Nơi nhận:
-- Như trên;
-- Chủ tịch UBND TP (để b/c);
-- Lưu: VT, NC.
-
-CHỦ TỊCH
-(Đã ký và đóng dấu)
-Nguyễn Thành Trung`,
-  },
-  {
-    id: 'sample-4',
-    name: '4. Kế hoạch triển khai Chuyển đổi số & An ninh mạng (Kỹ thuật - Công nghệ)',
-    domain: 'Kỹ thuật - Công nghệ',
-    urgency: 'THUONG',
-    docType: 'Kế hoạch',
-    title: 'Kế hoạch V/v Triển khai hạ tầng Trung tâm dữ liệu số hóa và bảo đảm An toàn thông tin mạng năm 2025',
-    text: `SỞ THÔNG TIN VÀ TRUYỀN THÔNG
-Số: 89/KH-STTTT
-
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
-Hà Nội, ngày 02 tháng 03 năm 2025
-
-KẾ HOẠCH
-Triển khai nâng cấp hệ thống phần mềm dùng chung và bảo đảm An toàn an ninh mạng năm 2025
-
-I. MỤC ĐÍCH, YÊU CẦU:
-1. Số hóa 100% văn bản đến, văn bản đi và hồ sơ lưu trữ điện tử theo Nghị định 30/2020/NĐ-CP.
-2. Triển khai chữ ký số chuyên dùng công vụ cho 100% cán bộ, chuyên viên.
-3. Đáp ứng tiêu chuẩn an toàn an ninh thông tin cấp độ 3 theo Nghị định 85/2016/NĐ-CP.
-
-II. NỘI DUNG THỰC HIỆN:
-- Hạng mục 1: Mua sắm máy chủ Cloud Server, hệ thống lưu trữ SAN và tường lửa thế hệ mới (Next-Gen Firewall).
-- Hạng mục 2: Nâng cấp phân hệ Trí tuệ nhân tạo (AI) hỗ trợ phân loại văn bản và trích xuất dữ liệu tự động.
-- Hạng mục 3: Đào tạo tập huấn an toàn thông tin cho 250 cán bộ nhân viên trong quý III/2025.
-
-III. KINH PHÍ VÀ TIẾN ĐỘ THỰC HIỆN:
-- Tổng khái toán: 1.850.000.000 VNĐ từ nguồn ngân sách CNTT.
-- Đơn vị chủ trì: Phòng Kỹ thuật - Công nghệ. Đơn vị phối hợp: Phòng Tài chính - Kế toán.
-
-GIÁM ĐỐC
-(Đã ký)
-Phạm Quốc Khánh`,
-  },
-  {
-    id: 'sample-5',
-    name: '5. Thông báo kết luận thanh tra chuyên đề tài chính (Pháp chế - Thanh tra)',
-    domain: 'Pháp chế - Thanh tra',
-    urgency: 'KHAN',
-    docType: 'Thông báo',
-    title: 'Thông báo Kết luận Thanh tra việc chấp hành chính sách pháp luật về thu chi tài chính và quản lý tài sản công',
-    text: `THANH TRA THÀNH PHỐ
-Số: 64/TB-TTTP
-
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
-Ngày 18 tháng 04 năm 2025
-
-THÔNG BÁO
-Kết luận thanh tra việc quản lý, sử dụng ngân sách và tài sản công
-
-Thực hiện Quyết định số 105/QĐ-TTTP về việc thanh tra đột xuất việc chấp hành quy định pháp luật trong mua sắm trang thiết bị và đầu tư công:
-Thanh tra Thành phố thông báo kết luận như sau:
-1. Ưu điểm: Đơn vị đã cơ bản tuân thủ chế độ kế toán và mở sổ sách theo dõi tài sản.
-2. Tồn tại, thiếu sót: Một số gói thầu mua sắm máy móc văn phòng chưa đầy đủ 03 báo giá theo quy định Luật Đấu thầu số 22/2023/QH15; việc trích lập quỹ phát triển sự nghiệp chưa kịp thời.
-3. Kiến nghị xử lý:
-- Yêu cầu Thủ trưởng đơn vị tổ chức kiểm điểm trách nhiệm của các cá nhân liên quan;
-- Thu hồi nộp ngân sách nhà nước số tiền chênh lệch 45.200.000 đồng trước ngày 15/05/2025;
-- Báo cáo kết quả khắc phục gửi về Thanh tra Thành phố.
-
-CHÁNH THANH TRA
-(Đã ký)
-Vũ Đức Thịnh`,
-  },
-];
 
 // Benchmark dataset for accuracy metrics
 const BENCHMARK_DATASET = [
@@ -273,7 +92,6 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [successActionMsg, setSuccessActionMsg] = useState<string | null>(null);
-  const [isSamplePdfModalOpen, setIsSamplePdfModalOpen] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   // Duplication prevention & feedback states
@@ -344,51 +162,6 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     }
 
     setEditableDueDate(rec.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0]);
-  };
-
-  // Handle selected sample PDF directly
-  const handleSelectSamplePdfFile = async (file: File) => {
-    setIsReadingFile(true);
-    setErrorMessage(null);
-    setSavedIncomingDoc(null);
-    setSavedDossierTask(null);
-
-    // Read Data URL for full preview fidelity
-    const reader = new FileReader();
-    reader.onload = (re) => {
-      setUploadedFileDataUrl((re.target?.result as string) || '');
-    };
-    reader.readAsDataURL(file);
-
-    try {
-      const res = await extractTextFromFile(file);
-      setFileName(file.name);
-      if (res.title) setInputTitle(res.title);
-      if (res.text) {
-        setInputText(res.text);
-        setSuccessActionMsg(`Đã trích xuất thành công ${res.text.length.toLocaleString('vi-VN')} ký tự từ tệp "${file.name}"!`);
-      }
-      if (!res.success && res.error) {
-        setErrorMessage(res.error);
-      }
-    } catch (err: any) {
-      setErrorMessage(`Không thể xử lý tệp: ${err.message || 'Lỗi trích xuất'}`);
-    } finally {
-      setIsReadingFile(false);
-    }
-  };
-
-  // Auto-fill preset sample
-  const handleSelectSample = (sample: typeof PRESET_SAMPLES[0]) => {
-    setInputTitle(sample.title);
-    setInputText(sample.text);
-    setFileName(`${sample.docType}_${sample.domain}.txt`);
-    setUploadedFileDataUrl('');
-    setClassificationResult(null);
-    setErrorMessage(null);
-    setSuccessActionMsg(null);
-    setSavedIncomingDoc(null);
-    setSavedDossierTask(null);
   };
 
   // Import Document from Official Email Inbox into Classification Studio
@@ -601,138 +374,15 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     });
   };
 
-  // Quick Action 2: For Leader -> Create Dossier & Task; For Clerk -> Forward to Leader for Approval & Directive
+  // Quick Action 2: Open Dossier & Create Task for all roles (Clerk or Leader)
   const handleCreateDossierAndTask = () => {
     if (!classificationResult) return;
 
-    const isLeader = isLeaderOrAdmin(currentUser);
-
-    // If current user is CLERK (or non-leader): Follow State Administrative Flow (NĐ 30/2020/NĐ-CP)
-    // Clerk CANNOT directly assign tasks to colleagues; Clerk registers doc and submits slip to Leader!
-    if (!isLeader) {
-      if (savedDossierTask) {
-        setSuccessModal({
-          isOpen: true,
-          title: 'Văn Bản Đã Được Kính Trình Lãnh Đạo Trước Đó',
-          message: `Phiếu trình văn bản [${savedDossierTask.taskCode}] đã được chuyển tiếp đến Lãnh đạo cơ quan để xem xét cho ý kiến chỉ đạo và phân công cán bộ chủ trì. Đồng chí có thể bấm xem trong Sổ Văn Bản Đến!`,
-          docNumber: savedDossierTask.taskCode,
-          targetSection: 'INCOMING_DOCS',
-          actionType: 'DOC',
-        });
-        return;
-      }
-
-      // Step 1: Ensure incoming doc is saved using user's exact selections
-      let targetDoc = savedIncomingDoc;
-      let dossierDisplayName = 'Chưa xếp vào hồ sơ';
-
-      if (!targetDoc) {
-        const matchedAssignee = users.find((u) => u.id === editableAssigneeId);
-        let finalDossierId: string | undefined = undefined;
-
-        if (editableDossierChoice === 'NEW') {
-          const newDosId = 'dos-ai-' + Date.now();
-          const newDosCode = classificationResult.dispatchRecommendation.suggestedDossierCode || `HS-${new Date().getFullYear()}-AI-${Math.floor(Math.random() * 900 + 100)}`;
-          const newDos: Dossier = {
-            id: newDosId,
-            code: newDosCode,
-            title: classificationResult.dispatchRecommendation.suggestedDossierTitle || `Hồ sơ ${classificationResult.primaryDomain}`,
-            department: editableDepartment,
-            status: 'OPEN',
-            securityLevel: classificationResult.securityLevel,
-            startDate: new Date().toISOString().split('T')[0],
-            description: `Hồ sơ mở tự động từ văn bản phân loại AI: ${classificationResult.extractedEntities.summary}`,
-            tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Engine'],
-            createdById: currentUser?.id || '',
-          };
-          onSaveDossier(newDos);
-          finalDossierId = newDosId;
-          dossierDisplayName = `Hồ sơ mới [${newDosCode}]`;
-        } else if (editableDossierChoice && editableDossierChoice !== 'NONE') {
-          const activeDos = dossiers.find((d) => d.id === editableDossierChoice && d.status !== 'CLOSED' && d.status !== 'ARCHIVED');
-          if (activeDos) {
-            finalDossierId = activeDos.id;
-            dossierDisplayName = `[${activeDos.code}] ${activeDos.title}`;
-          }
-        }
-
-        const baseDocNumber = classificationResult.extractedEntities.documentNumber || `${Math.floor(Math.random() * 900 + 100)}/UBND-VP`;
-        const docExists = incomingDocs.some((d) => d.documentNumber === baseDocNumber);
-        const finalDocNumber = docExists ? `${baseDocNumber}-${Math.floor(Math.random() * 90 + 10)}` : baseDocNumber;
-
-        targetDoc = {
-          id: 'doc-in-ai-' + Date.now(),
-          documentNumber: finalDocNumber,
-          officialNumber: classificationResult.extractedEntities.officialNumber || `${Math.floor(Math.random() * 90 + 10)}/QĐ-STC`,
-          receivedDate: new Date().toISOString().split('T')[0],
-          issueDate: classificationResult.extractedEntities.issueDate || new Date().toISOString().split('T')[0],
-          issuingAuthority: classificationResult.extractedEntities.issuingAuthority || 'Ủy ban nhân dân Thành phố',
-          summary: classificationResult.extractedEntities.summary || inputTitle || 'Văn bản đã qua phân loại AI',
-          docType: classificationResult.docType,
-          urgency: classificationResult.urgency,
-          securityLevel: classificationResult.securityLevel,
-          assigneeId: matchedAssignee?.id || '',
-          dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
-          status: 'PENDING_ASSIGN',
-          dossierId: finalDossierId,
-          attachments: [
-            {
-              id: 'att-' + Date.now(),
-              fileName: fileName || 'Van_ban_phan_loai_AI.pdf',
-              fileSize: 1024 * 350,
-              fileType: 'pdf',
-              fileUrl: uploadedFileDataUrl || '',
-              category: 'VAN_BAN_DEN',
-              uploadedByName: currentUser?.fullName || 'Văn thư cơ quan',
-              tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified', 'Cloud Firestore'],
-            },
-          ],
-        };
-        onSaveIncomingDoc(targetDoc);
-        setSavedIncomingDoc(targetDoc);
-      }
-
-      // Step 2: Notify Leaders
-      const leaders = users.filter((u) => (u.role === 'LEADER' || u.role === 'ADMIN') && u.id !== currentUser?.id);
-      const suggestedStaff = users.find((u) => u.id === editableAssigneeId);
-      leaders.forEach((leaderUser) => {
-        db.addNotification(
-          {
-            userId: leaderUser.id,
-            title: `📬 Văn thư kính trình văn bản đến: [${targetDoc.documentNumber}]`,
-            message: `Văn thư ${currentUser?.fullName} đã tiếp nhận, vào sổ văn bản "${targetDoc.summary.slice(0, 100)}..." và kính trình Lãnh đạo cho ý kiến chỉ đạo, phân công cán bộ thụ lý (Văn thư đề xuất: Đơn vị ${editableDepartment} - ${suggestedStaff?.fullName || 'Chưa chỉ định cán bộ'} - ${dossierDisplayName}).`,
-            type: 'DOC_INCOMING',
-            linkType: 'INCOMING_DOC',
-            targetId: targetDoc.id,
-          },
-          currentUser
-        );
-      });
-
-      setSavedDossierTask({
-        dossierCode: dossierDisplayName,
-        taskCode: targetDoc.documentNumber,
-        assigneeName: 'Lãnh đạo cơ quan (Chờ phê duyệt)',
-      });
-      setSuccessActionMsg(`Đã lập Phiếu trình và chuyển văn bản [${targetDoc.documentNumber}] lên Lãnh đạo cơ quan phê duyệt phân công!`);
-
-      setSuccessModal({
-        isOpen: true,
-        title: 'Đã Vào Sổ & Kính Trình Lãnh Đạo Phê Duyệt!',
-        message: `Đồng chí ${currentUser?.fullName} (Văn thư) đã thực hiện đúng quy trình hành chính: Tiếp nhận → Phân loại AI → Vào Sổ Văn Bản Đến [${targetDoc.documentNumber}] và lập phiếu trình Lãnh đạo. Hệ thống đã gửi thông báo đến Lãnh đạo cơ quan với các thông số đề xuất do đồng chí đã hiệu chỉnh (Đơn vị: ${editableDepartment}, Cán bộ: ${suggestedStaff?.fullName || 'Chưa chỉ định'}, Hồ sơ: ${dossierDisplayName}).`,
-        docNumber: targetDoc.documentNumber,
-        targetSection: 'INCOMING_DOCS',
-        actionType: 'DOC',
-      });
-      return;
-    }
-
-    // IF CURRENT USER IS LEADER OR ADMIN: Direct assignment is authorized!
     if (savedDossierTask) {
       setSuccessModal({
         isOpen: true,
         title: 'Hồ Sơ & Nhiệm Vụ Đã Được Mở Trước Đó',
-        message: `Hồ sơ [${savedDossierTask.dossierCode}] và nhiệm vụ [${savedDossierTask.taskCode}] đã được giao cho cán bộ ${savedDossierTask.assigneeName}. Đồng chí có thể bấm xem ngay!`,
+        message: `Hồ sơ [${savedDossierTask.dossierCode}] và nhiệm vụ [${savedDossierTask.taskCode}] đã được phân công cho cán bộ ${savedDossierTask.assigneeName}. Đồng chí có thể bấm xem ngay trong mục Điều Hành Công Việc!`,
         dossierCode: savedDossierTask.dossierCode,
         targetSection: 'ALL_TASKS',
         actionType: 'TASK',
@@ -740,8 +390,11 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       return;
     }
 
+    // Step 1: Ensure incoming doc is created and saved
+    let targetDoc = savedIncomingDoc;
     let finalDossierId: string | undefined = undefined;
     let finalDossierCode = classificationResult.dispatchRecommendation.suggestedDossierCode || `HS-${new Date().getFullYear()}-AI-${Math.floor(Math.random() * 900 + 100)}`;
+    let dossierDisplayName = 'Chưa xếp vào hồ sơ';
 
     if (editableDossierChoice === 'NEW') {
       const newDosId = 'dos-ai-' + Date.now();
@@ -753,17 +406,19 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         status: 'OPEN',
         securityLevel: classificationResult.securityLevel,
         startDate: new Date().toISOString().split('T')[0],
-        description: `Hồ sơ mở tự động từ phân loại AI. Căn cứ: ${classificationResult.extractedEntities.summary}`,
+        description: `Hồ sơ mở tự động từ văn bản phân loại AI: ${classificationResult.extractedEntities.summary}`,
         tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Engine'],
         createdById: currentUser?.id || '',
       };
       onSaveDossier(newDos);
       finalDossierId = newDosId;
+      dossierDisplayName = `Hồ sơ mới [${finalDossierCode}]`;
     } else if (editableDossierChoice && editableDossierChoice !== 'NONE') {
       const activeDos = dossiers.find((d) => d.id === editableDossierChoice && d.status !== 'CLOSED' && d.status !== 'ARCHIVED');
       if (activeDos) {
         finalDossierId = activeDos.id;
         finalDossierCode = activeDos.code;
+        dossierDisplayName = `[${activeDos.code}] ${activeDos.title}`;
       }
     }
 
@@ -771,18 +426,81 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     const assigneeName = assignedStaff?.fullName || 'Cán bộ phụ trách';
     const assigneeId = assignedStaff?.id || currentUser?.id || '';
     const newTaskId = 'task-ai-' + Date.now();
+    const taskCode = `CV-${new Date().getFullYear()}-${Math.floor(Math.random() * 900 + 100)}`;
 
-    const newTask = {
+    if (!targetDoc) {
+      const baseDocNumber = editableDocNumber.trim() || classificationResult.extractedEntities.documentNumber || `${Math.floor(Math.random() * 900 + 100)}/UBND-VP`;
+      const docExists = incomingDocs.some((d) => d.documentNumber === baseDocNumber);
+      const finalDocNumber = docExists ? `${baseDocNumber}-${Math.floor(Math.random() * 90 + 10)}` : baseDocNumber;
+
+      const finalAuthority = editableAuthority.trim() || classificationResult.extractedEntities.issuingAuthority || 'Cơ quan gửi đến';
+      const finalSigner = editableSigner.trim() || classificationResult.extractedEntities.signer || '';
+      const finalSignerPosition = editableSignerPosition.trim() || classificationResult.extractedEntities.signerPosition || '';
+      const finalIssueDate = editableIssueDate.trim() || classificationResult.extractedEntities.issueDate || new Date().toISOString().split('T')[0];
+      const finalSummary = editableSummary.trim() || classificationResult.extractedEntities.summary || inputTitle || 'Văn bản đã qua phân loại AI';
+
+      targetDoc = {
+        id: 'doc-in-ai-' + Date.now(),
+        documentNumber: finalDocNumber,
+        officialNumber: classificationResult.extractedEntities.officialNumber || `${Math.floor(Math.random() * 90 + 10)}/QĐ-STC`,
+        receivedDate: new Date().toISOString().split('T')[0],
+        issueDate: finalIssueDate,
+        issuingAuthority: finalAuthority,
+        signer: finalSigner,
+        signerPosition: finalSignerPosition,
+        summary: finalSummary,
+        docType: classificationResult.docType,
+        urgency: classificationResult.urgency,
+        securityLevel: classificationResult.securityLevel,
+        assigneeId: assigneeId,
+        dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+        status: 'PROCESSING',
+        dossierId: finalDossierId,
+        linkedTaskIds: [newTaskId],
+        attachments: [
+          {
+            id: 'att-' + Date.now(),
+            fileName: fileName || 'Van_ban_phan_loai_AI.pdf',
+            fileSize: 1024 * 350,
+            fileType: 'pdf',
+            fileUrl: uploadedFileDataUrl || '',
+            category: 'VAN_BAN_DEN',
+            uploadedByName: currentUser?.fullName || 'Văn thư cơ quan',
+            tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified', 'Cloud Firestore'],
+          },
+        ],
+      };
+      onSaveIncomingDoc(targetDoc);
+      setSavedIncomingDoc(targetDoc);
+    } else {
+      const updatedDoc: IncomingDocument = {
+        ...targetDoc,
+        status: 'PROCESSING',
+        assigneeId: assigneeId,
+        dossierId: finalDossierId || targetDoc.dossierId,
+        linkedTaskIds: Array.from(new Set([...(targetDoc.linkedTaskIds || []), newTaskId])),
+      };
+      onSaveIncomingDoc(updatedDoc);
+      setSavedIncomingDoc(updatedDoc);
+    }
+
+    // Step 2: Create the Task
+    const newTask: Task = {
       id: newTaskId,
-      code: `CV-2025-${Math.floor(Math.random() * 900 + 100)}`,
-      title: `[${classificationResult.primaryDomain}] Xử lý ${classificationResult.docType}: ${(inputTitle || classificationResult.extractedEntities.summary).slice(0, 50)}...`,
-      description: `Nhiệm vụ điều phối Lãnh đạo phê duyệt: ${classificationResult.dispatchRecommendation.routingReason}`,
+      code: taskCode,
+      title: `[${classificationResult.primaryDomain}] Xử lý ${classificationResult.docType}: ${(inputTitle || targetDoc.summary).slice(0, 70)}`,
+      description: `[Nhiệm vụ phân công xử lý văn bản đến]:\n- Số văn bản: ${targetDoc.documentNumber}\n- Cơ quan gửi: ${targetDoc.issuingAuthority}\n- Người ký: ${targetDoc.signer || 'Chưa rõ'} (${targetDoc.signerPosition || 'Chức vụ'})\n- Trích yếu: ${targetDoc.summary}\n- Định hướng xử lý AI: ${classificationResult.dispatchRecommendation.routingReason}`,
+      incomingDocId: targetDoc.id,
+      linkedDocId: targetDoc.id,
+      docTypeRelation: 'INCOMING',
       dossierId: finalDossierId,
       assigneeId: assigneeId,
       coAssigneeIds: [],
+      creatorId: currentUser?.id || '',
+      createdById: currentUser?.id || '',
       priority: classificationResult.urgency === 'HOA_TOC' ? 'URGENT' : classificationResult.urgency === 'KHAN' ? 'HIGH' : 'MEDIUM',
       startDate: new Date().toISOString().split('T')[0],
-      dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate,
+      dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || targetDoc.dueDate,
       progress: 0,
       status: 'IN_PROGRESS',
       subTasks: classificationResult.dispatchRecommendation.actionChecklist.map((act, idx) => ({
@@ -800,26 +518,43 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
           category: 'HO_SO',
           relatedId: newTaskId,
           dossierId: finalDossierId,
-          uploadedByName: currentUser?.fullName || 'Lãnh đạo cơ quan',
+          uploadedByName: currentUser?.fullName || 'Văn thư / Lãnh đạo',
           tags: [classificationResult.primaryDomain, classificationResult.docType, 'Nhiệm vụ', 'Cloud Firestore'],
         },
       ],
     };
+
     onSaveTask(newTask);
+
+    // Step 3: Notifications
+    if (assigneeId && assigneeId !== currentUser?.id) {
+      db.addNotification(
+        {
+          userId: assigneeId,
+          title: `⚡ Công việc mới: [${newTask.code}]`,
+          message: `${currentUser?.fullName} đã khởi tạo và giao bạn xử lý văn bản [${targetDoc.documentNumber}] "${targetDoc.summary.slice(0, 80)}...". Hạn hoàn thành: ${newTask.dueDate}.`,
+          type: 'NEW_TASK',
+          linkType: 'TASK',
+          targetId: newTask.id,
+        },
+        currentUser
+      );
+    }
 
     setSavedDossierTask({
       dossierCode: finalDossierCode,
       taskCode: newTask.code,
       assigneeName: assigneeName,
     });
-    setSuccessActionMsg(`Lãnh đạo đã mở Hồ sơ [${finalDossierCode}] và phân công nhiệm vụ cho [${assigneeName}]!`);
+    setSuccessActionMsg(`Đã mở Hồ sơ [${finalDossierCode}] và khởi tạo công việc [${newTask.code}] cho [${assigneeName}]!`);
 
     // Display modal notification with clear exit / navigation options
     setSuccessModal({
       isOpen: true,
-      title: 'Đã Mở Hồ Sơ & Phê Duyệt Giao Việc Thành Công!',
-      message: `Đã mở Hồ sơ [${finalDossierCode}] và giao nhiệm vụ [${newTask.code}] cho đồng chí ${assigneeName}. Hạn hoàn thành: ${newTask.dueDate}.`,
+      title: 'Đã Mở Hồ Sơ & Khởi Tạo Công Việc Thành Công!',
+      message: `Đã lưu văn bản vào Sổ Đến số [${targetDoc.documentNumber}], mở Hồ sơ [${finalDossierCode}] và khởi tạo công việc mới [${newTask.code}] phân công cho đồng chí ${assigneeName}. Hạn hoàn thành: ${newTask.dueDate}.`,
       dossierCode: finalDossierCode,
+      docNumber: targetDoc.documentNumber,
       targetSection: 'ALL_TASKS',
       actionType: 'TASK',
     });
@@ -1692,36 +1427,19 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                       onClick={handleCreateDossierAndTask}
                       className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all ${
                         savedDossierTask
-                          ? isLeaderOrAdmin(currentUser)
-                            ? 'bg-teal-600 hover:bg-teal-700 text-white ring-2 ring-teal-300'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300'
-                          : isLeaderOrAdmin(currentUser)
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                          ? 'bg-teal-600 hover:bg-teal-700 text-white ring-2 ring-teal-300'
                           : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                       }`}
                     >
                       {savedDossierTask ? (
                         <>
                           <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                          <span>
-                            {isLeaderOrAdmin(currentUser)
-                              ? `Đã Giao Việc [${savedDossierTask.assigneeName}]`
-                              : `Đã Kính Trình Lãnh Đạo Phê Duyệt`}
-                          </span>
+                          <span>Đã Mở Hồ Sơ & Giao Việc [{savedDossierTask.assigneeName}]</span>
                         </>
                       ) : (
                         <>
-                          {isLeaderOrAdmin(currentUser) ? (
-                            <>
-                              <FolderArchive className="w-4 h-4" />
-                              <span>Mở Hồ Sơ & Phê Duyệt Giao Việc</span>
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-4 h-4" />
-                              <span>Lưu Sổ & Trình Lãnh Đạo Phê Duyệt</span>
-                            </>
-                          )}
+                          <FolderArchive className="w-4 h-4" />
+                          <span>Mở Hồ Sơ & Khởi Tạo Công Việc Mới</span>
                         </>
                       )}
                     </button>
@@ -1897,13 +1615,6 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
           </div>
         </div>
       )}
-
-      {/* Sample PDF modal for testing */}
-      <SamplePdfModal
-        isOpen={isSamplePdfModalOpen}
-        onClose={() => setIsSamplePdfModalOpen(false)}
-        onSelectSampleFile={handleSelectSamplePdfFile}
-      />
 
       {/* Email Receiver Modal */}
       <EmailReceiverModal

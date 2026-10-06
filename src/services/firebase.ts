@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase App
@@ -16,6 +16,18 @@ export const firestore = getFirestore(
 
 // Initialize Auth
 export const auth = getAuth(app);
+
+// Attempt anonymous sign-in in background if client is not authenticated
+if (typeof window !== 'undefined') {
+  auth.authStateReady().then(() => {
+    if (!auth.currentUser) {
+      signInAnonymously(auth).catch((err) => {
+        // Ignored if anonymous auth is not enabled in Firebase Console
+        console.warn('[Firebase Auth] Anonymous sign-in notice (optional):', err.message);
+      });
+    }
+  });
+}
 
 // Connection test helper
 export async function testFirestoreConnection(): Promise<boolean> {
