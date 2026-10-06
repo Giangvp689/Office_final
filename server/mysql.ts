@@ -632,16 +632,7 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
   // Ensure tables and columns
   await ensureAllTableSchemas(p);
 
-  // Seed default data if empty
-  let userCount = 0;
-  try {
-    const [userRes] = (await p.query('SELECT COUNT(*) as count FROM users')) as any;
-    userCount = userRes[0]?.count ?? 0;
-  } catch (countErr: any) {
-    console.warn('Count users notice:', countErr.message);
-  }
-
-  if (userCount === 0) {
+  // Seed missing records across all tables (INSERT IGNORE safely skips existing IDs)
     for (const d of INITIAL_DEPARTMENTS) {
       await p.query(
         'INSERT IGNORE INTO departments (id, code, name, description, manager_id) VALUES (?, ?, ?, ?, ?)',
@@ -843,7 +834,6 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
         ]
       );
     }
-  }
 
   return { success: true, message: 'Đã khởi tạo thành công cấu trúc CSDL và nạp dữ liệu mẫu!' };
 }
