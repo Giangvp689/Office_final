@@ -124,6 +124,11 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
       alert('Vui lòng nhập đầy đủ ý kiến chỉ đạo và chọn cán bộ chủ trì xử lý.');
       return;
     }
+    const chosenAssignee = users.find((u) => u.id === selectedAssigneeId);
+    if (chosenAssignee && (chosenAssignee.role === 'LEADER' || chosenAssignee.role === 'ADMIN')) {
+      alert('⚠️ Quy chế hành chính: Lãnh đạo chỉ giao việc cho Chuyên viên (STAFF) hoặc Văn thư (CLERK), không giao việc cho Lãnh đạo.');
+      return;
+    }
     const result = dbService.leaderAssignIncomingDoc(selectedDoc.id, currentUser, {
       assigneeId: selectedAssigneeId,
       coAssigneeIds: selectedCoAssigneeIds,
@@ -179,8 +184,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
     return docs.filter((d) => canAccessIncomingDoc(d, currentUser, tasks));
   }, [docs, isSuperUser, docScope, currentUser, tasks]);
 
-  // Cán bộ Chuyên viên đủ điều kiện nhận nhiệm vụ (Loại bỏ Văn thư CLERK theo NĐ 30/2020/NĐ-CP)
-  const assignableStaffList = useMemo(() => getAssignableStaffUsers(users), [users]);
+  // Cán bộ Chuyên viên & Văn thư đủ điều kiện nhận nhiệm vụ (Loại trừ toàn bộ Lãnh đạo & Quản trị viên)
+  const assignableStaffList = useMemo(() => getAssignableStaffUsers(users, currentUser), [users, currentUser]);
 
   // Auto open document if navigated from notification
   useEffect(() => {
@@ -1293,7 +1298,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         onChange={(e) => setSelectedAssigneeId(e.target.value)}
                         className="w-full p-2 bg-white border border-purple-200 rounded-xl text-xs font-semibold text-slate-800 cursor-pointer outline-none"
                       >
-                        <option value="">-- Chọn chuyên viên chủ trì (Loại trừ Văn thư) --</option>
+                        <option value="">-- Chọn cán bộ chủ trì (Chuyên viên / Văn thư) --</option>
                         {assignableStaffList.map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.fullName} ({u.position || u.role} - {u.department || 'Phòng Chuyên Môn'})

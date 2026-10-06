@@ -108,15 +108,11 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // Initial fetch directly from the database
-    if (db.isFirebaseOnlyMode()) {
-      db.reloadFromFirestore().catch((err) => console.warn('Firestore initial load notice:', err));
-    } else {
-      db.checkAndSyncMySql();
-      db.fetchAndRefreshAuditLogs().then((logs) => {
-        if (logs && logs.length > 0) setAuditLogs(logs);
-      });
-    }
+    // Initial fetch directly from the server database
+    db.checkAndSyncMySql();
+    db.fetchAndRefreshAuditLogs().then((logs) => {
+      if (logs && logs.length > 0) setAuditLogs(logs);
+    });
 
     const unsubscribe = db.subscribe(() => {
       reloadData();
@@ -511,6 +507,7 @@ export const App: React.FC = () => {
 
           {currentSection === 'ALL_TASKS' && (
             <TasksView
+              key={`tasks-${currentUser?.id}-ALL_TASKS`}
               tasks={tasks}
               users={users}
               dossiers={dossiers}
@@ -537,6 +534,7 @@ export const App: React.FC = () => {
 
           {currentSection === 'MY_ASSIGNED_TASKS' && (
             <TasksView
+              key={`tasks-${currentUser?.id}-MY_ASSIGNED_TASKS`}
               tasks={tasks}
               users={users}
               dossiers={dossiers}
@@ -563,6 +561,7 @@ export const App: React.FC = () => {
 
           {currentSection === 'MY_DELEGATED_TASKS' && (
             <TasksView
+              key={`tasks-${currentUser?.id}-MY_DELEGATED_TASKS`}
               tasks={tasks}
               users={users}
               dossiers={dossiers}
@@ -766,6 +765,7 @@ export const App: React.FC = () => {
 
       {/* Facebook-style Live Interactive Notification Toast */}
       <FacebookNotificationToast
+        currentUserId={currentUser?.id}
         notifications={userNotifications}
         onMarkAsRead={(id) => db.markNotificationAsRead(id)}
         onNavigate={handleSelectNotificationTarget}

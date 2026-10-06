@@ -159,8 +159,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
   const [editingTask, setEditingTask] = useState<Partial<Task> | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Danh sách Cán bộ Chuyên viên đủ điều kiện nhận nhiệm vụ (Loại trừ Văn thư CLERK)
-  const assignableStaffList = useMemo(() => getAssignableStaffUsers(users), [users]);
+  // Danh sách Cán bộ Chuyên viên & Văn thư đủ điều kiện nhận nhiệm vụ (Loại trừ toàn bộ Lãnh đạo & Quản trị viên)
+  const assignableStaffList = useMemo(() => getAssignableStaffUsers(users, currentUser), [users, currentUser]);
   // Danh sách Lãnh đạo có thẩm quyền giao việc & phê duyệt nghiệm thu
   const leaderUsersList = useMemo(() => getLeaderUsers(users), [users]);
 
@@ -377,30 +377,38 @@ export const TasksView: React.FC<TasksViewProps> = ({
     (t) => t.createdById === currentUser?.id || t.creatorId === currentUser?.id
   );
 
-  const filteredTasks = accessibleTasks.filter((t) => {
-    // Mode filtering
-    if (activeTab === 'ASSIGNED_TO_ME') {
-      if (assignedSubFilter === 'PRIMARY') {
-        if (t.assigneeId !== currentUser?.id) return false;
-      } else if (assignedSubFilter === 'COOPERATE') {
-        if (!t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
-      } else {
-        if (t.assigneeId !== currentUser?.id && !t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
-      }
-    } else if (activeTab === 'DELEGATED_BY_ME') {
-      if (t.createdById !== currentUser?.id && t.creatorId !== currentUser?.id) return false;
-    }
+  const filteredTasks = useMemo(() => {
+    return accessibleTasks
+      .filter((t) => {
+        // Mode filtering
+        if (activeTab === 'ASSIGNED_TO_ME') {
+          if (assignedSubFilter === 'PRIMARY') {
+            if (t.assigneeId !== currentUser?.id) return false;
+          } else if (assignedSubFilter === 'COOPERATE') {
+            if (!t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
+          } else {
+            if (t.assigneeId !== currentUser?.id && !t.coAssigneeIds?.includes(currentUser?.id || '')) return false;
+          }
+        } else if (activeTab === 'DELEGATED_BY_ME') {
+          if (t.createdById !== currentUser?.id && t.creatorId !== currentUser?.id) return false;
+        }
 
-    const matchSearch =
-      t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.code.toLowerCase().includes(search.toLowerCase()) ||
-      (t.description && t.description.toLowerCase().includes(search.toLowerCase()));
+        const matchSearch =
+          t.title.toLowerCase().includes(search.toLowerCase()) ||
+          t.code.toLowerCase().includes(search.toLowerCase()) ||
+          (t.description && t.description.toLowerCase().includes(search.toLowerCase()));
 
-    const matchPriority = filterPriority === 'ALL' || t.priority === filterPriority;
-    const matchStatus = filterStatus === 'ALL' || t.status === filterStatus;
+        const matchPriority = filterPriority === 'ALL' || t.priority === filterPriority;
+        const matchStatus = filterStatus === 'ALL' || t.status === filterStatus;
 
-    return matchSearch && matchPriority && matchStatus;
-  });
+        return matchSearch && matchPriority && matchStatus;
+      })
+      .sort((a, b) => {
+        const timeA = new Date(a.createdAt || a.updatedAt || 0).getTime();
+        const timeB = new Date(b.createdAt || b.updatedAt || 0).getTime();
+        return timeB - timeA;
+      });
+  }, [accessibleTasks, activeTab, assignedSubFilter, currentUser?.id, search, filterPriority, filterStatus]);
 
   const handleOpenAddModal = () => {
     setEditingTask({
@@ -410,7 +418,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       description: '',
       creatorId: currentUser?.id || '',
       createdById: currentUser?.id || '',
-      assigneeId: users.find((u) => u.id !== currentUser?.id)?.id || currentUser?.id || '',
+      assigneeId: assignableStaffList[0]?.id || '',
       coAssigneeIds: [],
       startDate: today,
       dueDate: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
@@ -450,8 +458,29 @@ export const TasksView: React.FC<TasksViewProps> = ({
       return;
     }
 
-    const targetAssigneeId = editingTask.assigneeId || currentUser?.id || '';
+    const targetAssigneeId = editingTask.assigneeId || assignableStaffList[0]?.id || '';
+    if (!targetAssigneeId) {
+      setFormError('⚠️ Vui lòng chọn Cán bộ chủ trì thực hiện nhiệm vụ.');
+      return;
+    }
+
     const chosenAssignee = users.find((u) => u.id === targetAssigneeId);
+    if (chosenAssignee && (chosenAssignee.role === 'LEADER' || chosenAssignee.role === 'ADMIN')) {
+      setFormError('⚠️ Quy chế hành chính: Lãnh đạo chỉ giao việc cho Chuyên viên (STAFF) hoặc Văn thư (CLERK), không giao việc cho Lãnh đạo.');
+      return;
+    }
+
+    // Kiểm tra cán bộ phối hợp không có Lãnh đạo
+    if (editingTask.coAssigneeIds && editingTask.coAssigneeIds.length > 0) {
+      const hasLeaderCoAssignee = editingTask.coAssigneeIds.some((id) => {
+        const u = users.find((user) => user.id === id);
+        return u && (u.role === 'LEADER' || u.role === 'ADMIN');
+      });
+      if (hasLeaderCoAssignee) {
+        setFormError('⚠️ Cán bộ phối hợp chỉ bao gồm Chuyên viên hoặc Văn thư, không bao gồm Lãnh đạo.');
+        return;
+      }
+    }
 
     setFormError(null);
 
@@ -463,7 +492,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       description: editingTask.description || '',
       creatorId: editingTask.creatorId || editingTask.createdById || currentUser?.id || '',
       createdById: editingTask.createdById || editingTask.creatorId || currentUser?.id || '',
-      assigneeId: editingTask.assigneeId || currentUser?.id || '',
+      assigneeId: targetAssigneeId,
       coAssigneeIds: editingTask.coAssigneeIds || [],
       priority: editingTask.priority || 'MEDIUM',
       startDate: editingTask.startDate || today,
@@ -1315,10 +1344,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       )}
 
-      {/* Task Detail Modal & Interactive Directives Chat Drawer */}
+      {/* Task Detail Modal & Interactive Directives Chat Modal - Căn giữa màn hình, mở rộng chuẩn công vụ */}
       {selectedTask && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex justify-end z-50 animate-in fade-in duration-150">
-          <div className="bg-white w-full max-w-2xl h-full shadow-2xl flex flex-col p-6 overflow-y-auto custom-scrollbar">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 md:p-8 z-50 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-5xl max-h-[92vh] rounded-3xl shadow-2xl flex flex-col p-6 sm:p-8 overflow-y-auto custom-scrollbar border border-slate-200">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div className="flex items-center gap-2">
@@ -2352,15 +2381,23 @@ export const TasksView: React.FC<TasksViewProps> = ({
             {/* Footer */}
             <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
               <button
-                onClick={() => {
-                  const t = selectedTask;
-                  setSelectedTask(null);
-                  handleOpenEditModal(t);
-                }}
+                onClick={() => setSelectedTask(null)}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer transition-colors"
               >
-                Chỉnh sửa nhiệm vụ
+                Đóng lại
               </button>
+              {canCreateOrAssignTask(currentUser) && (
+                <button
+                  onClick={() => {
+                    const t = selectedTask;
+                    setSelectedTask(null);
+                    handleOpenEditModal(t);
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer transition-colors shadow-xs"
+                >
+                  Chỉnh sửa nhiệm vụ
+                </button>
+              )}
             </div>
             </>
             )}
@@ -2368,10 +2405,10 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       )}
 
-      {/* Add / Edit Task Modal */}
+      {/* Add / Edit Task Modal - Căn giữa màn hình rộng rãi */}
       {isModalOpen && editingTask && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 md:p-8 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2.5">
                 <CheckSquare className="w-5 h-5 text-indigo-600" />
@@ -2520,14 +2557,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
                 <div>
                   <label className="block font-bold text-indigo-800 mb-1">
-                    ⭐ Chuyên viên chủ trì thực hiện <span className="text-rose-500">*</span>
+                    ⭐ Cán bộ chủ trì thực hiện (Chuyên viên / Văn thư) <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={editingTask.assigneeId || ''}
                     onChange={(e) => setEditingTask({ ...editingTask, assigneeId: e.target.value })}
                     className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-900"
                   >
-                    <option value="">-- Chọn chuyên viên chủ trì (Loại trừ Văn thư) --</option>
+                    <option value="">-- Chọn cán bộ chủ trì (Chuyên viên / Văn thư) --</option>
                     {assignableStaffList.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.fullName} ({u.position || u.role || 'Chuyên viên'}) - {getDeptString(u.department)}
@@ -2535,7 +2572,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                     ))}
                   </select>
                   <span className="text-[10px] text-slate-500 block mt-1">
-                    * Theo NĐ 30/2020/NĐ-CP: Văn thư không đảm nhiệm giải quyết nhiệm vụ chuyên môn.
+                    * Quy chế hành chính: Lãnh đạo giao việc cho Chuyên viên hoặc Văn thư. Tuyệt đối không giao việc cho Lãnh đạo.
                   </span>
                 </div>
               </div>

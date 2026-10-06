@@ -7,12 +7,11 @@ Email quản trị Firebase của bạn: **`Giangvp689@gmail.com`**
 ---
 
 ## 1. Cơ Sở Dữ Liệu Firebase Firestore (Đã Cấu Hình Xong)
-- **Firebase Project ID**: `documentai-7f924`
-- **Database ID**: `(default)`
+- **Database ID**: `ai-studio-officefinal-2091c447-bb64-4488-bc76-cc14e6260e8b`
 - **Cơ chế hoạt động**:
   - Dữ liệu được đồng bộ trực tuyến thời gian thực (**real-time `onSnapshot`**) lên đám mây Firebase Firestore.
   - Khi thêm, sửa, xóa văn bản đến/đi, hồ sơ, nhiệm vụ, nhân sự hoặc phân quyền, dữ liệu tự động lưu và đồng bộ đa thiết bị ngay lập tức.
-  - Trong giao diện, bạn có thể mở **Trung Tâm CSDL & Tên Miền** (nút *Quản Lý CSDL* ở thanh công cụ trên cùng hoặc menu bên trái) để bấm **"Đồng Bộ Lên Firestore"** hoặc **"Tải Dữ Liệu Từ Firestore Về"** bất cứ lúc nào.
+  - Trong giao diện, bạn có thể mở **Trung Tâm CSDL & Tên Miền** (nút *Quản Lý CSDL* ở thanh công cụ trên cùng hoặc menu bên trái) để bấm **"Đồng Bộ Toàn Bộ Dữ Liệu Lên Firestore"** bất cứ lúc nào.
 
 ---
 

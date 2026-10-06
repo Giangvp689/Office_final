@@ -68,6 +68,17 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
+// Helper to remove any undefined fields that cause Firestore setDoc() to reject the payload
+export function cleanPayload<T>(obj: T): any {
+  if (obj === undefined) return null;
+  return JSON.parse(
+    JSON.stringify(obj, (_key, value) => {
+      if (value === undefined) return null;
+      return value;
+    })
+  );
+}
+
 export class FirestoreSyncService {
   private isOnline = false;
   private unsubscribeListeners: Array<() => void> = [];
@@ -323,7 +334,7 @@ export class FirestoreSyncService {
   // --- Realtime Cloud Writing Operations ---
   public async saveUser(user: User): Promise<void> {
     try {
-      await setDoc(doc(firestore, 'users', user.id), user, { merge: true });
+      await setDoc(doc(firestore, 'users', user.id), cleanPayload(user), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -353,7 +364,7 @@ export class FirestoreSyncService {
 
   public async saveIncomingDoc(d: IncomingDocument): Promise<void> {
     try {
-      await setDoc(doc(firestore, 'incoming_documents', d.id), d, { merge: true });
+      await setDoc(doc(firestore, 'incoming_documents', d.id), cleanPayload(d), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -383,7 +394,7 @@ export class FirestoreSyncService {
 
   public async saveOutgoingDoc(d: OutgoingDocument): Promise<void> {
     try {
-      await setDoc(doc(firestore, 'outgoing_documents', d.id), d, { merge: true });
+      await setDoc(doc(firestore, 'outgoing_documents', d.id), cleanPayload(d), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -413,7 +424,7 @@ export class FirestoreSyncService {
 
   public async saveTask(t: Task): Promise<void> {
     try {
-      await setDoc(doc(firestore, 'tasks', t.id), t, { merge: true });
+      await setDoc(doc(firestore, 'tasks', t.id), cleanPayload(t), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -443,7 +454,7 @@ export class FirestoreSyncService {
 
   public async saveDossier(dos: Dossier): Promise<void> {
     try {
-      await setDoc(doc(firestore, 'dossiers', dos.id), dos, { merge: true });
+      await setDoc(doc(firestore, 'dossiers', dos.id), cleanPayload(dos), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -474,7 +485,7 @@ export class FirestoreSyncService {
   public async saveAttachment(att: AttachmentFile): Promise<void> {
     if (!att.id) return;
     try {
-      await setDoc(doc(firestore, 'attachments', att.id), att, { merge: true });
+      await setDoc(doc(firestore, 'attachments', att.id), cleanPayload(att), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -504,7 +515,7 @@ export class FirestoreSyncService {
 
   public async saveNotification(n: SystemNotification): Promise<void> {
     try {
-      await setDoc(doc(firestore, 'notifications', n.id), n, { merge: true });
+      await setDoc(doc(firestore, 'notifications', n.id), cleanPayload(n), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -534,7 +545,7 @@ export class FirestoreSyncService {
 
   public async saveAuditLog(log: AuditLog): Promise<void> {
     try {
-      await setDoc(doc(firestore, 'audit_logs', log.id), log, { merge: true });
+      await setDoc(doc(firestore, 'audit_logs', log.id), cleanPayload(log), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -549,7 +560,7 @@ export class FirestoreSyncService {
 
   public async saveMasterData(master: MasterData): Promise<void> {
     try {
-      await setDoc(doc(firestore, 'settings', 'master_data'), master, { merge: true });
+      await setDoc(doc(firestore, 'settings', 'master_data'), cleanPayload(master), { merge: true });
     } catch (e: any) {
       if (e?.message?.includes('Missing or insufficient permissions') || e?.code === 'permission-denied') {
         try {
@@ -579,40 +590,40 @@ export class FirestoreSyncService {
       let count = 0;
 
       for (const u of dataset.users) {
-        batch.set(doc(firestore, 'users', u.id), u, { merge: true });
+        batch.set(doc(firestore, 'users', u.id), cleanPayload(u), { merge: true });
         count++;
       }
       for (const dos of dataset.dossiers) {
-        batch.set(doc(firestore, 'dossiers', dos.id), dos, { merge: true });
+        batch.set(doc(firestore, 'dossiers', dos.id), cleanPayload(dos), { merge: true });
         count++;
       }
       for (const d of dataset.incomingDocs) {
-        batch.set(doc(firestore, 'incoming_documents', d.id), d, { merge: true });
+        batch.set(doc(firestore, 'incoming_documents', d.id), cleanPayload(d), { merge: true });
         count++;
       }
       for (const d of dataset.outgoingDocs) {
-        batch.set(doc(firestore, 'outgoing_documents', d.id), d, { merge: true });
+        batch.set(doc(firestore, 'outgoing_documents', d.id), cleanPayload(d), { merge: true });
         count++;
       }
       for (const t of dataset.tasks) {
-        batch.set(doc(firestore, 'tasks', t.id), t, { merge: true });
+        batch.set(doc(firestore, 'tasks', t.id), cleanPayload(t), { merge: true });
         count++;
       }
       for (const att of dataset.attachments) {
         if (att.id) {
-          batch.set(doc(firestore, 'attachments', att.id), att, { merge: true });
+          batch.set(doc(firestore, 'attachments', att.id), cleanPayload(att), { merge: true });
           count++;
         }
       }
       for (const log of dataset.auditLogs.slice(0, 50)) {
-        batch.set(doc(firestore, 'audit_logs', log.id), log, { merge: true });
+        batch.set(doc(firestore, 'audit_logs', log.id), cleanPayload(log), { merge: true });
         count++;
       }
       for (const n of dataset.notifications.slice(0, 50)) {
-        batch.set(doc(firestore, 'notifications', n.id), n, { merge: true });
+        batch.set(doc(firestore, 'notifications', n.id), cleanPayload(n), { merge: true });
         count++;
       }
-      batch.set(doc(firestore, 'settings', 'master_data'), dataset.masterData, { merge: true });
+      batch.set(doc(firestore, 'settings', 'master_data'), cleanPayload(dataset.masterData), { merge: true });
       count++;
 
       await batch.commit();

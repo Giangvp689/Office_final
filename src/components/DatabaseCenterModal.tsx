@@ -60,7 +60,6 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
 
   // Firebase status
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState(false);
-  const [isFirebasePulling, setIsFirebasePulling] = useState(false);
   const [firebaseSyncMsg, setFirebaseSyncMsg] = useState<string | null>(null);
   const [firestoreConnected, setFirestoreConnected] = useState(false);
 
@@ -73,16 +72,6 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
   const [database, setDatabase] = useState('vanphong_so');
   const [configSaveMsg, setConfigSaveMsg] = useState<string | null>(null);
   const [rulesCopied, setRulesCopied] = useState(false);
-  const [dataSourceMode, setDataSourceModeState] = useState<'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID'>(() => db.getDataSourceMode());
-
-  const handleToggleMode = (newMode: 'FIREBASE_ONLY' | 'MYSQL') => {
-    db.setDataSourceMode(newMode);
-    setDataSourceModeState(newMode);
-    if (newMode === 'FIREBASE_ONLY') {
-      setActiveTab('FIREBASE');
-    }
-    onDataResetOrRestored();
-  };
 
   const handleCopyRules = () => {
     const rulesCode = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
@@ -161,52 +150,6 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
       setFirebaseSyncMsg(`Lỗi đồng bộ: ${err.message || err}`);
     } finally {
       setIsFirebaseSyncing(false);
-    }
-  };
-
-  const handlePullFromFirebase = async () => {
-    setIsFirebasePulling(true);
-    setFirebaseSyncMsg(null);
-    try {
-      const data = await firestoreSync.fetchAllFromFirestore();
-      if (data) {
-        if (data.users && data.users.length > 0) {
-          localStorage.setItem('qlvb_users_v2', JSON.stringify(data.users));
-        }
-        if (data.tasks && data.tasks.length > 0) {
-          localStorage.setItem('qlvb_tasks_v2', JSON.stringify(data.tasks));
-        }
-        if (data.incomingDocs && data.incomingDocs.length > 0) {
-          localStorage.setItem('qlvb_incoming_docs_v2', JSON.stringify(data.incomingDocs));
-        }
-        if (data.outgoingDocs && data.outgoingDocs.length > 0) {
-          localStorage.setItem('qlvb_outgoing_docs_v2', JSON.stringify(data.outgoingDocs));
-        }
-        if (data.dossiers && data.dossiers.length > 0) {
-          localStorage.setItem('qlvb_dossiers_v2', JSON.stringify(data.dossiers));
-        }
-        if (data.attachments && data.attachments.length > 0) {
-          localStorage.setItem('qlvb_attachments_v2', JSON.stringify(data.attachments));
-        }
-        if (data.notifications && data.notifications.length > 0) {
-          localStorage.setItem('qlvb_notifications_v2', JSON.stringify(data.notifications));
-        }
-        if (data.masterData) {
-          localStorage.setItem('qlvb_master_data_v2', JSON.stringify(data.masterData));
-        }
-        if (data.auditLogs && data.auditLogs.length > 0) {
-          localStorage.setItem('qlvb_audit_logs_v2', JSON.stringify(data.auditLogs.slice(0, 500)));
-        }
-        setFirebaseSyncMsg(`✓ Đã tải và cập nhật thành công ${data.tasks?.length || 0} công việc/nhiệm vụ, ${data.incomingDocs?.length || 0} văn bản đến từ Firebase Firestore!`);
-        setFirestoreConnected(true);
-        onDataResetOrRestored();
-      } else {
-        setFirebaseSyncMsg('Không nhận được dữ liệu từ Firestore hoặc Firestore chưa có bản ghi.');
-      }
-    } catch (err: any) {
-      setFirebaseSyncMsg(`Lỗi khi tải từ Firestore: ${err.message || err}`);
-    } finally {
-      setIsFirebasePulling(false);
     }
   };
 
@@ -344,61 +287,6 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
           </button>
         </div>
 
-        {/* Mode Switcher Banner: Pure Firebase vs MySQL */}
-        <div className="px-6 py-3 bg-gradient-to-r from-orange-50/80 via-amber-50/50 to-indigo-50/50 border-b border-slate-200/80 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2.5">
-            <div
-              className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${
-                dataSourceMode === 'FIREBASE_ONLY' ? 'bg-orange-500 text-white shadow-xs' : 'bg-indigo-600 text-white shadow-xs'
-              }`}
-            >
-              {dataSourceMode === 'FIREBASE_ONLY' ? <Flame className="w-4 h-4 fill-white/20" /> : <Server className="w-4 h-4" />}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-slate-800 text-xs">Chế độ Cơ Sở Dữ Liệu:</span>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    dataSourceMode === 'FIREBASE_ONLY'
-                      ? 'bg-orange-100 text-orange-800 border border-orange-300'
-                      : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
-                  }`}
-                >
-                  {dataSourceMode === 'FIREBASE_ONLY' ? '🔥 100% Google Firebase Cloud' : '🐬 Kết nối MySQL Server'}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {dataSourceMode === 'FIREBASE_ONLY'
-                  ? 'Ứng dụng chỉ lấy và lưu dữ liệu trực tiếp qua Google Firestore, không qua MySQL.'
-                  : 'Ứng dụng kết nối tới máy chủ CSDL MySQL.'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-            <button
-              onClick={() => handleToggleMode('FIREBASE_ONLY')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                dataSourceMode === 'FIREBASE_ONLY'
-                  ? 'bg-orange-500 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              Chỉ Dùng Firebase
-            </button>
-            <button
-              onClick={() => handleToggleMode('MYSQL')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                dataSourceMode === 'MYSQL'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              Kèm MySQL
-            </button>
-          </div>
-        </div>
-
         {/* Tab Navigation */}
         <div className="px-6 pt-3 bg-white border-b border-slate-200 flex items-center gap-2">
           <button
@@ -494,26 +382,14 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={handlePullFromFirebase}
-                      disabled={isFirebasePulling}
-                      className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-100 font-bold rounded-xl text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm border border-slate-600"
-                      title="Kéo toàn bộ nhiệm vụ, văn bản đến/đi từ Firebase Firestore về trình duyệt này"
-                    >
-                      <Download className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{isFirebasePulling ? 'Đang tải...' : 'Tải Dữ Liệu Từ Firestore Về'}</span>
-                    </button>
-
-                    <button
-                      onClick={handleSyncToFirebase}
-                      disabled={isFirebaseSyncing}
-                      className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-xl text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{isFirebaseSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ Lên Firestore'}</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleSyncToFirebase}
+                    disabled={isFirebaseSyncing}
+                    className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-bold rounded-xl text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isFirebaseSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ Toàn Bộ Dữ Liệu Lên Firestore'}</span>
+                  </button>
                 </div>
 
                 {firebaseSyncMsg && (
@@ -545,55 +421,6 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
                     )}
                   </div>
                 )}
-              </div>
-
-              {/* Collection stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Cán bộ (users)</div>
-                  <div className="text-lg font-black text-slate-800 mt-0.5">{db.getUsers().length}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">VB Đến (incoming)</div>
-                  <div className="text-lg font-black text-indigo-700 mt-0.5">{db.getIncomingDocs().length}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">VB Đi (outgoing)</div>
-                  <div className="text-lg font-black text-blue-700 mt-0.5">{db.getOutgoingDocs().length}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Nhiệm vụ (tasks)</div>
-                  <div className="text-lg font-black text-emerald-700 mt-0.5">{db.getTasks().length}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Hồ sơ (dossiers)</div>
-                  <div className="text-lg font-black text-amber-700 mt-0.5">{db.getDossiers().length}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Tệp (attachments)</div>
-                  <div className="text-lg font-black text-purple-700 mt-0.5">{db.getAttachments().length}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Thông báo</div>
-                  <div className="text-lg font-black text-rose-700 mt-0.5">{db.getNotifications().length}</div>
-                </div>
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase">Nhật ký (audit)</div>
-                  <div className="text-lg font-black text-slate-700 mt-0.5">{db.getAuditLogs().length}</div>
-                </div>
-              </div>
-
-              {/* Instructions on Pure Firebase Mode */}
-              <div className="bg-emerald-50 border border-emerald-200/80 rounded-2xl p-4 text-emerald-950 space-y-2">
-                <div className="flex items-center gap-2 font-bold text-xs text-emerald-900">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Ưu điểm khi chỉ sử dụng Firebase Cloud (Không qua MySQL):</span>
-                </div>
-                <ul className="list-disc pl-5 space-y-1 text-[11px] text-emerald-800 leading-relaxed">
-                  <li><strong>Không cần cài MySQL/XAMPP:</strong> Dữ liệu được lưu trữ trực tiếp trên đám mây Google Firestore an toàn, không lo lỗi cổng 3306 hay máy chủ offline.</li>
-                  <li><strong>Đồng bộ tức thì (Realtime):</strong> Khi chuyên viên hoặc lãnh đạo ký duyệt, giao việc hay cập nhật tiến độ, tất cả người dùng khác sẽ nhận ngay mà không cần tải lại trang.</li>
-                  <li><strong>Lưu trữ liên tục &amp; độc lập:</strong> Hoạt động ngay cả khi triển khai trên Vercel, Cloud Run hay máy cục bộ.</li>
-                </ul>
               </div>
             </div>
           )}

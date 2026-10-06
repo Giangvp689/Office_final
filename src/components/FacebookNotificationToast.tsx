@@ -4,12 +4,14 @@ import { Bell, X, ArrowRight, MessageSquare, FileText, CheckSquare, Clock, Alert
 import { formatNotificationDateTime } from '../utils/dateUtils';
 
 interface FacebookNotificationToastProps {
+  currentUserId?: string;
   notifications: SystemNotification[];
   onMarkAsRead: (id: string) => void;
   onNavigate: (type: string, id: string, subTarget?: 'COMMENTS' | 'DETAILS' | 'APPROVAL') => void;
 }
 
 export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps> = ({
+  currentUserId = 'default',
   notifications,
   onMarkAsRead,
   onNavigate,
@@ -18,12 +20,22 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
     try {
-      const raw = localStorage.getItem('vanphong_so_seen_toast_ids');
+      const raw = localStorage.getItem(`vanphong_so_seen_toast_ids_${currentUserId}`);
       return raw ? new Set(JSON.parse(raw)) : new Set();
     } catch {
       return new Set();
     }
   });
+
+  // Re-read dismissed IDs whenever user switches
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`vanphong_so_seen_toast_ids_${currentUserId}`);
+      setDismissedIds(raw ? new Set(JSON.parse(raw)) : new Set());
+    } catch {
+      setDismissedIds(new Set());
+    }
+  }, [currentUserId]);
 
   const recordDismissed = (id: string) => {
     setDismissedIds((prev) => {
@@ -31,24 +43,45 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
       next.add(id);
       try {
         const capped = Array.from(next).slice(-50);
-        localStorage.setItem('vanphong_so_seen_toast_ids', JSON.stringify(capped));
+        localStorage.setItem(`vanphong_so_seen_toast_ids_${currentUserId}`, JSON.stringify(capped));
       } catch {}
       return next;
     });
   };
 
+  // Sound effect via Web Audio API synth
+  const playNotifChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch {}
+  };
+
   // Show the latest unread notification as a Facebook-style interactive popup
-  // If a notification has already been read or dismissed, it will NEVER be shown again
   useEffect(() => {
     const unread = notifications.filter((n) => !n.isRead && !dismissedIds.has(n.id));
     if (unread.length > 0) {
-      // Pick the most recent unread
       const latest = unread[0];
+      if (!activeNotif || activeNotif.id !== latest.id) {
+        playNotifChime();
+      }
       setActiveNotif(latest);
     } else {
       setActiveNotif(null);
     }
-  }, [notifications, dismissedIds]);
+  }, [notifications, dismissedIds, currentUserId]);
 
   if (!activeNotif) return null;
 
@@ -79,9 +112,15 @@ export const FacebookNotificationToast: React.FC<FacebookNotificationToastProps>
         return <AlertTriangle className="w-5 h-5 text-rose-600" />;
       case 'DEADLINE_TODAY':
         return <Clock className="w-5 h-5 text-amber-600" />;
+      case 'NEW_TASK':
       case 'TASK_ASSIGNED':
+      case 'DOC_ASSIGNED':
       case 'TASK_STATUS_CHANGED':
         return <CheckSquare className="w-5 h-5 text-indigo-600" />;
+      case 'TASK_APPROVAL_REQUEST':
+        return <FileSignature className="w-5 h-5 text-amber-600" />;
+      case 'TASK_APPROVED':
+        return <CheckCircle2 className="w-5 h-5 text-emerald-600" />;
       case 'TASK_COMMENT':
         return <MessageSquare className="w-5 h-5 text-emerald-600" />;
       case 'DOC_INCOMING':

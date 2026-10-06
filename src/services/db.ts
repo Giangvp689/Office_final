@@ -40,7 +40,6 @@ const DB_STORAGE_KEYS = {
   CURRENT_USER_ID: 'qlvb_current_user_id_v2',
   AUTH_TOKEN: 'qlvb_auth_token_v2',
   ADMIN_ORIGIN_USER_ID: 'qlvb_admin_origin_user_id_v2',
-  DATA_SOURCE_MODE: 'qlvb_data_source_mode_v2',
 };
 
 class DatabaseService {
@@ -48,22 +47,14 @@ class DatabaseService {
   private mySqlConnected: boolean = false;
   private mySqlInfo: any = null;
   private firestoreConnected: boolean = false;
-  private dataSourceMode: 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID' = 'FIREBASE_ONLY';
   private memoryStore: Record<string, string> = {};
 
   constructor() {
     this.cleanStorageOnBoot();
     this.initIfEmpty();
-    const savedMode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
-    this.dataSourceMode = (savedMode as any) || 'FIREBASE_ONLY';
-
-    if (this.dataSourceMode === 'FIREBASE_ONLY') {
-      this.initFirestoreSync();
-    } else {
-      this.checkAndSyncMySql();
-      this.initFirestoreSync();
-      this.fetchAndRefreshAuditLogs();
-    }
+    this.checkAndSyncMySql();
+    this.initFirestoreSync();
+    this.fetchAndRefreshAuditLogs();
   }
 
   /**
@@ -107,40 +98,74 @@ class DatabaseService {
   }
 
   /**
-   * Recovers from QuotaExceededError by trimming oversized attachment base64 caches
+   * Helper to strip oversized base64 data URLs from objects or arrays
+   */
+  private stripOversizedBase64(item: any): any {
+    if (!item) return item;
+    if (Array.isArray(item)) {
+      return item.map((x) => this.stripOversizedBase64(x));
+    }
+    if (typeof item === 'object') {
+      const copy: any = { ...item };
+      if (typeof copy.fileUrl === 'string' && copy.fileUrl.startsWith('data:') && copy.fileUrl.length > 10000) {
+        copy.fileUrl = '';
+      }
+      if (Array.isArray(copy.attachments)) {
+        copy.attachments = copy.attachments.map((a: any) => {
+          if (a && typeof a.fileUrl === 'string' && a.fileUrl.startsWith('data:') && a.fileUrl.length > 10000) {
+            return { ...a, fileUrl: '' };
+          }
+          return a;
+        });
+      }
+      return copy;
+    }
+    return item;
+  }
+
+  /**
+   * Recovers from QuotaExceededError by trimming oversized attachment base64 caches across all collections
    */
   private handleStorageQuotaExceeded(key: string, value: string): boolean {
     try {
       this.memoryStore[key] = value;
 
-      // 1. Free quota by stripping oversized base64 data URLs in attachments
+      // 1. Sanitize the value itself if it contains large data URLs
+      let sanitizedValue = value;
       try {
-        const rawAtt = localStorage.getItem(DB_STORAGE_KEYS.ATTACHMENTS);
-        if (rawAtt) {
-          const atts = JSON.parse(rawAtt);
-          if (Array.isArray(atts)) {
-            const sanitized = atts.map((a: any) => {
-              if (a.fileUrl && typeof a.fileUrl === 'string' && a.fileUrl.startsWith('data:') && a.fileUrl.length > 5000) {
-                return { ...a, fileUrl: '' };
-              }
-              return a;
-            });
-            localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(sanitized));
-          }
-        }
+        const parsed = JSON.parse(value);
+        sanitizedValue = JSON.stringify(this.stripOversizedBase64(parsed));
       } catch {}
 
-      // 2. Retry saving key directly
+      // 2. Free quota in localStorage by stripping oversized base64 across all collections
+      const targetKeys = [
+        DB_STORAGE_KEYS.TASKS,
+        DB_STORAGE_KEYS.INCOMING_DOCS,
+        DB_STORAGE_KEYS.OUTGOING_DOCS,
+        DB_STORAGE_KEYS.ATTACHMENTS,
+      ];
+      for (const k of targetKeys) {
+        try {
+          const raw = localStorage.getItem(k);
+          if (raw && raw.includes('data:') && raw.length > 50000) {
+            const parsed = JSON.parse(raw);
+            const cleaned = JSON.stringify(this.stripOversizedBase64(parsed));
+            localStorage.setItem(k, cleaned);
+          }
+        } catch {}
+      }
+
+      // 3. Retry saving key directly with sanitizedValue
       try {
-        localStorage.setItem(key, value);
+        localStorage.setItem(key, sanitizedValue);
         return true;
       } catch {
-        // If still fails, try keeping up to 500 logs if key is audit logs
+        // If still fails, try keeping up to 300 logs if key is audit logs
         if (key === DB_STORAGE_KEYS.AUDIT_LOGS) {
           try {
-            const parsed = JSON.parse(value);
+            const parsed = JSON.parse(sanitizedValue);
             if (Array.isArray(parsed)) {
-              const trimmed = parsed.slice(0, 500);
+              const trimmed = parsed.slice(0, 300);
               localStorage.setItem(key, JSON.stringify(trimmed));
               return true;
             }
@@ -159,13 +184,32 @@ class DatabaseService {
    */
   private cleanStorageOnBoot() {
     if (typeof window === 'undefined') return;
+
+    // Sanitize oversized base64 across collections
+    const collectionsToSanitize = [
+      DB_STORAGE_KEYS.TASKS,
+      DB_STORAGE_KEYS.INCOMING_DOCS,
+      DB_STORAGE_KEYS.OUTGOING_DOCS,
+      DB_STORAGE_KEYS.ATTACHMENTS,
+    ];
+    for (const key of collectionsToSanitize) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw && raw.length > 200000 && raw.includes('data:')) {
+          const parsed = JSON.parse(raw);
+          const sanitized = this.stripOversizedBase64(parsed);
+          localStorage.setItem(key, JSON.stringify(sanitized));
+        }
+      } catch {}
+    }
+
     try {
       const rawAudit = localStorage.getItem(DB_STORAGE_KEYS.AUDIT_LOGS);
       if (rawAudit) {
         try {
           const logs = JSON.parse(rawAudit);
-          if (Array.isArray(logs) && logs.length > 500) {
-            localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs.slice(0, 500)));
+          if (Array.isArray(logs) && logs.length > 300) {
+            localStorage.setItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs.slice(0, 300)));
           }
         } catch {
           localStorage.removeItem(DB_STORAGE_KEYS.AUDIT_LOGS);
@@ -190,28 +234,22 @@ class DatabaseService {
     } catch {
       try { localStorage.removeItem(DB_STORAGE_KEYS.NOTIFICATIONS); } catch {}
     }
+  }
 
-    try {
-      const rawAtt = localStorage.getItem(DB_STORAGE_KEYS.ATTACHMENTS);
-      if (rawAtt && rawAtt.length > 300000) {
-        try {
-          const atts = JSON.parse(rawAtt);
-          if (Array.isArray(atts)) {
-            let changed = false;
-            const sanitized = atts.map((a: any) => {
-              if (a.fileUrl && typeof a.fileUrl === 'string' && a.fileUrl.startsWith('data:') && a.fileUrl.length > 15000) {
-                changed = true;
-                return { ...a, fileUrl: '' };
-              }
-              return a;
-            });
-            if (changed) {
-              localStorage.setItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(sanitized));
-            }
-          }
-        } catch {}
+  private mergeById<T extends { id?: string }>(currentList: T[], incomingList: T[]): T[] {
+    const map = new Map<string, T>();
+    (currentList || []).forEach((item) => {
+      const key = item.id || (item as any).code || (item as any).fileName;
+      if (key) map.set(key, item);
+    });
+    (incomingList || []).forEach((item) => {
+      const key = item.id || (item as any).code || (item as any).fileName;
+      if (key) {
+        const existing = map.get(key);
+        map.set(key, existing ? { ...existing, ...item } : item);
       }
-    } catch {}
+    });
+    return Array.from(map.values());
   }
 
   private async initFirestoreSync() {
@@ -223,70 +261,61 @@ class DatabaseService {
       firestoreSync.listenToAll({
         onUsers: (users) => {
           this.firestoreConnected = true;
-          this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(users));
+          const current = this.getList<User>(DB_STORAGE_KEYS.USERS, INITIAL_USERS);
+          const merged = this.mergeById(current, users);
+          this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(merged));
           this.notify();
         },
         onDossiers: (dossiers) => {
           this.firestoreConnected = true;
-          const currentDos = this.getDossiers();
-          const dosMap = new Map<string, Dossier>();
-          currentDos.forEach((d) => dosMap.set(d.id, d));
-          dossiers.forEach((d) => dosMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(Array.from(dosMap.values())));
+          const current = this.getList<Dossier>(DB_STORAGE_KEYS.DOSSIERS, INITIAL_DOSSIERS);
+          const merged = this.mergeById(current, dossiers);
+          this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(merged));
           this.notify();
         },
         onIncomingDocs: (docs) => {
           this.firestoreConnected = true;
-          const currentDocs = this.getIncomingDocs();
-          const docMap = new Map<string, IncomingDocument>();
-          currentDocs.forEach((d) => docMap.set(d.id, d));
-          docs.forEach((d) => docMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(Array.from(docMap.values())));
+          const current = this.getList<IncomingDocument>(DB_STORAGE_KEYS.INCOMING_DOCS, INITIAL_INCOMING_DOCS);
+          const merged = this.mergeById(current, docs);
+          this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(merged));
           this.notify();
         },
         onOutgoingDocs: (docs) => {
           this.firestoreConnected = true;
-          const currentDocs = this.getOutgoingDocs();
-          const docMap = new Map<string, OutgoingDocument>();
-          currentDocs.forEach((d) => docMap.set(d.id, d));
-          docs.forEach((d) => docMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(Array.from(docMap.values())));
+          const current = this.getList<OutgoingDocument>(DB_STORAGE_KEYS.OUTGOING_DOCS, INITIAL_OUTGOING_DOCS);
+          const merged = this.mergeById(current, docs);
+          this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(merged));
           this.notify();
         },
         onTasks: (tasks) => {
           this.firestoreConnected = true;
-          const currentTasks = this.getTasks();
-          const taskMap = new Map<string, Task>();
-          currentTasks.forEach((t) => taskMap.set(t.id, t));
-          tasks.forEach((t) => taskMap.set(t.id, t));
-          this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(Array.from(taskMap.values())));
+          const current = this.getList<Task>(DB_STORAGE_KEYS.TASKS, INITIAL_TASKS);
+          const merged = this.mergeById(current, tasks);
+          this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(merged));
           this.notify();
         },
         onAttachments: (attachments) => {
           this.firestoreConnected = true;
-          const currentAtts = this.getAttachments();
-          const attMap = new Map<string, AttachmentFile>();
-          currentAtts.forEach((a) => { if (a.id) attMap.set(a.id, a); });
-          attachments.forEach((a) => { if (a.id) attMap.set(a.id, a); });
-          this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(Array.from(attMap.values())));
+          const current = this.getList<AttachmentFile>(DB_STORAGE_KEYS.ATTACHMENTS, INITIAL_ATTACHMENTS);
+          const merged = this.mergeById(current, attachments);
+          this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(merged));
           this.notify();
         },
         onAuditLogs: (logs) => {
           this.firestoreConnected = true;
           const nonLogout = (logs || []).filter((l) => l.action !== 'LOGOUT');
-          const sorted = nonLogout.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-          const cappedLogs = sorted.slice(0, 500);
-          this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(cappedLogs));
+          const current = this.getList<AuditLog>(DB_STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+          const sorted = this.mergeById(current, nonLogout).sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          ).slice(0, 500);
+          this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(sorted));
           this.notify();
         },
         onNotifications: (notifications) => {
           this.firestoreConnected = true;
           const readIds = this.getPersistentReadNotifIds();
           const current = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
-          const map = new Map<string, SystemNotification>();
-          current.forEach((n) => map.set(n.id, n));
-          (notifications || []).forEach((n) => map.set(n.id, n));
-          const merged = Array.from(map.values())
+          const merged = this.mergeById(current, notifications)
             .map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n))
             .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
             .slice(0, 200);
@@ -300,75 +329,66 @@ class DatabaseService {
         },
       });
 
-      // If Firestore has data, sync all collections into local storage
+      // Synchronize all data from Firestore Cloud Database
+      await this.syncFromFirestoreNow();
+    } catch (err) {
+      console.warn('[Firestore] Initialization notice:', err);
+    }
+  }
+
+  public async syncFromFirestoreNow(): Promise<boolean> {
+    try {
       const remoteData = await firestoreSync.fetchAllFromFirestore();
       if (remoteData) {
+        this.firestoreConnected = true;
         if (remoteData.users && remoteData.users.length > 0) {
-          const currentUsers = this.getUsers();
-          const uMap = new Map<string, User>();
-          currentUsers.forEach((u) => uMap.set(u.id, u));
-          remoteData.users.forEach((u) => uMap.set(u.id, u));
-          this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(Array.from(uMap.values())));
-        }
-        if (remoteData.tasks && remoteData.tasks.length > 0) {
-          const currentTasks = this.getTasks();
-          const taskMap = new Map<string, Task>();
-          currentTasks.forEach((t) => taskMap.set(t.id, t));
-          remoteData.tasks.forEach((t) => taskMap.set(t.id, t));
-          this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(Array.from(taskMap.values())));
-        }
-        if (remoteData.incomingDocs && remoteData.incomingDocs.length > 0) {
-          const currentDocs = this.getIncomingDocs();
-          const docMap = new Map<string, IncomingDocument>();
-          currentDocs.forEach((d) => docMap.set(d.id, d));
-          remoteData.incomingDocs.forEach((d) => docMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(Array.from(docMap.values())));
-        }
-        if (remoteData.outgoingDocs && remoteData.outgoingDocs.length > 0) {
-          const currentDocs = this.getOutgoingDocs();
-          const docMap = new Map<string, OutgoingDocument>();
-          currentDocs.forEach((d) => docMap.set(d.id, d));
-          remoteData.outgoingDocs.forEach((d) => docMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(Array.from(docMap.values())));
+          const current = this.getList<User>(DB_STORAGE_KEYS.USERS, INITIAL_USERS);
+          this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(this.mergeById(current, remoteData.users)));
         }
         if (remoteData.dossiers && remoteData.dossiers.length > 0) {
-          const currentDos = this.getDossiers();
-          const dosMap = new Map<string, Dossier>();
-          currentDos.forEach((d) => dosMap.set(d.id, d));
-          remoteData.dossiers.forEach((d) => dosMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(Array.from(dosMap.values())));
+          const current = this.getList<Dossier>(DB_STORAGE_KEYS.DOSSIERS, INITIAL_DOSSIERS);
+          this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(this.mergeById(current, remoteData.dossiers)));
+        }
+        if (remoteData.incomingDocs && remoteData.incomingDocs.length > 0) {
+          const current = this.getList<IncomingDocument>(DB_STORAGE_KEYS.INCOMING_DOCS, INITIAL_INCOMING_DOCS);
+          this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(this.mergeById(current, remoteData.incomingDocs)));
+        }
+        if (remoteData.outgoingDocs && remoteData.outgoingDocs.length > 0) {
+          const current = this.getList<OutgoingDocument>(DB_STORAGE_KEYS.OUTGOING_DOCS, INITIAL_OUTGOING_DOCS);
+          this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(this.mergeById(current, remoteData.outgoingDocs)));
+        }
+        if (remoteData.tasks && remoteData.tasks.length > 0) {
+          const current = this.getList<Task>(DB_STORAGE_KEYS.TASKS, INITIAL_TASKS);
+          this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(this.mergeById(current, remoteData.tasks)));
         }
         if (remoteData.attachments && remoteData.attachments.length > 0) {
-          const currentAtts = this.getAttachments();
-          const attMap = new Map<string, AttachmentFile>();
-          currentAtts.forEach((a) => { if (a.id) attMap.set(a.id, a); });
-          remoteData.attachments.forEach((a) => { if (a.id) attMap.set(a.id, a); });
-          this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(Array.from(attMap.values())));
+          const current = this.getList<AttachmentFile>(DB_STORAGE_KEYS.ATTACHMENTS, INITIAL_ATTACHMENTS);
+          this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(this.mergeById(current, remoteData.attachments)));
         }
         if (remoteData.notifications && remoteData.notifications.length > 0) {
           const readIds = this.getPersistentReadNotifIds();
-          const currentNotifs = this.getNotifications();
-          const notifMap = new Map<string, SystemNotification>();
-          currentNotifs.forEach((n) => notifMap.set(n.id, n));
-          remoteData.notifications.forEach((n) => notifMap.set(n.id, n));
-          const mergedNotifs = Array.from(notifMap.values())
+          const current = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
+          const merged = this.mergeById(current, remoteData.notifications)
             .map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n))
             .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
             .slice(0, 200);
-          this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(mergedNotifs));
+          this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
         }
         if (remoteData.masterData) {
           this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(remoteData.masterData));
         }
         if (remoteData.auditLogs && remoteData.auditLogs.length > 0) {
           const nonLogout = remoteData.auditLogs.filter((l) => l.action !== 'LOGOUT');
-          const sortedAuditLogs = nonLogout.sort(
+          const current = this.getList<AuditLog>(DB_STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+          const sortedAuditLogs = this.mergeById(current, nonLogout).sort(
             (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           ).slice(0, 500);
           this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(sortedAuditLogs));
         }
         this.notify();
-      } else if (remoteData && remoteData.users.length === 0) {
+        return true;
+      } else {
+        // If Firestore is empty, seed initial dataset to Firestore
         console.log('[Firestore] Cloud database initialized, seeding data...');
         await firestoreSync.migrateInitialDataToFirestore({
           users: this.getUsers(),
@@ -381,9 +401,11 @@ class DatabaseService {
           notifications: this.getNotifications(),
           masterData: this.getMasterData(),
         });
+        return true;
       }
     } catch (err) {
-      console.warn('[Firestore] Initialization notice:', err);
+      console.warn('[Firestore] Sync error:', err);
+      return false;
     }
   }
 
@@ -418,254 +440,99 @@ class DatabaseService {
         this.mySqlInfo = status;
       }
 
-      const syncRes = await fetch('/api/sync-all');
-      if (syncRes.ok) {
-        const syncData = await syncRes.json();
-        if (syncData && syncData.data) {
-          const d = syncData.data;
-          if (Array.isArray(d.users) && d.users.length > 0) {
-            const currentUsers = this.getUsers();
-            const uMap = new Map<string, User>();
-            currentUsers.forEach((u) => uMap.set(u.id, u));
-            d.users.forEach((u: User) => uMap.set(u.id, u));
-            this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(Array.from(uMap.values())));
-          }
-          if (Array.isArray(d.dossiers) && d.dossiers.length > 0) {
-            const currentDos = this.getDossiers();
-            const dosMap = new Map<string, Dossier>();
-            currentDos.forEach((dos) => dosMap.set(dos.id, dos));
-            d.dossiers.forEach((dos: Dossier) => {
-              if (!dosMap.has(dos.id)) dosMap.set(dos.id, dos);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(Array.from(dosMap.values())));
-          }
-          if (Array.isArray(d.incomingDocs) && d.incomingDocs.length > 0) {
-            const currentDocs = this.getIncomingDocs();
-            const docMap = new Map<string, IncomingDocument>();
-            currentDocs.forEach((doc) => docMap.set(doc.id, doc));
-            d.incomingDocs.forEach((doc: IncomingDocument) => {
-              if (!docMap.has(doc.id)) docMap.set(doc.id, doc);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(Array.from(docMap.values())));
-          }
-          if (Array.isArray(d.outgoingDocs) && d.outgoingDocs.length > 0) {
-            const currentDocs = this.getOutgoingDocs();
-            const docMap = new Map<string, OutgoingDocument>();
-            currentDocs.forEach((doc) => docMap.set(doc.id, doc));
-            d.outgoingDocs.forEach((doc: OutgoingDocument) => {
-              if (!docMap.has(doc.id)) docMap.set(doc.id, doc);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(Array.from(docMap.values())));
-          }
-          if (Array.isArray(d.tasks) && d.tasks.length > 0) {
-            const currentTasks = this.getTasks();
-            const taskMap = new Map<string, Task>();
-            currentTasks.forEach((t) => taskMap.set(t.id, t));
-            d.tasks.forEach((t: Task) => {
-              if (!taskMap.has(t.id)) taskMap.set(t.id, t);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(Array.from(taskMap.values())));
-          }
-          if (Array.isArray(d.attachments) && d.attachments.length > 0) {
-            const currentAtts = this.getAttachments();
-            const attMap = new Map<string, AttachmentFile>();
-            currentAtts.forEach((a) => { if (a.id) attMap.set(a.id, a); });
-            d.attachments.forEach((a: AttachmentFile) => {
-              if (a.id && !attMap.has(a.id)) attMap.set(a.id, a);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(Array.from(attMap.values())));
-          }
-          if (Array.isArray(d.auditLogs)) {
-            const currentLogs = this.getAuditLogs();
-            const idMap = new Map<string, AuditLog>();
-            currentLogs.forEach((l) => { if (l.action !== 'LOGOUT') idMap.set(l.id, l); });
-            d.auditLogs.forEach((l: AuditLog) => {
-              if (l.action !== 'LOGOUT' && !idMap.has(l.id)) idMap.set(l.id, l);
-            });
-            const merged = Array.from(idMap.values())
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-              .slice(0, 500);
-            this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(merged));
-          }
-          if (Array.isArray(d.notifications)) {
-            const readIds = this.getPersistentReadNotifIds();
-            const current = this.getList<SystemNotification>(DB_STORAGE_KEYS.NOTIFICATIONS, INITIAL_NOTIFICATIONS);
-            const map = new Map<string, SystemNotification>();
-            current.forEach((n) => map.set(n.id, n));
-            d.notifications.forEach((n: SystemNotification) => map.set(n.id, n));
-            const merged = Array.from(map.values())
-              .map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n))
-              .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-              .slice(0, 200);
-            this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
-          }
-          if (d.masterData) {
-            const currentMaster = this.getMasterData();
-            const serverMD = d.masterData;
-            const mergeLists = (local: any[] = [], remote: any[] = []) => {
-              const res = [...local];
-              remote.forEach((item) => {
-                const text = typeof item === 'string' ? item : item?.name || item?.title || item?.code || '';
-                const exists = res.some((r) => {
-                  const rText = typeof r === 'string' ? r : r?.name || r?.title || r?.code || '';
-                  return rText.toLowerCase() === text.toLowerCase();
+      // ONLY pull from /api/sync-all if MySQL is ACTUALLY CONNECTED!
+      // When MySQL is not configured (like on Vercel or local static runs),
+      // Firestore is the authoritative cloud database and we must NOT overwrite local state with stale cache.
+      if (this.mySqlConnected) {
+        const syncRes = await fetch('/api/sync-all');
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          if (syncData && syncData.data && syncData.connected) {
+            const d = syncData.data;
+            if (Array.isArray(d.users)) {
+              const cur = this.getList<User>(DB_STORAGE_KEYS.USERS, INITIAL_USERS);
+              this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(this.mergeById(cur, d.users)));
+            }
+            if (Array.isArray(d.dossiers)) {
+              const cur = this.getList<Dossier>(DB_STORAGE_KEYS.DOSSIERS, INITIAL_DOSSIERS);
+              this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(this.mergeById(cur, d.dossiers)));
+            }
+            if (Array.isArray(d.incomingDocs)) {
+              const cur = this.getList<IncomingDocument>(DB_STORAGE_KEYS.INCOMING_DOCS, INITIAL_INCOMING_DOCS);
+              this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(this.mergeById(cur, d.incomingDocs)));
+            }
+            if (Array.isArray(d.outgoingDocs)) {
+              const cur = this.getList<OutgoingDocument>(DB_STORAGE_KEYS.OUTGOING_DOCS, INITIAL_OUTGOING_DOCS);
+              this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(this.mergeById(cur, d.outgoingDocs)));
+            }
+            if (Array.isArray(d.tasks)) {
+              const cur = this.getList<Task>(DB_STORAGE_KEYS.TASKS, INITIAL_TASKS);
+              this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(this.mergeById(cur, d.tasks)));
+            }
+            if (Array.isArray(d.attachments)) {
+              const cur = this.getList<AttachmentFile>(DB_STORAGE_KEYS.ATTACHMENTS, INITIAL_ATTACHMENTS);
+              this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(this.mergeById(cur, d.attachments)));
+            }
+            if (Array.isArray(d.auditLogs)) {
+              const currentLogs = this.getAuditLogs();
+              const nonLogout = d.auditLogs.filter((l: any) => l.action !== 'LOGOUT');
+              const merged = this.mergeById(currentLogs, nonLogout)
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                .slice(0, 500);
+              this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(merged));
+            }
+            if (d.masterData) {
+              const currentMaster = this.getMasterData();
+              const serverMD = d.masterData;
+              const mergeLists = (local: any[] = [], remote: any[] = []) => {
+                const res = [...local];
+                remote.forEach((item) => {
+                  const text = typeof item === 'string' ? item : item?.name || item?.title || item?.code || '';
+                  const exists = res.some((r) => {
+                    const rText = typeof r === 'string' ? r : r?.name || r?.title || r?.code || '';
+                    return rText.toLowerCase() === text.toLowerCase();
+                  });
+                  if (!exists && text) res.push(item);
                 });
-                if (!exists && text) res.push(item);
-              });
-              return res;
-            };
+                return res;
+              };
 
-            const mergedMaster: MasterData = {
-              ...currentMaster,
-              ...serverMD,
-              docTypes: mergeLists(currentMaster.docTypes, serverMD.docTypes),
-              authorities: mergeLists(currentMaster.authorities, serverMD.authorities),
-              departments: mergeLists(currentMaster.departments, serverMD.departments),
-              positions: mergeLists(currentMaster.positions, serverMD.positions),
-            };
-            this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(mergedMaster));
-          } else if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
-            const currentMaster = this.getMasterData();
-            const normalizedDepts = Array.isArray(d.departments) && d.departments.length > 0
-              ? d.departments.map((x: any) => typeof x === 'string' ? x : x.name || x.code || String(x))
-              : currentMaster.departments;
-            const normalizedPositions = Array.isArray(d.positions) && d.positions.length > 0
-              ? d.positions.map((x: any) => typeof x === 'string' ? x : x.name || x.code || String(x))
-              : currentMaster.positions;
+              const mergedMaster: MasterData = {
+                ...currentMaster,
+                ...serverMD,
+                docTypes: mergeLists(currentMaster.docTypes, serverMD.docTypes),
+                authorities: mergeLists(currentMaster.authorities, serverMD.authorities),
+                departments: mergeLists(currentMaster.departments, serverMD.departments),
+                positions: mergeLists(currentMaster.positions, serverMD.positions),
+              };
+              this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(mergedMaster));
+            } else if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
+              const currentMaster = this.getMasterData();
+              const normalizedDepts = Array.isArray(d.departments) && d.departments.length > 0
+                ? d.departments.map((x: any) => typeof x === 'string' ? x : x.name || x.code || String(x))
+                : currentMaster.departments;
+              const normalizedPositions = Array.isArray(d.positions) && d.positions.length > 0
+                ? d.positions.map((x: any) => typeof x === 'string' ? x : x.name || x.code || String(x))
+                : currentMaster.positions;
 
-            const newMaster = {
-              ...currentMaster,
-              departments: normalizedDepts,
-              positions: normalizedPositions,
-            };
-            this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(newMaster));
+              const newMaster = {
+                ...currentMaster,
+                departments: normalizedDepts,
+                positions: normalizedPositions,
+              };
+              this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(newMaster));
+            }
+            this.notify();
           }
-          this.notify();
-          return true;
         }
       }
     } catch (err) {
       console.warn('Database auto-sync notice:', err);
     }
-    return false;
-  }
-
-  public isFirebaseOnlyMode(): boolean {
-    const mode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
-    if (!mode) return true; // Default to Firebase Only
-    return mode === 'FIREBASE_ONLY';
-  }
-
-  public getDataSourceMode(): 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID' {
-    const mode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
-    if (!mode) return 'FIREBASE_ONLY';
-    return mode as 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID';
-  }
-
-  public setDataSourceMode(mode: 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID') {
-    this.dataSourceMode = mode;
-    this.safeSetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE, mode);
-    if (mode === 'FIREBASE_ONLY') {
-      this.initFirestoreSync();
-      this.reloadFromFirestore();
-    } else {
-      this.checkAndSyncMySql();
-    }
-    this.notify();
-  }
-
-  public async reloadFromFirestore(): Promise<{ success: boolean; connected: boolean; message: string }> {
-    try {
-      const remoteData = await firestoreSync.fetchAllFromFirestore();
-      if (remoteData) {
-        if (remoteData.users && remoteData.users.length > 0) {
-          const currentUsers = this.getUsers();
-          const uMap = new Map<string, User>();
-          currentUsers.forEach((u) => uMap.set(u.id, u));
-          remoteData.users.forEach((u) => uMap.set(u.id, u));
-          this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(Array.from(uMap.values())));
-        }
-        if (remoteData.dossiers && remoteData.dossiers.length > 0) {
-          const currentDos = this.getDossiers();
-          const dosMap = new Map<string, Dossier>();
-          currentDos.forEach((d) => dosMap.set(d.id, d));
-          remoteData.dossiers.forEach((d) => dosMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(Array.from(dosMap.values())));
-        }
-        if (remoteData.incomingDocs && remoteData.incomingDocs.length > 0) {
-          const currentDocs = this.getIncomingDocs();
-          const docMap = new Map<string, IncomingDocument>();
-          currentDocs.forEach((d) => docMap.set(d.id, d));
-          remoteData.incomingDocs.forEach((d) => docMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(Array.from(docMap.values())));
-        }
-        if (remoteData.outgoingDocs && remoteData.outgoingDocs.length > 0) {
-          const currentDocs = this.getOutgoingDocs();
-          const docMap = new Map<string, OutgoingDocument>();
-          currentDocs.forEach((d) => docMap.set(d.id, d));
-          remoteData.outgoingDocs.forEach((d) => docMap.set(d.id, d));
-          this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(Array.from(docMap.values())));
-        }
-        if (remoteData.tasks && remoteData.tasks.length > 0) {
-          const currentTasks = this.getTasks();
-          const taskMap = new Map<string, Task>();
-          currentTasks.forEach((t) => taskMap.set(t.id, t));
-          remoteData.tasks.forEach((t) => taskMap.set(t.id, t));
-          this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(Array.from(taskMap.values())));
-        }
-        if (remoteData.attachments && remoteData.attachments.length > 0) {
-          const currentAtts = this.getAttachments();
-          const attMap = new Map<string, AttachmentFile>();
-          currentAtts.forEach((a) => { if (a.id) attMap.set(a.id, a); });
-          remoteData.attachments.forEach((a) => { if (a.id) attMap.set(a.id, a); });
-          this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(Array.from(attMap.values())));
-        }
-        if (remoteData.auditLogs && remoteData.auditLogs.length > 0) {
-          const nonLogout = remoteData.auditLogs.filter((l) => l.action !== 'LOGOUT');
-          const sorted = nonLogout.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 500);
-          this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(sorted));
-        }
-        if (remoteData.notifications && remoteData.notifications.length > 0) {
-          const readIds = this.getPersistentReadNotifIds();
-          const currentNotifs = this.getNotifications();
-          const notifMap = new Map<string, SystemNotification>();
-          currentNotifs.forEach((n) => notifMap.set(n.id, n));
-          remoteData.notifications.forEach((n) => notifMap.set(n.id, n));
-          const merged = Array.from(notifMap.values())
-            .map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n))
-            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-            .slice(200);
-          this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
-        }
-        if (remoteData.masterData) {
-          this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(remoteData.masterData));
-        }
-        this.firestoreConnected = true;
-        this.notify();
-        return {
-          success: true,
-          connected: true,
-          message: 'Đã tải toàn bộ dữ liệu mới nhất trực tiếp từ Google Firebase Cloud!',
-        };
-      }
-      return {
-        success: false,
-        connected: false,
-        message: 'Cơ sở dữ liệu Firebase đang trống. Hãy nhấn "Đồng bộ lên Firebase" để nạp dữ liệu mẫu.',
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        connected: false,
-        message: 'Lỗi nạp dữ liệu từ Firebase: ' + (e.message || e),
-      };
-    }
+    return this.mySqlConnected;
   }
 
   public async reloadFromDatabase(): Promise<{ success: boolean; connected: boolean; message: string }> {
-    if (this.isFirebaseOnlyMode()) {
-      return await this.reloadFromFirestore();
-    }
     const success = await this.checkAndSyncMySql();
     return {
       success,
@@ -680,7 +547,6 @@ class DatabaseService {
     return {
       connected: this.mySqlConnected,
       info: this.mySqlInfo,
-      isFirebaseOnly: this.isFirebaseOnlyMode(),
     };
   }
 
@@ -697,10 +563,6 @@ class DatabaseService {
 
   private async apiCall(url: string, method: string, body?: any) {
     if (typeof window === 'undefined') return;
-    // Nếu đang ở chế độ thuần Firebase thì không gọi backend CSDL MySQL
-    if (this.isFirebaseOnlyMode()) {
-      return;
-    }
     try {
       const res = await fetch(url, {
         method,
@@ -1565,6 +1427,10 @@ class DatabaseService {
 
     const now = new Date().toISOString();
     const assignee = this.getUserById(assignment.assigneeId);
+    if (assignee && (assignee.role === 'LEADER' || assignee.role === 'ADMIN')) {
+      console.warn('Quy chế hành chính: Lãnh đạo chỉ giao việc cho Chuyên viên hoặc Văn thư, không giao việc cho Lãnh đạo.');
+      return undefined;
+    }
     const assigneeName = assignee?.fullName || 'Cán bộ';
 
     // 1. Tự động tạo Nhiệm vụ mới liên kết chặt chẽ
