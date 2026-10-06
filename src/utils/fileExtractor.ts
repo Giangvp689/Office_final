@@ -526,3 +526,25 @@ export async function extractTextFromFile(file: File): Promise<ExtractedDocument
   }
 }
 
+/**
+ * Trích xuất nội dung văn bản từ Data URL (base64) của tệp đính kèm đã lưu trong hệ thống
+ */
+export async function extractTextFromDataUrl(dataUrl: string, fileName: string): Promise<ExtractedDocumentData> {
+  try {
+    if (!dataUrl || !dataUrl.startsWith('data:')) {
+      return { title: fileName, text: '', success: false, error: 'URL không đúng định dạng dữ liệu DataURL' };
+    }
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], fileName, { type: blob.type });
+    return await extractTextFromFile(file);
+  } catch (err: any) {
+    return {
+      title: fileName,
+      text: '',
+      success: false,
+      error: err.message || 'Lỗi khi giải mã tệp dữ liệu đính kèm',
+    };
+  }
+}
+

@@ -19,6 +19,7 @@ import {
   syncStoreWithMySql,
 } from './server/store';
 import { INITIAL_USERS, INITIAL_MASTER_DATA } from './src/data/mockData';
+import { generateLocalAssistantAnswer } from './src/utils/localAssistant';
 
 dotenv.config();
 
@@ -87,24 +88,17 @@ syncStoreWithMySql().then(({ connected }) => {
 // Lazy Google GenAI Client
 let aiClient: GoogleGenAI | null = null;
 function getAIClient(): GoogleGenAI {
-  const apiKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+  const rawKey = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+  const apiKey = rawKey.length > 0 ? rawKey : undefined;
   if (!aiClient) {
-    aiClient = apiKey
-      ? new GoogleGenAI({
-          apiKey,
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build',
-            },
-          },
-        })
-      : new GoogleGenAI({
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build',
-            },
-          },
-        });
+    aiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
   }
   return aiClient;
 }
@@ -115,10 +109,11 @@ async function generateGeminiContent(options: {
   contents?: any;
   parts?: any[];
   jsonMode?: boolean;
+  systemInstruction?: string;
 }): Promise<string> {
   const ai = getAIClient();
-  // Order of models: prioritize ultra-stable gemini-3.6-flash and high-availability lite models
-  const models = ['gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  // Order of models: prioritize gemini-3.8-flash for top-tier reasoning and summarization, followed by flash lite
+  const models = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
   let lastError: any = null;
 
   let requestContents: any;
@@ -132,10 +127,18 @@ async function generateGeminiContent(options: {
 
   for (const model of models) {
     try {
+      const config: any = {};
+      if (options.jsonMode) {
+        config.responseMimeType = 'application/json';
+      }
+      if (options.systemInstruction) {
+        config.systemInstruction = options.systemInstruction;
+      }
+
       const response = await ai.models.generateContent({
         model,
         contents: requestContents,
-        config: options.jsonMode ? { responseMimeType: 'application/json' } : undefined,
+        config: Object.keys(config).length > 0 ? config : undefined,
       });
       if (response.text) {
         return response.text;
@@ -2602,7 +2605,7 @@ Hãy trả về duy nhất định dạng JSON thuần túy (không bọc trong 
   }
 });
 
-// 1. AI API: Summarize Document & Extract Key Points
+// 1. AI API: Deep Summarize Document & Extract Key Mandates & Action Requirements
 app.post('/api/ai/summarize-document', async (req, res) => {
   try {
     const { title, content, docType, issuingAuthority } = req.body;
@@ -2610,20 +2613,57 @@ app.post('/api/ai/summarize-document', async (req, res) => {
       return res.status(400).json({ error: 'Nội dung hoặc tiêu đề văn bản là bắt buộc' });
     }
 
-    const prompt = `Bạn là Trợ lý Văn thư & Pháp chế hành chính nhà nước. Hãy phân tích văn bản sau:
-- Loại văn bản: ${docType || 'Chưa rõ'}
-- Tiêu đề / Trích yếu: ${title || ''}
-- Cơ quan ban hành: ${issuingAuthority || ''}
-- Toàn văn / Tóm lược: ${content || title}
+    const prompt = `Bạn là Chuyên gia Cấp cao về Văn thư, Pháp chế & Quản lý Điều hành Nhà nước (chuyên sâu theo Nghị định 30/2020/NĐ-CP).
+Nhiệm vụ: Phân tích toàn diện và tóm tắt chuyên sâu văn bản hành chính dưới đây (đặc biệt phù hợp cho các văn bản dài, tệp PDF nghị quyết, quyết định, kế hoạch, thông báo):
 
-Hãy trả về định dạng JSON chính xác:
+THÔNG TIN VĂN BẢN:
+- Loại văn bản: ${docType || 'Chưa rõ'}
+- Tiêu đề / Trích yếu ban đầu: ${title || ''}
+- Cơ quan ban hành: ${issuingAuthority || ''}
+- NỘI DUNG VĂN BẢN (Toàn văn hoặc trích xuất từ PDF):
+"""
+${content || title}
+"""
+
+YÊU CẦU PHÂN TÍCH CHUYÊN SÂU:
+1. "summary": Trích yếu ngắn gọn súc tích (2 - 3 câu).
+2. "executiveSummary": TÓM TẮT ĐIỀU HÀNH CHUYÊN SÂU (2 - 4 đoạn văn hoàn chỉnh, nêu rõ bối cảnh, lý do ban hành, mục tiêu chính và các nội dung cốt lõi của văn bản để Lãnh đạo nắm bắt ngay mà không cần đọc hết tài liệu dài).
+3. "keyRequirements": Danh sách các yêu cầu / chỉ đạo bắt buộc cơ quan phải thi hành (các đầu việc gạch đầu dòng rõ ràng).
+4. "keyMandates": Mảng chi tiết từng nhiệm vụ cụ thể được giao trong văn bản:
+   - "mandate": Tên yêu cầu cụ thể (Ví dụ: "Báo cáo số liệu giải ngân Quý 2", "Kiểm tra an toàn PCCC...")
+   - "responsibleParty": Đơn vị hoặc chức danh chịu trách nhiệm thực hiện
+   - "deadline": Hạn chót hoàn thành (nếu văn bản có nêu mốc ngày/tháng, hoặc đề xuất thời hạn hợp lý YYYY-MM-DD)
+   - "deliverable": Sản phẩm đầu ra (Ví dụ: Dự thảo báo cáo, Danh sách rà soát, Tờ trình...)
+   - "priority": "HOA_TOC" | "KHAN" | "THUONG"
+5. "legalBasisList": Danh sách các căn cứ pháp lý và văn bản quy phạm được viện dẫn.
+6. "suggestedUrgency": "HOA_TOC" | "KHAN" | "THUONG" (dựa trên mức độ khẩn thiết).
+7. "suggestedDueDate": "YYYY-MM-DD" (mốc thời hạn xử lý đề xuất).
+8. "suggestedDepartment": Phòng ban nội bộ phù hợp nhất chủ trì xử lý.
+9. "suggestedAssigneeName": Chức danh hoặc chuyên viên phù hợp.
+10. "actionPlan": Kế hoạch hành động 3-4 bước rõ ràng cho cơ quan tiếp nhận.
+11. "riskAlert": Cảnh báo rủi ro về tiến độ, tài chính, thanh tra hoặc pháp lý nếu chậm trễ xử lý.
+
+YÊU CẦU ĐỊNH DẠNG: Trả về DUY NHẤT định dạng JSON:
 {
-  "summary": "Tóm tắt ngắn gọn súc tích nội dung chính (khoảng 2-3 câu)",
-  "keyRequirements": ["Nhiệm vụ 1", "Nhiệm vụ 2", "Nhiệm vụ 3"],
-  "suggestedUrgency": "THUONG" | "KHAN" | "HOA_TOC",
-  "suggestedDueDate": "YYYY-MM-DD (dự đoán hạn xử lý phù hợp)",
-  "suggestedDepartment": "Phòng ban phù hợp xử lý chính",
-  "actionPlan": "Gợi ý các bước đơn vị cần triển khai ngay"
+  "summary": "...",
+  "executiveSummary": "...",
+  "keyRequirements": ["...", "..."],
+  "keyMandates": [
+    {
+      "mandate": "...",
+      "responsibleParty": "...",
+      "deadline": "YYYY-MM-DD",
+      "deliverable": "...",
+      "priority": "THUONG"
+    }
+  ],
+  "legalBasisList": ["..."],
+  "suggestedUrgency": "THUONG",
+  "suggestedDueDate": "YYYY-MM-DD",
+  "suggestedDepartment": "...",
+  "suggestedAssigneeName": "Chuyên viên phụ trách",
+  "actionPlan": "...",
+  "riskAlert": "..."
 }`;
 
     let result;
@@ -2631,19 +2671,44 @@ Hãy trả về định dạng JSON chính xác:
       const text = await generateGeminiContent({ prompt, jsonMode: true });
       result = JSON.parse(text || '{}');
     } catch (aiErr) {
-      console.warn('[AI Summarize Fallback] Using heuristic summary:', aiErr);
+      console.warn('[AI Summarize Fallback] Using deep heuristic summary:', aiErr);
       const isUrgent = (content || title || '').toLowerCase().includes('khẩn') || (content || title || '').toLowerCase().includes('hỏa tốc');
+      const textContent = content || title || '';
       result = {
-        summary: (content || title || '').slice(0, 180) + '...',
+        summary: textContent.slice(0, 220) + (textContent.length > 220 ? '...' : ''),
+        executiveSummary: `Văn bản về việc "${title || 'chỉ đạo điều hành'}" do ${issuingAuthority || 'cơ quan ban hành'} gửi đến, yêu cầu các đơn vị trực thuộc khẩn trương rà soát các nội dung nghiệp vụ, chuẩn bị báo cáo tham mưu và hoàn thành nhiệm vụ được giao theo đúng thẩm quyền và thời hạn quy định. Cần chủ động phối hợp liên phòng ban để bảo đảm chất lượng hồ sơ công việc.`,
         keyRequirements: [
-          'Kiểm tra và rà soát hồ sơ theo đúng thẩm quyền quy định',
-          'Tham mưu văn bản báo cáo hoặc trả lời đơn vị ban hành',
-          'Đảm bảo tiến độ thực hiện theo đúng mốc thời gian quy định',
+          'Tiếp nhận, vào sổ văn bản đến và thẩm định hồ sơ theo Nghị định 30/2020/NĐ-CP',
+          'Xây dựng văn bản tham mưu, báo cáo hoặc phương án phản hồi cơ quan ban hành',
+          'Chủ động kiểm tra tính pháp lý và phối hợp các bộ phận liên quan',
+          'Trình Lãnh đạo phê duyệt đúng thời hạn quy định',
+        ],
+        keyMandates: [
+          {
+            mandate: `Nghiên cứu thẩm định nội dung: ${(title || 'văn bản').slice(0, 60)}`,
+            responsibleParty: 'Phòng chuyên môn chủ trì',
+            deadline: new Date(Date.now() + (isUrgent ? 2 : 5) * 86400000).toISOString().split('T')[0],
+            deliverable: 'Dự thảo văn bản tham mưu / Báo cáo thẩm định',
+            priority: isUrgent ? 'KHAN' : 'THUONG',
+          },
+          {
+            mandate: 'Tổng hợp số liệu và hồ sơ minh chứng kèm theo',
+            responsibleParty: 'Chuyên viên phụ trách',
+            deadline: new Date(Date.now() + (isUrgent ? 1 : 4) * 86400000).toISOString().split('T')[0],
+            deliverable: 'Hồ sơ tài liệu hoàn chỉnh',
+            priority: 'THUONG',
+          },
+        ],
+        legalBasisList: [
+          'Nghị định số 30/2020/NĐ-CP của Chính phủ về công tác văn thư',
+          'Quy chế làm việc và phân công nhiệm vụ của cơ quan',
         ],
         suggestedUrgency: isUrgent ? 'KHAN' : 'THUONG',
         suggestedDueDate: new Date(Date.now() + (isUrgent ? 2 : 5) * 86400000).toISOString().split('T')[0],
         suggestedDepartment: issuingAuthority ? 'Văn phòng Cơ quan' : 'Phòng chuyên môn phụ trách',
-        actionPlan: '1. Tiếp nhận & phân luồng chuyên viên -> 2. Xây dựng dự thảo ý kiến tham mưu -> 3. Trình Lãnh đạo xem xét phê duyệt.',
+        suggestedAssigneeName: 'Chuyên viên phụ trách',
+        actionPlan: '1. Tiếp nhận phân luồng chuyên môn -> 2. Soạn thảo dự thảo tham mưu -> 3. Lấy ý kiến các phòng ban -> 4. Trình Lãnh đạo phê duyệt trước hạn chót.',
+        riskAlert: 'Cần lưu ý mốc thời gian hoàn thành để tránh phát sinh việc quá hạn trong hệ thống theo dõi điều hành.',
       };
     }
     res.json({ result });
@@ -2741,37 +2806,141 @@ Hãy trả về JSON với cấu trúc:
   }
 });
 
-// 4. AI API: Chat Assistant
+// 4. AI API: Chat Assistant with Full System Awareness & History
 app.post('/api/ai/ask-assistant', async (req, res) => {
   try {
-    const { question, systemContext } = req.body;
+    const { question, chatHistory, systemContext } = req.body;
 
-    const prompt = `Bạn là Trợ lý AI Thông Minh của Hệ thống Quản Lý Văn Bản & Điều Hành Công Việc.
-Dưới đây là thông tin hiện tại của hệ thống (thống kê số lượng văn bản, công việc quá hạn, hồ sơ vụ việc):
-${JSON.stringify(systemContext || {})}
+    if (!question || !question.trim()) {
+      return res.status(400).json({ error: 'Thiếu câu hỏi cần hỗ trợ' });
+    }
 
-Câu hỏi / Yêu cầu của người dùng:
-"${question}"
+    const currentUser = systemContext?.currentUser || {};
+    const incomingDocs = systemContext?.incomingDocs || [];
+    const outgoingDocs = systemContext?.outgoingDocs || [];
+    const tasks = systemContext?.tasks || [];
+    const dossiers = systemContext?.dossiers || [];
+    const users = systemContext?.users || [];
 
-Hãy trả lời một cách chuyên nghiệp, chính xác, thân thiện và đưa ra giải pháp hành động cụ thể cho cán bộ / lãnh đạo.`;
+    // Comprehensive summary of incoming documents
+    const incSummary = incomingDocs.slice(0, 50).map((d: any) => ({
+      number: d.documentNumber,
+      officialNumber: d.officialNumber,
+      authority: d.issuingAuthority,
+      summary: d.summary,
+      docType: d.docType,
+      urgency: d.urgency,
+      status: d.status,
+      dueDate: d.dueDate,
+      assigneeName: d.assigneeName || users.find((u: any) => u.id === d.assigneeId)?.fullName || 'Chưa phân công',
+      directive: d.leaderDirective,
+      result: d.resultSummary,
+      executiveSummary: d.executiveSummary,
+      keyRequirements: d.keyRequirements || [],
+      keyMandates: d.keyMandates || [],
+    }));
+
+    // Comprehensive summary of outgoing documents
+    const outSummary = outgoingDocs.slice(0, 30).map((d: any) => ({
+      number: d.documentNumber,
+      title: d.summary || d.title,
+      docType: d.docType,
+      recipient: d.recipient,
+      status: d.status,
+      drafterName: users.find((u: any) => u.id === d.drafterId)?.fullName || 'Chưa rõ',
+      releaseDate: d.releaseDate,
+    }));
+
+    // Comprehensive summary of tasks
+    const tasksSummary = tasks.slice(0, 60).map((t: any) => ({
+      code: t.code,
+      title: t.title,
+      description: t.description,
+      assigneeName: t.assigneeName || users.find((u: any) => u.id === t.assigneeId)?.fullName || 'Chưa rõ',
+      status: t.status,
+      priority: t.priority,
+      dueDate: t.dueDate,
+      progress: t.progress,
+      isOverdue: t.status === 'OVERDUE' || (t.dueDate && t.dueDate < new Date().toISOString().split('T')[0]),
+    }));
+
+    // Compact summary of dossiers
+    const dossiersSummary = dossiers.slice(0, 20).map((d: any) => ({
+      code: d.code,
+      title: d.title,
+      department: d.department,
+      status: d.status,
+    }));
+
+    // Personnel
+    const staffSummary = users.map((u: any) => ({
+      name: u.fullName,
+      role: u.role,
+      position: u.position,
+      department: u.department,
+    }));
+
+    const systemInstruction = `Bạn là Trợ lý Gemini AI Cấp Cao của Hệ Thống Quản Lý & Phân Loại Văn Bản Hành Chính (Văn phòng điện tử thông minh, tuân thủ Nghị định 30/2020/NĐ-CP của Chính phủ Việt Nam).
+Bạn được cấp quyền truy cập toàn diện và nắm bắt sâu sắc TOÀN BỘ dữ liệu thực tế đang chạy trên hệ thống cơ quan.
+
+THÔNG TIN NGƯỜI ĐANG TRÒ CHUYỆN:
+- Họ tên: ${currentUser.fullName || 'Cán bộ'}
+- Vai trò: ${currentUser.role || 'STAFF'} (${currentUser.position || 'Chuyên viên'})
+- Phòng ban: ${currentUser.department || 'Văn phòng'}
+
+DỮ LIỆU THỰC TẾ TRONG HỆ THỐNG:
+- Số lượng: ${incomingDocs.length} văn bản đến, ${outgoingDocs.length} văn bản đi, ${tasks.length} công việc, ${dossiers.length} hồ sơ vụ việc, ${users.length} cán bộ.
+- Danh sách Văn bản đến:
+${JSON.stringify(incSummary, null, 2)}
+- Danh sách Văn bản đi:
+${JSON.stringify(outSummary, null, 2)}
+- Danh sách Nhiệm vụ / Công việc:
+${JSON.stringify(tasksSummary, null, 2)}
+- Danh sách Hồ sơ vụ việc:
+${JSON.stringify(dossiersSummary, null, 2)}
+- Danh sách Cán bộ cơ quan:
+${JSON.stringify(staffSummary, null, 2)}
+
+QUY TẮC PHẢN HỒI:
+1. Bạn là một Chatbot Thông Minh Đa Năng, có khả năng trò chuyện, tư vấn, phân tích và giải đáp MỌI câu hỏi từ người dùng. Không bị giới hạn trong vài câu hỏi mẫu mặc định. Người dùng có thể hỏi bất kỳ chủ đề gì (công việc, văn bản, soạn thảo, phân tích tiến độ, tra cứu, tư vấn thể thức pháp lý, hỗ trợ ra quyết định...).
+2. Khi người dùng hỏi về văn bản hoặc công việc trong hệ thống: Hãy tra cứu trong dữ liệu trên và trích dẫn CHÍNH XÁC số hiệu văn bản (e.g. 218/QĐ-STC), tiêu đề, tên cơ quan gửi, chuyên viên thụ lý, thời hạn và trạng thái. Nếu văn bản có tóm tắt điều hành (executiveSummary) hoặc yêu cầu trọng tâm (keyRequirements), hãy trình bày rõ ràng.
+3. Khi người dùng hỏi phân tích đôn đốc: Đưa ra nhận xét sắc bén về các công việc quá hạn, văn bản hỏa tốc/khẩn cần ưu tiên, đánh giá tải công việc của từng phòng ban/cá nhân và đề xuất phương án xử lý cụ thể.
+4. Khi người dùng yêu cầu soạn thảo văn bản: Soạn thảo toàn văn chuẩn xác theo thể thức văn bản hành chính Việt Nam (Nghị định 30/2020/NĐ-CP) với Quốc hiệu, Tiêu ngữ, Số ký hiệu, Địa danh ngày tháng, Tên loại & trích yếu, Căn cứ pháp lý, Nội dung chi tiết các điều khoản, Nơi nhận và Thẩm quyền ký.
+5. Luôn trả lời bằng tiếng Việt chuẩn mực, mạch lạc, chuyên nghiệp, định dạng Markdown đẹp mắt (dùng danh sách gạch đầu dòng, in đậm các điểm mấu chốt, bảng số liệu hoặc khối trích dẫn khi cần thiết).`;
+
+    // Format chat history
+    let formattedPrompt = '';
+    if (Array.isArray(chatHistory) && chatHistory.length > 0) {
+      formattedPrompt += 'LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ:\n';
+      chatHistory.slice(-6).forEach((msg: any) => {
+        formattedPrompt += `${msg.role === 'user' ? 'Người dùng' : 'Trợ lý AI'}: ${msg.text}\n`;
+      });
+      formattedPrompt += '\n';
+    }
+    formattedPrompt += `CÂU HỎI HIỆN TẠI CỦA NGƯỜI DÙNG: "${question}"\n\nHãy trả lời đầy đủ, chi tiết, thân thiện và hữu ích nhất:`;
 
     let answer;
     try {
-      answer = await generateGeminiContent({ prompt, jsonMode: false });
+      answer = await generateGeminiContent({
+        prompt: formattedPrompt,
+        systemInstruction,
+        jsonMode: false,
+      });
     } catch (aiErr) {
-      console.warn('[AI Assistant Fallback] Using local knowledge generator:', aiErr);
-      const q = (question || '').toLowerCase();
-      if (q.includes('quá hạn') || q.includes('trễ')) {
-        const count = systemContext?.overdueTasks?.length || 0;
-        answer = `⚠️ **Báo cáo tiến độ:** Hệ thống ghi nhận có **${count} công việc quá hạn** cần chỉ đạo đôn đốc ngay. Lãnh đạo có thể kiểm tra tab **Theo Dõi Công Việc** để chỉ đạo trực tiếp từng cán bộ đảm nhiệm.`;
-      } else if (q.includes('hỏa tốc') || q.includes('khẩn')) {
-        const count = systemContext?.urgentDocs?.length || 0;
-        answer = `🚨 Hệ thống có **${count} văn bản hỏa tốc / khẩn** cần ưu tiên thụ lý giải quyết ngay trong ngày.`;
-      } else {
-        answer = `📊 **Trợ lý Điều Hành Văn Phòng:** Hệ thống hiện đang quản lý **${systemContext?.totalIncoming || 0} văn bản đến**, **${systemContext?.totalOutgoing || 0} văn bản đi** và **${systemContext?.totalTasks || 0} nhiệm vụ được giao**. Toàn bộ dữ liệu đã được số hóa và đồng bộ để bạn tra cứu tức thì!`;
-      }
+      console.warn('[AI Assistant Fallback] Using enhanced local knowledge generator:', aiErr);
+      const enrichedContext = {
+        ...systemContext,
+        incomingDocs,
+        outgoingDocs,
+        tasks,
+        dossiers,
+        users,
+        currentUser,
+      };
+      answer = generateLocalAssistantAnswer(question, enrichedContext);
     }
-    res.json({ answer });
+
+    res.json({ success: true, answer });
   } catch (error: any) {
     console.error('AI Assistant Error:', error);
     res.status(500).json({ error: error.message || 'Lỗi trợ lý AI' });
@@ -2797,14 +2966,14 @@ app.post('/api/ai/classify-document', async (req, res) => {
 
     const prompt = `Bạn là Mô hình Phân tích & Phân loại Nội dung Văn bản Hành chính (Vietnamese Administrative Text Classification Engine) theo quy định thể thức văn bản quản lý nhà nước (Nghị định 30/2020/NĐ-CP).
 
-Nhiệm vụ: Phân tích toàn diện văn bản dưới đây, trích xuất thực thể định danh (NER), dự báo phân bố xác suất lĩnh vực (Multi-class probability distribution), xác định thể loại, độ khẩn, độ mật, và đề xuất phân luồng xử lý tự động cho cơ quan tiếp nhận.
+Nhiệm vụ: Phân tích toàn diện văn bản dưới đây, trích xuất thực thể định danh (NER), tóm tắt chuyên sâu, bóc tách các yêu cầu trọng tâm, dự báo phân bố xác suất lĩnh vực (Multi-class probability distribution), xác định thể loại, độ khẩn, độ mật, và đề xuất phân luồng xử lý tự động cho cơ quan tiếp nhận.
 
 TÀI LIỆU CẦN PHÂN LOẠI:
 - Tên tệp / Tiêu đề: ${title || fileName || 'Văn bản chưa đặt tên'}
 - Ngày hiện tại: ${todayStr}
 - Danh sách phòng ban nội bộ cơ quan tiếp nhận: ${deptList}
 - Danh sách cán bộ nội bộ cơ quan tiếp nhận: ${staffList}
-- NỘI DUNG VĂN BẢN (Toàn văn hoặc trích đoạn):
+- NỘI DUNG VĂN BẢN (Toàn văn hoặc trích xuất từ PDF):
 """
 ${text || title}
 """
@@ -2813,22 +2982,20 @@ QUY TẮC BẮT BUỘC VỀ VĂN BẢN ĐẾN (INCOMING DOCUMENT):
 1. VĂN BẢN ĐẾN là văn bản do CƠ QUAN CẤP TRÊN HOẶC ĐƠN VỊ BÊN NGOÀI gửi đến (Ví dụ: Quốc hội, Chính phủ, Thủ tướng Chính phủ, các Bộ, UBND Tỉnh, Sở ban ngành...).
 - 'issuingAuthority': Là TÊN CƠ QUAN BAN HÀNH BÊN NGOÀI (Ví dụ: Nếu số ký hiệu chứa QH15 thì là Quốc hội; nếu TTg thì là Thủ tướng Chính phủ; nếu BTC thì là Bộ Tài chính...). KHÔNG ĐƯỢC nhầm là cơ quan tiếp nhận.
 - 'signer' và 'signerPosition': Phải trích xuất CHÍNH XÁC Họ tên và Chức vụ của LÃNH ĐẠO CƠ QUAN BÊN NGOÀI ĐÃ KÝ VĂN BẢN ĐÓ (Ví dụ: Chủ tịch Quốc hội Trần Thanh Mẫn, Thủ tướng Phạm Minh Chính, Bộ trưởng, Thứ trưởng, Chủ tịch UBND Tỉnh...).
-- TUYỆT ĐỐI KHÔNG LẤY TÊN CÁN BỘ TRONG HỆ THỐNG NỘI BỘ GÁN VÀO 'signer'! Lãnh đạo ký văn bản đến là của cơ quan gửi đến, KHÔNG THUỘC danh sách cán bộ nội bộ cơ quan mình.
-- Nếu không tìm thấy tên người ký cụ thể trong văn bản, hãy để 'signer' theo chức danh hoặc để trống, TUYỆT ĐỐI KHÔNG gán tên bất kỳ cán bộ nội bộ nào.
+- TUYỆT ĐỐI KHÔNG LẤY TÊN CÁN BỘ TRONG HỆ THỐNG NỘI BỘ GÁN VÀO 'signer'!
 2. Danh sách cán bộ trong hệ thống (${staffList}) CHỈ DÙNG để gợi ý 'suggestedAssigneeName' (chuyên viên nội bộ nhận nhiệm vụ tham mưu xử lý văn bản).
 
 YÊU CẦU: Trả về duy nhất định dạng JSON thuần túy (không bọc trong markdown hay text thừa) với cấu trúc sau:
 {
   "primaryDomain": "Tên 1 trong các lĩnh vực chính: 'Tài chính - Kế toán' | 'Tổ chức - Cán bộ' | 'Hành chính - Quản trị' | 'Kế hoạch - Đầu tư' | 'Pháp chế - Thanh tra' | 'Kỹ thuật - Công nghệ' | 'Giáo dục - Đào tạo' | 'Y tế - Sức khỏe' | 'Chính sách - Xã hội'",
-  "confidenceScore": 95.8, // Điểm tin cậy tổng thể từ 0 đến 100
+  "confidenceScore": 95.8,
   "docType": "Loại văn bản: 'Quyết định' | 'Chỉ thị' | 'Quy chế' | 'Kế hoạch' | 'Thông báo' | 'Tờ trình' | 'Công văn' | 'Báo cáo' | 'Biên bản' | 'Giấy mời' | 'Nghị quyết' | 'Luật'",
   "urgency": "THUONG" | "KHAN" | "THUONG_KHAN" | "HOA_TOC",
-  "urgencyRationale": "Giải thích căn cứ xếp mức độ khẩn (dựa trên mốc thời gian, từ khóa 'gấp', 'hỏa tốc', 'trước ngày...')",
+  "urgencyRationale": "Giải thích căn cứ xếp mức độ khẩn",
   "securityLevel": "THUONG" | "MAT" | "TOI_MAT" | "TUYET_MAT",
   "domainProbabilities": [
     { "domain": "Tên lĩnh vực 1 (lĩnh vực chính)", "score": 92.5, "explanation": "Chứa nhiều thuật ngữ về..." },
-    { "domain": "Tên lĩnh vực 2 (lĩnh vực gần nhất)", "score": 5.0, "explanation": "Có liên quan đến..." },
-    { "domain": "Tên lĩnh vực 3", "score": 2.5, "explanation": "Một phần nội dung đề cập..." }
+    { "domain": "Tên lĩnh vực 2 (lĩnh vực gần nhất)", "score": 5.0, "explanation": "Có liên quan đến..." }
   ],
   "extractedEntities": {
     "documentNumber": "Số ký hiệu trích xuất chuẩn xác (Ví dụ: 72/2025/QH15, 124/UBND-VP, 45/QĐ-TTg, 89/BC-STC) từ văn bản",
@@ -2837,22 +3004,37 @@ YÊU CẦU: Trả về duy nhất định dạng JSON thuần túy (không bọc
     "recipient": "Nơi nhận / Đơn vị tiếp nhận",
     "issueDate": "YYYY-MM-DD (ngày ban hành trích xuất từ văn bản)",
     "effectiveDate": "YYYY-MM-DD (ngày có hiệu lực)",
-    "signer": "Họ và tên người ký văn bản của cơ quan ban hành (KHÔNG chọn cán bộ trong hệ thống nội bộ)",
+    "signer": "Họ và tên người ký văn bản của cơ quan ban hành",
     "signerPosition": "Chức vụ người ký tại cơ quan gửi (Ví dụ: Chủ tịch Quốc hội, Thủ tướng Chính phủ, Bộ trưởng, Chủ tịch UBND...)",
     "summary": "Trích yếu nội dung văn bản súc tích từ 1 đến 3 câu",
+    "executiveSummary": "Tóm tắt điều hành chuyên sâu từ 2 đến 3 đoạn văn trình bày rõ bối cảnh, mục đích và nội dung cốt lõi của văn bản",
+    "keyRequirements": [
+      "Yêu cầu 1: Rà soát và hoàn thiện báo cáo...",
+      "Yêu cầu 2: Tổ chức kiểm tra an toàn...",
+      "Yêu cầu 3: Gửi kết quả về cơ quan ban hành trước ngày..."
+    ],
+    "keyMandates": [
+      {
+        "mandate": "Tên nhiệm vụ cụ thể",
+        "responsibleParty": "Phòng ban / Chức danh chịu trách nhiệm",
+        "deadline": "YYYY-MM-DD",
+        "deliverable": "Sản phẩm đầu ra",
+        "priority": "THUONG"
+      }
+    ],
     "keyTopics": ["từ khóa 1", "từ khóa 2", "từ khóa 3", "từ khóa 4", "từ khóa 5"],
-    "legalBases": ["Căn cứ Hiến pháp...", "Căn cứ Luật...", "Căn cứ Nghị định 30/2020/NĐ-CP..."]
+    "legalBases": ["Căn cứ Nghị định 30/2020/NĐ-CP...", "Căn cứ Luật..."]
   },
   "dispatchRecommendation": {
     "primaryDepartment": "Tên phòng ban phù hợp nhất từ danh sách phòng ban",
     "cooperatingDepartments": ["Phòng phối hợp 1", "Phòng phối hợp 2"],
-    "suggestedAssigneeName": "Tên Chuyên viên (STAFF) phù hợp nhất từ danh sách cán bộ (TUYỆT ĐỐI KHÔNG phân công cho Văn thư CLERK vì Văn thư không phụ trách giải quyết chuyên môn)",
-    "suggestedDueDate": "YYYY-MM-DD (dự đoán thời hạn hoàn thành phù hợp tính từ hôm nay)",
-    "suggestedDossierCode": "HS-2025-XXX-01 (Mã hồ sơ gợi ý chuẩn)",
+    "suggestedAssigneeName": "Tên Chuyên viên (STAFF) phù hợp nhất từ danh sách cán bộ",
+    "suggestedDueDate": "YYYY-MM-DD",
+    "suggestedDossierCode": "HS-2025-XXX-01",
     "suggestedDossierTitle": "Tên hồ sơ vụ việc đề xuất",
     "actionChecklist": [
-      "Bước 1: Kiểm tra tính hợp lệ và hồ sơ kèm theo",
-      "Bước 2: Xây dựng dự thảo báo cáo / phản hồi",
+      "Bước 1: Tiếp nhận và kiểm tra tính hợp lệ của văn bản",
+      "Bước 2: Xây dựng dự thảo văn bản tham mưu / báo cáo giải trình",
       "Bước 3: Trình Lãnh đạo phê duyệt trước hạn chót"
     ],
     "routingReason": "Lý do đề xuất luân chuyển đến phòng ban và cán bộ này"

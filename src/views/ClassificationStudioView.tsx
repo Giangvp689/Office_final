@@ -263,7 +263,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
   onNavigateSection,
 }) => {
   const [activeTab, setActiveTab] = useState<'STUDIO' | 'BENCHMARK' | 'ARCHITECTURE'>('STUDIO');
-  const [engineMode, setEngineMode] = useState<'LOCAL_FAST' | 'GEMINI_DEEP'>('LOCAL_FAST');
+  const [engineMode, setEngineMode] = useState<'LOCAL_FAST' | 'GEMINI_DEEP'>('GEMINI_DEEP');
   const [inputTitle, setInputTitle] = useState('');
   const [inputText, setInputText] = useState('');
   const [fileName, setFileName] = useState('');
@@ -589,6 +589,10 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
       dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
       status: 'PENDING_ASSIGN',
       dossierId: finalDossierId,
+      executiveSummary: classificationResult.extractedEntities.executiveSummary,
+      keyRequirements: classificationResult.extractedEntities.keyRequirements || [],
+      keyMandates: classificationResult.extractedEntities.keyMandates || [],
+      legalBases: classificationResult.extractedEntities.legalBases || [],
       attachments: [
         {
           id: 'att-' + Date.now(),
@@ -712,6 +716,10 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         dueDate: editableDueDate || classificationResult.dispatchRecommendation.suggestedDueDate || new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
         status: 'PENDING_ASSIGN',
         dossierId: finalDossierId,
+        executiveSummary: classificationResult.extractedEntities.executiveSummary,
+        keyRequirements: classificationResult.extractedEntities.keyRequirements || [],
+        keyMandates: classificationResult.extractedEntities.keyMandates || [],
+        legalBases: classificationResult.extractedEntities.legalBases || [],
         attachments: [
           {
             id: 'att-' + Date.now(),
@@ -1516,6 +1524,81 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                       {editableSummary || classificationResult.extractedEntities.summary}
                     </p>
                   </div>
+
+                  {/* Executive Summary */}
+                  {classificationResult.extractedEntities.executiveSummary && (
+                    <div className="p-3.5 bg-gradient-to-br from-indigo-50/80 to-purple-50/50 rounded-xl border border-indigo-200 text-xs space-y-1.5 shadow-2xs">
+                      <div className="flex items-center gap-1.5 text-indigo-900 font-bold">
+                        <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span className="text-[11px] uppercase tracking-wide">Tóm tắt điều hành chuyên sâu (Executive Summary):</span>
+                      </div>
+                      <p className="text-slate-800 leading-relaxed font-sans whitespace-pre-line text-xs font-medium">
+                        {classificationResult.extractedEntities.executiveSummary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Key Requirements & Action Mandates */}
+                  {classificationResult.extractedEntities.keyRequirements && classificationResult.extractedEntities.keyRequirements.length > 0 && (
+                    <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-200/80 text-xs space-y-2">
+                      <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wide block">
+                        📌 Các yêu cầu & Chỉ đạo trọng tâm bắt buộc thi hành:
+                      </span>
+                      <div className="space-y-1.5">
+                        {classificationResult.extractedEntities.keyRequirements.map((req, rIdx) => (
+                          <div key={rIdx} className="flex items-start gap-2 text-slate-800 font-medium">
+                            <span className="w-4 h-4 rounded-full bg-purple-200 text-purple-800 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                              {rIdx + 1}
+                            </span>
+                            <span>{req}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Key Mandates with details */}
+                  {classificationResult.extractedEntities.keyMandates && classificationResult.extractedEntities.keyMandates.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">
+                        ⚡ Danh sách nhiệm vụ cụ thể trích xuất từ văn bản:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        {classificationResult.extractedEntities.keyMandates.map((m, mIdx) => (
+                          <div key={mIdx} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 shadow-2xs space-y-1">
+                            <div className="flex items-start justify-between gap-1">
+                              <span className="font-bold text-slate-900">{m.mandate}</span>
+                              {m.priority && (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                  m.priority === 'HOA_TOC' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {m.priority === 'HOA_TOC' ? 'Hỏa tốc' : 'Thường'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-500 flex flex-wrap gap-2">
+                              {m.responsibleParty && <span>Đơn vị: <strong className="text-slate-700">{m.responsibleParty}</strong></span>}
+                              {m.deadline && <span>Hạn: <strong className="text-rose-600">{m.deadline}</strong></span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Legal Bases */}
+                  {classificationResult.extractedEntities.legalBases && classificationResult.extractedEntities.legalBases.length > 0 && (
+                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase block">📜 Căn cứ pháp lý viện dẫn:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {classificationResult.extractedEntities.legalBases.map((lb, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700">
+                            {lb}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Keywords tags */}
                   {classificationResult.extractedEntities.keyTopics?.length > 0 && (

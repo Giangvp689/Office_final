@@ -46,9 +46,10 @@ import {
   Mail,
   Send,
   ShieldAlert,
+  RefreshCw,
 } from 'lucide-react';
 import { summarizeDocumentWithAI, classifyDocumentWithAI } from '../services/aiService';
-import { extractTextFromFile } from '../utils/fileExtractor';
+import { extractTextFromFile, extractTextFromDataUrl } from '../utils/fileExtractor';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { SamplePdfModal } from '../components/SamplePdfModal';
 import { EmailReceiverModal } from '../components/EmailReceiverModal';
@@ -115,6 +116,80 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [selectedDossierId, setSelectedDossierId] = useState('');
   const [assignmentNotice, setAssignmentNotice] = useState<string | null>(null);
   const [newlyAssignedTask, setNewlyAssignedTask] = useState<Task | null>(null);
+
+  // Deep AI Summarization State for Incoming Documents
+  const [isSummarizingDetail, setIsSummarizingDetail] = useState(false);
+  const [detailSummarizeError, setDetailSummarizeError] = useState<string | null>(null);
+  const [taskCreatedFromMandateNotice, setTaskCreatedFromMandateNotice] = useState<string | null>(null);
+
+  const handleSummarizeSelectedDoc = async () => {
+    if (!selectedDoc) return;
+    setIsSummarizingDetail(true);
+    setDetailSummarizeError(null);
+    try {
+      let contentToSummarize = selectedDoc.summary || '';
+      if (selectedDoc.resultSummary) {
+        contentToSummarize += '\n' + selectedDoc.resultSummary;
+      }
+
+      // If document has attachments, extract full text from the first PDF / DOCX file if available
+      let extractedFromAttachment = false;
+      if (selectedDoc.attachments && selectedDoc.attachments.length > 0) {
+        for (const att of selectedDoc.attachments) {
+          if (att.fileUrl && att.fileUrl.startsWith('data:')) {
+            try {
+              const extRes = await extractTextFromDataUrl(att.fileUrl, att.fileName);
+              if (extRes.text && extRes.text.trim().length > 30) {
+                contentToSummarize = `[TOÀN VĂN TRÍCH XUẤT TỪ TỆP ĐÍNH KÈM "${att.fileName}"]:\n${extRes.text}\n\n[TRÍCH YẾU BAN ĐẦU]: ${selectedDoc.summary}`;
+                extractedFromAttachment = true;
+                break;
+              }
+            } catch (extErr) {
+              console.warn('[AI Summarize] Could not extract attachment text:', extErr);
+            }
+          }
+        }
+      }
+
+      if (!extractedFromAttachment && selectedDoc.attachments && selectedDoc.attachments.length > 0) {
+        contentToSummarize += '\nDanh sách tệp đính kèm: ' + selectedDoc.attachments.map(a => a.fileName).join(', ');
+      }
+
+      const res = await summarizeDocumentWithAI({
+        title: selectedDoc.summary,
+        content: contentToSummarize,
+        docType: selectedDoc.docType,
+        issuingAuthority: selectedDoc.issuingAuthority,
+      });
+
+      const updatedDoc: IncomingDocument = {
+        ...selectedDoc,
+        executiveSummary: res.executiveSummary || res.summary,
+        keyRequirements: res.keyRequirements || [],
+        keyMandates: res.keyMandates || [],
+        legalBases: res.legalBasisList || [],
+      };
+
+      setSelectedDoc(updatedDoc);
+      onSaveDoc(updatedDoc);
+    } catch (err: any) {
+      setDetailSummarizeError(err.message || 'Lỗi khi tóm tắt văn bản bằng AI');
+    } finally {
+      setIsSummarizingDetail(false);
+    }
+  };
+
+  const handleCreateTaskFromMandate = (mandateText: string, deadline?: string) => {
+    if (!selectedDoc) return;
+    const prefilledDoc: IncomingDocument = {
+      ...selectedDoc,
+      summary: `[Nhiệm vụ theo VB ${selectedDoc.documentNumber}] ${mandateText}`,
+      dueDate: deadline || selectedDoc.dueDate,
+    };
+    onCreateTaskFromDoc(prefilledDoc);
+    setTaskCreatedFromMandateNotice(`Đã chuyển nhiệm vụ "${mandateText.slice(0, 45)}..." sang giao diện khởi tạo công việc!`);
+    setTimeout(() => setTaskCreatedFromMandateNotice(null), 4000);
+  };
 
   useEffect(() => {
     if (selectedDoc) {
@@ -429,6 +504,37 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
         } else {
           // Add to form state
           setFormAttachments((prev) => [...prev, newAttachment]);
+
+          // Automatically extract text from PDF / Word / Text files to power deep AI analysis
+          if (extension === 'pdf' || extension === 'docx' || extension === 'txt' || extension === 'doc' || extension === 'png' || extension === 'jpg') {
+            setIsExtractingFile(true);
+            extractTextFromFile(file)
+              .then((res) => {
+                if (res.text && res.text.trim().length > 20) {
+                  setRawTextToAnalyze(res.text);
+                  setShowAiInput(true);
+                  setEditingDoc((prev) => {
+                    if (!prev) return prev;
+                    return {
+                      ...prev,
+                      officialNumber: prev.officialNumber || res.documentNumber,
+                      issuingAuthority: (prev.issuingAuthority === 'Ủy Ban Nhân Dân Tỉnh' && res.issuingAuthority) ? res.issuingAuthority : (prev.issuingAuthority || res.issuingAuthority),
+                      signer: prev.signer || res.signer,
+                      signerPosition: prev.signerPosition || res.signerPosition,
+                      issueDate: prev.issueDate || res.issueDate,
+                      summary: prev.summary || res.summary || res.title,
+                      docType: res.docType || prev.docType,
+                    };
+                  });
+                }
+              })
+              .catch((err) => {
+                console.warn('[Auto File Extraction Notice]:', err);
+              })
+              .finally(() => {
+                setIsExtractingFile(false);
+              });
+          }
         }
       };
 
@@ -608,6 +714,10 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
         signerPosition: classResult.extractedEntities.signerPosition || prev?.signerPosition || '',
         issueDate: classResult.extractedEntities.issueDate || prev?.issueDate || '',
         summary: classResult.extractedEntities.summary || prev?.summary || '',
+        executiveSummary: classResult.extractedEntities.executiveSummary || prev?.executiveSummary || '',
+        keyRequirements: classResult.extractedEntities.keyRequirements || prev?.keyRequirements || [],
+        keyMandates: classResult.extractedEntities.keyMandates || prev?.keyMandates || [],
+        legalBases: classResult.extractedEntities.legalBases || prev?.legalBases || [],
         docType: classResult.docType || prev?.docType,
         urgency: classResult.urgency || prev?.urgency || 'THUONG',
         securityLevel: classResult.securityLevel || prev?.securityLevel || 'THUONG',
@@ -1287,6 +1397,151 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         <span className="block text-[10px] text-teal-700 italic mt-0.5">Tiêu đề: {selectedDoc.emailSubject}</span>
                       )}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* DEEP AI EXECUTIVE SUMMARY & KEY MANDATES SECTION */}
+              <div className="bg-gradient-to-br from-indigo-50/90 via-purple-50/50 to-white p-4 rounded-2xl border-2 border-indigo-200/90 space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between pb-2 border-b border-indigo-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-2xs">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-indigo-950 uppercase tracking-wide">
+                        Trợ Lý AI: Tóm Tắt Chuyên Sâu & Bóc Tách Yêu Cầu
+                      </h4>
+                      <span className="text-[10px] text-indigo-600 font-medium">
+                        Phân tích toàn văn & tệp PDF dài theo chuẩn NĐ 30/2020/NĐ-CP
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSummarizeSelectedDoc}
+                    disabled={isSummarizingDetail}
+                    className="px-2.5 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-900 border border-indigo-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSummarizingDetail ? 'animate-spin' : ''}`} />
+                    <span>{isSummarizingDetail ? 'Đang phân tích...' : selectedDoc.executiveSummary ? 'Tóm tắt lại' : 'Tóm tắt bằng AI'}</span>
+                  </button>
+                </div>
+
+                {detailSummarizeError && (
+                  <div className="p-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{detailSummarizeError}</span>
+                  </div>
+                )}
+
+                {taskCreatedFromMandateNotice && (
+                  <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{taskCreatedFromMandateNotice}</span>
+                  </div>
+                )}
+
+                {/* Content: Either generated summary or Call-to-action */}
+                {selectedDoc.executiveSummary || (selectedDoc.keyRequirements && selectedDoc.keyRequirements.length > 0) ? (
+                  <div className="space-y-3">
+                    {/* Executive Summary Block */}
+                    {selectedDoc.executiveSummary && (
+                      <div className="bg-white/95 p-3 rounded-xl border border-indigo-100 shadow-2xs space-y-1">
+                        <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block">
+                          📝 Tóm tắt nội dung điều hành (Executive Summary):
+                        </span>
+                        <p className="text-xs text-slate-800 leading-relaxed font-sans whitespace-pre-line">
+                          {selectedDoc.executiveSummary}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Key Mandates & Action Requirements */}
+                    {selectedDoc.keyRequirements && selectedDoc.keyRequirements.length > 0 && (
+                      <div className="bg-white/95 p-3 rounded-xl border border-indigo-100 shadow-2xs space-y-2">
+                        <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">
+                          📌 Các yêu cầu & Chỉ đạo trọng tâm bắt buộc thi hành:
+                        </span>
+                        <div className="space-y-1.5">
+                          {selectedDoc.keyRequirements.map((req, idx) => (
+                            <div
+                              key={idx}
+                              className="p-2 bg-slate-50 hover:bg-purple-50/50 rounded-lg border border-slate-200/80 text-xs flex items-start justify-between gap-2 group transition-colors"
+                            >
+                              <div className="flex items-start gap-2">
+                                <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                  {idx + 1}
+                                </span>
+                                <span className="text-slate-800 font-medium leading-relaxed">
+                                  {req}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleCreateTaskFromMandate(req)}
+                                className="opacity-70 group-hover:opacity-100 text-[10px] bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white px-2 py-1 rounded-md font-bold transition-all shrink-0 cursor-pointer"
+                                title="Tạo ngay một nhiệm vụ giao việc từ yêu cầu này"
+                              >
+                                + Giao việc
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Key Structured Mandates with Deadline & Responsible Party */}
+                    {selectedDoc.keyMandates && selectedDoc.keyMandates.length > 0 && (
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                          ⚡ Danh sách đầu việc cụ thể trích xuất từ văn bản:
+                        </span>
+                        <div className="grid grid-cols-1 gap-2">
+                          {selectedDoc.keyMandates.map((m, mIdx) => (
+                            <div key={mIdx} className="p-2.5 bg-white rounded-xl border border-slate-200 shadow-2xs text-xs space-y-1.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-bold text-slate-900 leading-snug">{m.mandate}</span>
+                                {m.priority && (
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                    m.priority === 'HOA_TOC' ? 'bg-rose-100 text-rose-800' : m.priority === 'KHAN' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                                  }`}>
+                                    {m.priority === 'HOA_TOC' ? 'Hỏa tốc' : m.priority === 'KHAN' ? 'Khẩn' : 'Thường'}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                                {m.responsibleParty && (
+                                  <span>Đơn vị: <strong className="text-slate-700">{m.responsibleParty}</strong></span>
+                                )}
+                                {m.deadline && (
+                                  <span>Hạn: <strong className="text-rose-600">{m.deadline}</strong></span>
+                                )}
+                                {m.deliverable && (
+                                  <span>Sản phẩm: <strong className="text-indigo-600">{m.deliverable}</strong></span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-4 bg-white/90 rounded-xl border border-indigo-100 text-center space-y-2">
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Chưa có tóm tắt chuyên sâu cho văn bản này. Bấm nút dưới đây để Trợ lý Gemini AI đọc toàn văn (kể cả tệp PDF dài), tóm tắt điều hành và bóc tách từng nhiệm vụ thi hành.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSummarizeSelectedDoc}
+                      disabled={isSummarizingDetail}
+                      className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2 mx-auto disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{isSummarizingDetail ? 'Đang đọc và tóm tắt văn bản...' : 'Tóm Tắt & Bóc Tách Yêu Cầu Bằng AI Ngay'}</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -2307,6 +2562,52 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* AI PDF/DOCX Deep Analysis Banner */}
+                {isExtractingFile && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs flex items-center gap-2 text-indigo-700 animate-pulse">
+                    <Sparkles className="w-4 h-4 animate-spin shrink-0" />
+                    <span>Đang đọc và trích xuất toàn văn nội dung tệp PDF / Word...</span>
+                  </div>
+                )}
+
+                {rawTextToAnalyze && !isExtractingFile && (
+                  <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-purple-50 to-white border border-indigo-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs text-indigo-950 font-bold">
+                        <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>Đã trích xuất {rawTextToAnalyze.length.toLocaleString('vi-VN')} ký tự từ tệp đính kèm</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRunAiAnalysis}
+                        disabled={isAiLoading}
+                        className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                      >
+                        <Sparkles className={`w-3.5 h-3.5 ${isAiLoading ? 'animate-spin' : ''}`} />
+                        <span>{isAiLoading ? 'Đang phân tích...' : 'Tóm tắt & Bóc tách AI ngay'}</span>
+                      </button>
+                    </div>
+
+                    {editingDoc.executiveSummary && (
+                      <div className="p-2.5 bg-white rounded-lg border border-indigo-100 text-[11px] text-slate-700 space-y-1">
+                        <strong className="text-indigo-700 block">📝 Tóm tắt điều hành (Executive Summary):</strong>
+                        <p className="line-clamp-3 font-medium leading-relaxed">{editingDoc.executiveSummary}</p>
+                      </div>
+                    )}
+
+                    {editingDoc.keyRequirements && editingDoc.keyRequirements.length > 0 && (
+                      <div className="p-2.5 bg-white rounded-lg border border-purple-100 text-[11px] text-slate-700 space-y-1">
+                        <strong className="text-purple-700 block">📌 Yêu cầu trọng tâm trích xuất ({editingDoc.keyRequirements.length}):</strong>
+                        <ul className="list-disc list-inside space-y-0.5 text-slate-600 font-medium">
+                          {editingDoc.keyRequirements.slice(0, 3).map((r, i) => (
+                            <li key={i} className="truncate">{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

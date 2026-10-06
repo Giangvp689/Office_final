@@ -2,13 +2,26 @@ import { DocumentClassificationResult } from '../types';
 import { classifyDocumentLocally } from '../utils/localClassifier';
 import { generateLocalAssistantAnswer } from '../utils/localAssistant';
 
+export interface AIMandateItem {
+  mandate: string;
+  responsibleParty?: string;
+  deadline?: string;
+  deliverable?: string;
+  priority?: 'HOA_TOC' | 'KHAN' | 'THUONG';
+}
+
 export interface AISummarizeResult {
   summary: string;
+  executiveSummary?: string;
   keyRequirements: string[];
+  keyMandates?: AIMandateItem[];
+  legalBasisList?: string[];
   suggestedUrgency: 'THUONG' | 'KHAN' | 'HOA_TOC';
   suggestedDueDate: string;
   suggestedDepartment: string;
+  suggestedAssigneeName?: string;
   actionPlan: string;
+  riskAlert?: string;
 }
 
 export interface AIDraftDocResult {
@@ -172,8 +185,14 @@ export async function suggestTaskBreakdownWithAI(data: {
   };
 }
 
+export interface AIChatMessageItem {
+  role: 'user' | 'model';
+  text: string;
+}
+
 export async function askAIAssistant(data: {
   question: string;
+  chatHistory?: AIChatMessageItem[];
   systemContext?: any;
 }): Promise<string> {
   try {

@@ -139,6 +139,16 @@ export interface IncomingDocument {
   createdById?: string;
   createdAt?: string;
   updatedAt?: string;
+  executiveSummary?: string; // Tóm tắt điều hành chuyên sâu từ AI
+  keyRequirements?: string[]; // Danh sách các yêu cầu / nhiệm vụ cụ thể trích xuất từ văn bản
+  keyMandates?: Array<{
+    mandate: string;
+    responsibleParty?: string;
+    deadline?: string;
+    deliverable?: string;
+    priority?: string;
+  }>;
+  legalBases?: string[]; // Danh sách căn cứ pháp lý
 }
 
 export interface OutgoingDocument {
@@ -305,6 +315,15 @@ export interface DocumentClassificationResult {
     signer?: string;
     signerPosition?: string;
     summary: string;
+    executiveSummary?: string;
+    keyRequirements?: string[];
+    keyMandates?: Array<{
+      mandate: string;
+      responsibleParty?: string;
+      deadline?: string;
+      deliverable?: string;
+      priority?: string;
+    }>;
     keyTopics: string[];
     legalBases?: string[];
   };
