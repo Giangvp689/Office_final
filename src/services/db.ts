@@ -264,6 +264,11 @@ class DatabaseService {
           this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
           this.notify();
         },
+        onMasterData: (master) => {
+          this.firestoreConnected = true;
+          this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(master));
+          this.notify();
+        },
       });
 
       // If Firestore has data, sync into local storage
@@ -271,6 +276,9 @@ class DatabaseService {
       if (remoteData) {
         if (remoteData.users && remoteData.users.length > 0) {
           this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(remoteData.users));
+        }
+        if (remoteData.masterData) {
+          this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(remoteData.masterData));
         }
         if (remoteData.auditLogs && remoteData.auditLogs.length > 0) {
           const nonLogout = remoteData.auditLogs.filter((l) => l.action !== 'LOGOUT');
@@ -365,7 +373,32 @@ class DatabaseService {
               .slice(0, 200);
             this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
           }
-          if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
+          if (d.masterData) {
+            const currentMaster = this.getMasterData();
+            const serverMD = d.masterData;
+            const mergeLists = (local: any[] = [], remote: any[] = []) => {
+              const res = [...local];
+              remote.forEach((item) => {
+                const text = typeof item === 'string' ? item : item?.name || item?.title || item?.code || '';
+                const exists = res.some((r) => {
+                  const rText = typeof r === 'string' ? r : r?.name || r?.title || r?.code || '';
+                  return rText.toLowerCase() === text.toLowerCase();
+                });
+                if (!exists && text) res.push(item);
+              });
+              return res;
+            };
+
+            const mergedMaster: MasterData = {
+              ...currentMaster,
+              ...serverMD,
+              docTypes: mergeLists(currentMaster.docTypes, serverMD.docTypes),
+              authorities: mergeLists(currentMaster.authorities, serverMD.authorities),
+              departments: mergeLists(currentMaster.departments, serverMD.departments),
+              positions: mergeLists(currentMaster.positions, serverMD.positions),
+            };
+            this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(mergedMaster));
+          } else if (Array.isArray(d.departments) || Array.isArray(d.positions)) {
             const currentMaster = this.getMasterData();
             const normalizedDepts = Array.isArray(d.departments) && d.departments.length > 0
               ? d.departments.map((x: any) => typeof x === 'string' ? x : x.name || x.code || String(x))
@@ -2325,6 +2358,7 @@ class DatabaseService {
     this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(data));
     this.notify();
     this.logAction('UPDATE', 'CATEGORY', 'master-data', 'Danh mục dùng chung', 'Cập nhật danh mục hệ thống', actor);
+    this.apiCall('/api/master-data', 'POST', data);
     firestoreSync.saveMasterData(data);
   }
 

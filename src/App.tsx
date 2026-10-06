@@ -220,6 +220,9 @@ export const App: React.FC = () => {
           setCurrentUser(user);
           setIsAuthenticated(true);
           reloadData();
+          db.checkAndSyncMySql().then(() => {
+            reloadData();
+          });
         }}
       />
     );

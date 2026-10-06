@@ -460,6 +460,17 @@ export async function ensureAllTableSchemas(p: mysql.Pool): Promise<void> {
         { name: 'is_read', type: 'TINYINT(1) DEFAULT 0' },
       ],
     },
+    system_settings: {
+      createSql: `CREATE TABLE IF NOT EXISTS system_settings (
+        key_name VARCHAR(100) PRIMARY KEY,
+        data_value LONGTEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`,
+      columns: [
+        { name: 'key_name', type: 'VARCHAR(100) PRIMARY KEY' },
+        { name: 'data_value', type: 'LONGTEXT NOT NULL' },
+      ],
+    },
   };
 
   // Create table if not exists, then ensure all columns exist and types are compatible
@@ -1061,5 +1072,14 @@ export async function fetchAllDataFromMySql() {
       isRead: Boolean(n.is_read),
       createdAt: n.created_at,
     })),
+    masterData: await (async () => {
+      try {
+        const [settingsRows] = (await p.query("SELECT data_value FROM system_settings WHERE key_name = 'master_data'")) as any;
+        if (Array.isArray(settingsRows) && settingsRows[0]?.data_value) {
+          return parseJson(settingsRows[0].data_value, null);
+        }
+      } catch {}
+      return null;
+    })(),
   };
 }

@@ -12,6 +12,7 @@ import {
   INITIAL_ATTACHMENTS,
   INITIAL_AUDIT_LOGS,
   INITIAL_NOTIFICATIONS,
+  INITIAL_MASTER_DATA,
 } from '../src/data/mockData';
 import {
   checkMySqlConnection,
@@ -36,6 +37,7 @@ export interface FullDbState {
   attachments: any[];
   auditLogs: any[];
   notifications: any[];
+  masterData?: any;
   lastSyncedAt?: string;
 }
 
@@ -53,6 +55,7 @@ function getInitialState(): FullDbState {
     attachments: [...INITIAL_ATTACHMENTS],
     auditLogs: [...INITIAL_AUDIT_LOGS],
     notifications: [...INITIAL_NOTIFICATIONS],
+    masterData: JSON.parse(JSON.stringify(INITIAL_MASTER_DATA)),
     lastSyncedAt: new Date().toISOString(),
   };
 }
@@ -81,6 +84,20 @@ export function loadStore(): FullDbState {
         inMemoryState.attachments = mergeMissing(inMemoryState.attachments, initial.attachments);
         inMemoryState.auditLogs = mergeMissing(inMemoryState.auditLogs, initial.auditLogs);
         inMemoryState.notifications = mergeMissing(inMemoryState.notifications, initial.notifications);
+        if (!inMemoryState.masterData) {
+          inMemoryState.masterData = JSON.parse(JSON.stringify(INITIAL_MASTER_DATA));
+        } else {
+          // Merge missing defaults into existing masterData
+          const curMD = inMemoryState.masterData;
+          inMemoryState.masterData = {
+            ...INITIAL_MASTER_DATA,
+            ...curMD,
+            docTypes: curMD.docTypes && curMD.docTypes.length > 0 ? curMD.docTypes : INITIAL_MASTER_DATA.docTypes,
+            authorities: curMD.authorities && curMD.authorities.length > 0 ? curMD.authorities : INITIAL_MASTER_DATA.authorities,
+            departments: curMD.departments && curMD.departments.length > 0 ? curMD.departments : INITIAL_MASTER_DATA.departments,
+            positions: curMD.positions && curMD.positions.length > 0 ? curMD.positions : INITIAL_MASTER_DATA.positions,
+          };
+        }
       }
       return inMemoryState!;
     } catch (e) {
@@ -115,6 +132,7 @@ export async function syncStoreWithMySql(): Promise<{ connected: boolean; data: 
       }
       const mySqlData = await fetchAllDataFromMySql();
       if (mySqlData) {
+        const currentStore = loadStore();
         const full: FullDbState = {
           departments: mySqlData.departments || [],
           positions: mySqlData.positions || [],
@@ -126,6 +144,7 @@ export async function syncStoreWithMySql(): Promise<{ connected: boolean; data: 
           attachments: mySqlData.attachments || [],
           auditLogs: mySqlData.auditLogs || [],
           notifications: mySqlData.notifications || [],
+          masterData: mySqlData.masterData || currentStore.masterData || JSON.parse(JSON.stringify(INITIAL_MASTER_DATA)),
           lastSyncedAt: new Date().toISOString(),
         };
         inMemoryState = full;

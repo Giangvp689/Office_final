@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MasterData, User } from '../types';
-import { ShieldAlert, Lock, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Lock, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 interface MasterDataViewProps {
   masterData: MasterData;
@@ -37,6 +37,14 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
   const [authorityInput, setAuthorityInput] = useState('');
   const [deptInput, setDeptInput] = useState('');
   const [posInput, setPosInput] = useState('');
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+
+  const triggerFeedback = (msg: string) => {
+    setSaveFeedback(msg);
+    setTimeout(() => {
+      setSaveFeedback((current) => (current === msg ? null : current));
+    }, 3000);
+  };
 
   const isAdminOrLeader = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
 
@@ -61,13 +69,17 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
     if (!val) return;
     const currentList = masterData[field] || [];
     const exists = currentList.some((it: any) => getItemText(it).toLowerCase() === val.toLowerCase());
-    if (exists) return;
+    if (exists) {
+      triggerFeedback(`Mục "${val}" đã tồn tại trong danh mục`);
+      return;
+    }
 
     onUpdateMasterData({
       ...masterData,
       [field]: [...currentList, val],
     });
     setter('');
+    triggerFeedback(`Đã lưu "${val}" vào CSDL danh mục hệ thống`);
   };
 
   const handleRemove = (field: StringArrayField, targetItem: any) => {
@@ -82,15 +94,26 @@ export const MasterDataView: React.FC<MasterDataViewProps> = ({
         return getItemText(i) !== targetText;
       }),
     });
+    triggerFeedback(`Đã xóa "${targetText}" khỏi danh mục hệ thống`);
   };
 
   return (
     <div className="w-full p-6 md:p-8 flex flex-col gap-6 flex-1">
-      <div>
-        <h1 className="text-xl font-bold text-slate-800">Danh Mục Dùng Chung Hệ Thống</h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Quản lý các danh mục chuẩn hóa: Loại văn bản, Cơ quan ban hành, Phòng ban và Chức vụ
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2.5">
+            Danh Mục Dùng Chung Hệ Thống
+            {saveFeedback && (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1 animate-pulse">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {saveFeedback}
+              </span>
+            )}
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Quản lý các danh mục chuẩn hóa: Loại văn bản, Cơ quan ban hành, Phòng ban và Chức vụ (Đồng bộ CSDL máy chủ & Cloud)
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

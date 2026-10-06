@@ -18,7 +18,7 @@ import {
   saveStore,
   syncStoreWithMySql,
 } from './server/store';
-import { INITIAL_USERS } from './src/data/mockData';
+import { INITIAL_USERS, INITIAL_MASTER_DATA } from './src/data/mockData';
 
 dotenv.config();
 
@@ -429,6 +429,95 @@ app.get('/api/positions', async (_req, res) => {
     res.json({ success: true, data: sync.data.positions, connected: sync.connected });
   } catch (e: any) {
     res.json({ success: true, data: loadStore().positions, connected: false });
+  }
+});
+
+app.get('/api/master-data', async (_req, res) => {
+  try {
+    const sync = await syncStoreWithMySql();
+    const store = sync.data;
+    const masterData = store.masterData || { ...INITIAL_MASTER_DATA };
+    res.json({ success: true, data: masterData, connected: sync.connected });
+  } catch (e: any) {
+    const store = loadStore();
+    res.json({ success: true, data: store.masterData || { ...INITIAL_MASTER_DATA }, connected: false });
+  }
+});
+
+app.post('/api/master-data', async (req, res) => {
+  try {
+    const incomingMasterData = req.body;
+    if (!incomingMasterData) {
+      return res.status(400).json({ success: false, error: 'Thiếu dữ liệu danh mục dùng chung' });
+    }
+
+    const store = loadStore();
+    store.masterData = {
+      ...(store.masterData || INITIAL_MASTER_DATA),
+      ...incomingMasterData,
+    };
+
+    // Keep store.departments in sync
+    if (Array.isArray(incomingMasterData.departments)) {
+      const depts = incomingMasterData.departments.map((d: any, idx: number) => {
+        if (typeof d === 'string') {
+          const existing = (store.departments || []).find((x: any) => x.name === d);
+          return existing || { id: `dept-md-${idx + 1}`, code: `PB${idx + 1}`, name: d, description: d };
+        }
+        return d;
+      });
+      store.departments = depts;
+    }
+
+    // Keep store.positions in sync
+    if (Array.isArray(incomingMasterData.positions)) {
+      const poses = incomingMasterData.positions.map((p: any, idx: number) => {
+        if (typeof p === 'string') {
+          const existing = (store.positions || []).find((x: any) => x.name === p);
+          return existing || { id: `pos-md-${idx + 1}`, name: p, level: 5 };
+        }
+        return p;
+      });
+      store.positions = poses;
+    }
+
+    saveStore(store);
+
+    const dbResult = await safeDbRun(async (pool) => {
+      if (Array.isArray(store.departments)) {
+        for (const dept of store.departments) {
+          if (!dept || !dept.name) continue;
+          await pool.query(
+            `INSERT INTO departments (id, code, name, description, manager_id)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE code=VALUES(code), name=VALUES(name), description=VALUES(description), manager_id=VALUES(manager_id)`,
+            [dept.id || `dept-${Date.now()}`, dept.code || String(dept.name).slice(0, 10), dept.name, dept.description || null, dept.managerId || null]
+          );
+        }
+      }
+      if (Array.isArray(store.positions)) {
+        for (const pos of store.positions) {
+          if (!pos || !pos.name) continue;
+          await pool.query(
+            `INSERT INTO positions (id, name, level)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE name=VALUES(name), level=VALUES(level)`,
+            [pos.id || `pos-${Date.now()}`, pos.name, pos.level || 5]
+          );
+        }
+      }
+      await pool.query(
+        `INSERT INTO system_settings (key_name, data_value)
+         VALUES ('master_data', ?)
+         ON DUPLICATE KEY UPDATE data_value = VALUES(data_value)`,
+        [JSON.stringify(store.masterData)]
+      );
+    });
+
+    res.json({ success: true, data: store.masterData, fromDb: dbResult.fromDb });
+  } catch (error: any) {
+    console.error('Error saving master-data:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

@@ -4,6 +4,7 @@ import {
   setDoc,
   deleteDoc,
   getDocs,
+  getDoc,
   onSnapshot,
   writeBatch,
 } from 'firebase/firestore';
@@ -282,6 +283,21 @@ export class FirestoreSyncService {
               }
             }
             console.warn('[Firestore] audit_logs sync error:', err.message);
+          }
+        );
+        this.unsubscribeListeners.push(unsub);
+      }
+
+      if (callbacks.onMasterData) {
+        const unsub = onSnapshot(
+          doc(firestore, 'settings', 'master_data'),
+          (snap) => {
+            if (snap.exists()) {
+              callbacks.onMasterData!(snap.data() as MasterData);
+            }
+          },
+          (err) => {
+            console.warn('[Firestore] master_data sync error:', err.message);
           }
         );
         this.unsubscribeListeners.push(unsub);
@@ -635,7 +651,7 @@ export class FirestoreSyncService {
     masterData?: MasterData;
   } | null> {
     try {
-      const [uSnap, dosSnap, inSnap, outSnap, tSnap, attSnap, logSnap, notifSnap] = await Promise.all([
+      const [uSnap, dosSnap, inSnap, outSnap, tSnap, attSnap, logSnap, notifSnap, masterSnap] = await Promise.all([
         getDocs(collection(firestore, 'users')),
         getDocs(collection(firestore, 'dossiers')),
         getDocs(collection(firestore, 'incoming_documents')),
@@ -644,6 +660,7 @@ export class FirestoreSyncService {
         getDocs(collection(firestore, 'attachments')),
         getDocs(collection(firestore, 'audit_logs')),
         getDocs(collection(firestore, 'notifications')),
+        getDoc(doc(firestore, 'settings', 'master_data')),
       ]);
 
       const users: User[] = [];
@@ -670,6 +687,10 @@ export class FirestoreSyncService {
       const notifications: SystemNotification[] = [];
       notifSnap.forEach((d) => notifications.push(d.data() as SystemNotification));
 
+      const masterData: MasterData | undefined = masterSnap.exists()
+        ? (masterSnap.data() as MasterData)
+        : undefined;
+
       this.isOnline = true;
       return {
         users,
@@ -680,6 +701,7 @@ export class FirestoreSyncService {
         attachments,
         auditLogs,
         notifications,
+        masterData,
       };
     } catch (err: any) {
       if (
