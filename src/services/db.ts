@@ -454,56 +454,22 @@ class DatabaseService {
         if (syncData && syncData.data) {
           const d = syncData.data;
           if (Array.isArray(d.users) && d.users.length > 0) {
-            const currentUsers = this.getUsers();
-            const uMap = new Map<string, User>();
-            currentUsers.forEach((u) => uMap.set(u.id, u));
-            d.users.forEach((u: User) => uMap.set(u.id, u));
-            this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(Array.from(uMap.values())));
+            this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(d.users));
           }
           if (Array.isArray(d.dossiers) && d.dossiers.length > 0) {
-            const currentDos = this.getDossiers();
-            const dosMap = new Map<string, Dossier>();
-            currentDos.forEach((dos) => dosMap.set(dos.id, dos));
-            d.dossiers.forEach((dos: Dossier) => {
-              if (!dosMap.has(dos.id)) dosMap.set(dos.id, dos);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(Array.from(dosMap.values())));
+            this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(d.dossiers));
           }
           if (Array.isArray(d.incomingDocs) && d.incomingDocs.length > 0) {
-            const currentDocs = this.getIncomingDocs();
-            const docMap = new Map<string, IncomingDocument>();
-            currentDocs.forEach((doc) => docMap.set(doc.id, doc));
-            d.incomingDocs.forEach((doc: IncomingDocument) => {
-              if (!docMap.has(doc.id)) docMap.set(doc.id, doc);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(Array.from(docMap.values())));
+            this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(d.incomingDocs));
           }
           if (Array.isArray(d.outgoingDocs) && d.outgoingDocs.length > 0) {
-            const currentDocs = this.getOutgoingDocs();
-            const docMap = new Map<string, OutgoingDocument>();
-            currentDocs.forEach((doc) => docMap.set(doc.id, doc));
-            d.outgoingDocs.forEach((doc: OutgoingDocument) => {
-              if (!docMap.has(doc.id)) docMap.set(doc.id, doc);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(Array.from(docMap.values())));
+            this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(d.outgoingDocs));
           }
           if (Array.isArray(d.tasks) && d.tasks.length > 0) {
-            const currentTasks = this.getTasks();
-            const taskMap = new Map<string, Task>();
-            currentTasks.forEach((t) => taskMap.set(t.id, t));
-            d.tasks.forEach((t: Task) => {
-              if (!taskMap.has(t.id)) taskMap.set(t.id, t);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(Array.from(taskMap.values())));
+            this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(d.tasks));
           }
           if (Array.isArray(d.attachments) && d.attachments.length > 0) {
-            const currentAtts = this.getAttachments();
-            const attMap = new Map<string, AttachmentFile>();
-            currentAtts.forEach((a) => { if (a.id) attMap.set(a.id, a); });
-            d.attachments.forEach((a: AttachmentFile) => {
-              if (a.id && !attMap.has(a.id)) attMap.set(a.id, a);
-            });
-            this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(Array.from(attMap.values())));
+            this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(d.attachments));
           }
           if (Array.isArray(d.auditLogs)) {
             const currentLogs = this.getAuditLogs();
