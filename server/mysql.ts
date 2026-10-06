@@ -626,7 +626,6 @@ export async function initTablesAndSeed(): Promise<{ success: boolean; message: 
   }
 
   // Step 2: Connect via pool to target database
-  resetPool();
   const p = getPool();
   if (!p) throw new Error('Không thể kết nối MySQL pool');
 

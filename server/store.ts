@@ -118,6 +118,9 @@ export function saveStore(state: FullDbState) {
   }
 }
 
+let mySqlInitPromise: Promise<void> | null = null;
+let tablesInitialized = false;
+
 /**
  * Syncs memory store with MySQL. If MySQL is connected, fetches everything directly from MySQL.
  */
@@ -125,10 +128,20 @@ export async function syncStoreWithMySql(): Promise<{ connected: boolean; data: 
   try {
     const status = await checkMySqlConnection();
     if (status.connected) {
-      try {
-        await initTablesAndSeed();
-      } catch (seedErr) {
-        console.warn('Init tables warning:', seedErr);
+      if (!tablesInitialized) {
+        if (!mySqlInitPromise) {
+          mySqlInitPromise = (async () => {
+            try {
+              await initTablesAndSeed();
+              tablesInitialized = true;
+            } catch (seedErr) {
+              console.warn('Init tables warning:', seedErr);
+            }
+          })().finally(() => {
+            mySqlInitPromise = null;
+          });
+        }
+        await mySqlInitPromise;
       }
       const mySqlData = await fetchAllDataFromMySql();
       if (mySqlData) {
