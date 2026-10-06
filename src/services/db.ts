@@ -40,6 +40,7 @@ const DB_STORAGE_KEYS = {
   CURRENT_USER_ID: 'qlvb_current_user_id_v2',
   AUTH_TOKEN: 'qlvb_auth_token_v2',
   ADMIN_ORIGIN_USER_ID: 'qlvb_admin_origin_user_id_v2',
+  DATA_SOURCE_MODE: 'qlvb_data_source_mode_v2',
 };
 
 class DatabaseService {
@@ -47,14 +48,22 @@ class DatabaseService {
   private mySqlConnected: boolean = false;
   private mySqlInfo: any = null;
   private firestoreConnected: boolean = false;
+  private dataSourceMode: 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID' = 'FIREBASE_ONLY';
   private memoryStore: Record<string, string> = {};
 
   constructor() {
     this.cleanStorageOnBoot();
     this.initIfEmpty();
-    this.checkAndSyncMySql();
-    this.initFirestoreSync();
-    this.fetchAndRefreshAuditLogs();
+    const savedMode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
+    this.dataSourceMode = (savedMode as any) || 'FIREBASE_ONLY';
+
+    if (this.dataSourceMode === 'FIREBASE_ONLY') {
+      this.initFirestoreSync();
+    } else {
+      this.checkAndSyncMySql();
+      this.initFirestoreSync();
+      this.fetchAndRefreshAuditLogs();
+    }
   }
 
   /**
@@ -541,7 +550,122 @@ class DatabaseService {
     return false;
   }
 
+  public isFirebaseOnlyMode(): boolean {
+    const mode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
+    if (!mode) return true; // Default to Firebase Only
+    return mode === 'FIREBASE_ONLY';
+  }
+
+  public getDataSourceMode(): 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID' {
+    const mode = this.safeGetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE);
+    if (!mode) return 'FIREBASE_ONLY';
+    return mode as 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID';
+  }
+
+  public setDataSourceMode(mode: 'FIREBASE_ONLY' | 'MYSQL' | 'HYBRID') {
+    this.dataSourceMode = mode;
+    this.safeSetItem(DB_STORAGE_KEYS.DATA_SOURCE_MODE, mode);
+    if (mode === 'FIREBASE_ONLY') {
+      this.initFirestoreSync();
+      this.reloadFromFirestore();
+    } else {
+      this.checkAndSyncMySql();
+    }
+    this.notify();
+  }
+
+  public async reloadFromFirestore(): Promise<{ success: boolean; connected: boolean; message: string }> {
+    try {
+      const remoteData = await firestoreSync.fetchAllFromFirestore();
+      if (remoteData) {
+        if (remoteData.users && remoteData.users.length > 0) {
+          const currentUsers = this.getUsers();
+          const uMap = new Map<string, User>();
+          currentUsers.forEach((u) => uMap.set(u.id, u));
+          remoteData.users.forEach((u) => uMap.set(u.id, u));
+          this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(Array.from(uMap.values())));
+        }
+        if (remoteData.dossiers && remoteData.dossiers.length > 0) {
+          const currentDos = this.getDossiers();
+          const dosMap = new Map<string, Dossier>();
+          currentDos.forEach((d) => dosMap.set(d.id, d));
+          remoteData.dossiers.forEach((d) => dosMap.set(d.id, d));
+          this.safeSetItem(DB_STORAGE_KEYS.DOSSIERS, JSON.stringify(Array.from(dosMap.values())));
+        }
+        if (remoteData.incomingDocs && remoteData.incomingDocs.length > 0) {
+          const currentDocs = this.getIncomingDocs();
+          const docMap = new Map<string, IncomingDocument>();
+          currentDocs.forEach((d) => docMap.set(d.id, d));
+          remoteData.incomingDocs.forEach((d) => docMap.set(d.id, d));
+          this.safeSetItem(DB_STORAGE_KEYS.INCOMING_DOCS, JSON.stringify(Array.from(docMap.values())));
+        }
+        if (remoteData.outgoingDocs && remoteData.outgoingDocs.length > 0) {
+          const currentDocs = this.getOutgoingDocs();
+          const docMap = new Map<string, OutgoingDocument>();
+          currentDocs.forEach((d) => docMap.set(d.id, d));
+          remoteData.outgoingDocs.forEach((d) => docMap.set(d.id, d));
+          this.safeSetItem(DB_STORAGE_KEYS.OUTGOING_DOCS, JSON.stringify(Array.from(docMap.values())));
+        }
+        if (remoteData.tasks && remoteData.tasks.length > 0) {
+          const currentTasks = this.getTasks();
+          const taskMap = new Map<string, Task>();
+          currentTasks.forEach((t) => taskMap.set(t.id, t));
+          remoteData.tasks.forEach((t) => taskMap.set(t.id, t));
+          this.safeSetItem(DB_STORAGE_KEYS.TASKS, JSON.stringify(Array.from(taskMap.values())));
+        }
+        if (remoteData.attachments && remoteData.attachments.length > 0) {
+          const currentAtts = this.getAttachments();
+          const attMap = new Map<string, AttachmentFile>();
+          currentAtts.forEach((a) => { if (a.id) attMap.set(a.id, a); });
+          remoteData.attachments.forEach((a) => { if (a.id) attMap.set(a.id, a); });
+          this.safeSetItem(DB_STORAGE_KEYS.ATTACHMENTS, JSON.stringify(Array.from(attMap.values())));
+        }
+        if (remoteData.auditLogs && remoteData.auditLogs.length > 0) {
+          const nonLogout = remoteData.auditLogs.filter((l) => l.action !== 'LOGOUT');
+          const sorted = nonLogout.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 500);
+          this.safeSetItem(DB_STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(sorted));
+        }
+        if (remoteData.notifications && remoteData.notifications.length > 0) {
+          const readIds = this.getPersistentReadNotifIds();
+          const currentNotifs = this.getNotifications();
+          const notifMap = new Map<string, SystemNotification>();
+          currentNotifs.forEach((n) => notifMap.set(n.id, n));
+          remoteData.notifications.forEach((n) => notifMap.set(n.id, n));
+          const merged = Array.from(notifMap.values())
+            .map((n) => (readIds.has(n.id) ? { ...n, isRead: true } : n))
+            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+            .slice(200);
+          this.safeSetItem(DB_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(merged));
+        }
+        if (remoteData.masterData) {
+          this.safeSetItem(DB_STORAGE_KEYS.MASTER_DATA, JSON.stringify(remoteData.masterData));
+        }
+        this.firestoreConnected = true;
+        this.notify();
+        return {
+          success: true,
+          connected: true,
+          message: 'Đã tải toàn bộ dữ liệu mới nhất trực tiếp từ Google Firebase Cloud!',
+        };
+      }
+      return {
+        success: false,
+        connected: false,
+        message: 'Cơ sở dữ liệu Firebase đang trống. Hãy nhấn "Đồng bộ lên Firebase" để nạp dữ liệu mẫu.',
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        connected: false,
+        message: 'Lỗi nạp dữ liệu từ Firebase: ' + (e.message || e),
+      };
+    }
+  }
+
   public async reloadFromDatabase(): Promise<{ success: boolean; connected: boolean; message: string }> {
+    if (this.isFirebaseOnlyMode()) {
+      return await this.reloadFromFirestore();
+    }
     const success = await this.checkAndSyncMySql();
     return {
       success,
@@ -556,6 +680,7 @@ class DatabaseService {
     return {
       connected: this.mySqlConnected,
       info: this.mySqlInfo,
+      isFirebaseOnly: this.isFirebaseOnlyMode(),
     };
   }
 
@@ -572,6 +697,10 @@ class DatabaseService {
 
   private async apiCall(url: string, method: string, body?: any) {
     if (typeof window === 'undefined') return;
+    // Nếu đang ở chế độ thuần Firebase thì không gọi backend CSDL MySQL
+    if (this.isFirebaseOnlyMode()) {
+      return;
+    }
     try {
       const res = await fetch(url, {
         method,

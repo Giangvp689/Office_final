@@ -24,6 +24,7 @@ import {
   MessageSquare,
   ExternalLink,
   ArrowRight,
+  Flame,
 } from 'lucide-react';
 import { User, SystemNotification } from '../types';
 import { db } from '../services/db';
@@ -166,13 +167,37 @@ export const Header: React.FC<HeaderProps> = ({
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
                 isSyncing
                   ? 'bg-amber-50 border-amber-300 text-amber-700'
+                  : db.isFirebaseOnlyMode()
+                  ? 'bg-amber-50/80 hover:bg-amber-100/80 border-amber-200 text-amber-900'
                   : 'bg-emerald-50/80 hover:bg-emerald-100/80 border-emerald-200 text-emerald-800'
               }`}
-              title="Nhấn để tải lại toàn bộ dữ liệu mới nhất từ CSDL"
+              title={
+                db.isFirebaseOnlyMode()
+                  ? 'Nhấn để nạp lại dữ liệu trực tiếp từ Google Firebase Firestore'
+                  : 'Nhấn để tải lại toàn bộ dữ liệu mới nhất từ CSDL'
+              }
             >
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-600' : 'text-emerald-700'}`} />
-              <span className="hidden lg:inline">{isSyncing ? 'Đang nạp CSDL...' : 'Lấy dữ liệu từ CSDL'}</span>
+              {db.isFirebaseOnlyMode() ? (
+                <Flame className="w-3.5 h-3.5 text-amber-600 fill-amber-500/20" />
+              ) : (
+                <Database className="w-3.5 h-3.5 text-emerald-600" />
+              )}
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${
+                  isSyncing
+                    ? 'animate-spin text-amber-600'
+                    : db.isFirebaseOnlyMode()
+                    ? 'text-amber-700'
+                    : 'text-emerald-700'
+                }`}
+              />
+              <span className="hidden lg:inline">
+                {isSyncing
+                  ? 'Đang nạp dữ liệu...'
+                  : db.isFirebaseOnlyMode()
+                  ? 'Lấy dữ liệu Firebase'
+                  : 'Lấy dữ liệu từ CSDL'}
+              </span>
             </button>
 
             {onOpenDatabaseCenter && (
@@ -181,8 +206,12 @@ export const Header: React.FC<HeaderProps> = ({
                 className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
                 title="Mở bảng điều khiển CSDL Firebase & MySQL, cấu hình và sao lưu"
               >
-                <Database className="w-3.5 h-3.5 text-indigo-600" />
-                <span className="hidden xl:inline">Quản Lý CSDL</span>
+                {db.isFirebaseOnlyMode() ? (
+                  <Flame className="w-3.5 h-3.5 text-amber-600" />
+                ) : (
+                  <Database className="w-3.5 h-3.5 text-indigo-600" />
+                )}
+                <span className="hidden xl:inline">{db.isFirebaseOnlyMode() ? 'CSDL Firebase' : 'Quản Lý CSDL'}</span>
               </button>
             )}
 

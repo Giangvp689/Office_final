@@ -108,11 +108,15 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // Initial fetch directly from the server database
-    db.checkAndSyncMySql();
-    db.fetchAndRefreshAuditLogs().then((logs) => {
-      if (logs && logs.length > 0) setAuditLogs(logs);
-    });
+    // Initial fetch directly from the database
+    if (db.isFirebaseOnlyMode()) {
+      db.reloadFromFirestore().catch((err) => console.warn('Firestore initial load notice:', err));
+    } else {
+      db.checkAndSyncMySql();
+      db.fetchAndRefreshAuditLogs().then((logs) => {
+        if (logs && logs.length > 0) setAuditLogs(logs);
+      });
+    }
 
     const unsubscribe = db.subscribe(() => {
       reloadData();
