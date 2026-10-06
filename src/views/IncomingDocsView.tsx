@@ -43,11 +43,13 @@ import {
   FileCheck,
   Scan,
   Lock,
+  Mail,
 } from 'lucide-react';
 import { summarizeDocumentWithAI, classifyDocumentWithAI } from '../services/aiService';
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { SamplePdfModal } from '../components/SamplePdfModal';
+import { EmailReceiverModal } from '../components/EmailReceiverModal';
 import { canAccessIncomingDoc, isLeaderOrAdmin, isClerk, canRegisterIncomingDoc, canDirectIncomingDoc, getAssignableStaffUsers } from '../utils/permission';
 import { dbService } from '../services/db';
 
@@ -215,6 +217,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   const [rawTextToAnalyze, setRawTextToAnalyze] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
   const [isSamplePdfModalOpen, setIsSamplePdfModalOpen] = useState(false);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [emailSuccessToast, setEmailSuccessToast] = useState<string | null>(null);
 
   // In-App Deletion Confirmation & Toast
   const [deleteTargetDoc, setDeleteTargetDoc] = useState<IncomingDocument | null>(null);
@@ -438,6 +442,42 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
     }
   };
 
+  // Import Document from Official Email Inbox (Nghị định 30/2020/NĐ-CP)
+  const handleImportFromEmail = (docData: Partial<IncomingDocument>, attachments: AttachmentFile[]) => {
+    const newDocId = 'inc-em-' + Date.now();
+    const newDoc: IncomingDocument = {
+      id: newDocId,
+      documentNumber: `${docs.length + 145}/VP-DV`,
+      officialNumber: docData.officialNumber || '',
+      receivedDate: docData.receivedDate || new Date().toISOString().split('T')[0],
+      issueDate: docData.issueDate || new Date().toISOString().split('T')[0],
+      issuingAuthority: docData.issuingAuthority || 'Cơ quan gửi qua Email',
+      summary: docData.summary || 'Văn bản tiếp nhận qua thư điện tử công vụ',
+      docType: docData.docType || 'Công văn',
+      urgency: docData.urgency || 'THUONG',
+      securityLevel: docData.securityLevel || 'THUONG',
+      assigneeId: currentUser?.id || '',
+      coAssigneeIds: [],
+      dueDate: docData.dueDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      status: 'PROCESSING',
+      resultSummary: '',
+      dossierId: dossiers[0]?.id || '',
+      attachments: attachments || [],
+      linkedTaskIds: [],
+      receptionMethod: 'EMAIL',
+      senderEmail: docData.senderEmail || '',
+      emailSubject: docData.emailSubject || '',
+      createdById: currentUser?.id || '',
+    };
+    onSaveDoc(newDoc);
+    setSelectedDoc(newDoc);
+    setIsEmailModalOpen(false);
+    setEmailSuccessToast(
+      `Đã tiếp nhận văn bản [${newDoc.documentNumber}] (${newDoc.officialNumber || 'Thư điện tử'}) từ Hộp thư công vụ vào Sổ văn bản đến thành công!`
+    );
+    setTimeout(() => setEmailSuccessToast(null), 5000);
+  };
+
   // AI Action
   const handleRunAiAnalysis = async () => {
     if (!rawTextToAnalyze && !editingDoc?.summary) {
@@ -599,6 +639,17 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
             <Download className="w-4 h-4 text-amber-700" />
             <span>Kho Tệp Mẫu</span>
           </button>
+          {canRegisterIncomingDoc(currentUser) && (
+            <button
+              type="button"
+              onClick={() => setIsEmailModalOpen(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer"
+              title="Tiếp nhận văn bản gửi qua hộp thư điện tử công vụ theo NĐ 30/2020/NĐ-CP"
+            >
+              <Mail className="w-4 h-4" />
+              <span>Tiếp Nhận Qua Email</span>
+            </button>
+          )}
           {canRegisterIncomingDoc(currentUser) ? (
             <button
               onClick={handleOpenAddModal}
@@ -615,6 +666,22 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Email Reception Success Banner */}
+      {emailSuccessToast && (
+        <div className="bg-teal-50 border border-teal-200 text-teal-900 p-3.5 rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle className="w-5 h-5 text-teal-600 shrink-0" />
+            <div className="text-xs font-bold">{emailSuccessToast}</div>
+          </div>
+          <button
+            onClick={() => setEmailSuccessToast(null)}
+            className="text-teal-700 hover:text-teal-900 p-1 rounded-lg hover:bg-teal-100 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Role Sub-filters for personalized assignment */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2">
@@ -762,6 +829,12 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                         {doc.issueDate && (
                           <div className="text-[10px] text-slate-400 mt-0.5">
                             Ký ngày: {doc.issueDate}
+                          </div>
+                        )}
+                        {doc.receptionMethod === 'EMAIL' && (
+                          <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 w-fit">
+                            <Mail className="w-2.5 h-2.5 text-teal-600 shrink-0" />
+                            <span className="truncate max-w-[140px]">{doc.senderEmail || 'Email công vụ'}</span>
                           </div>
                         )}
                       </td>
@@ -1048,6 +1121,18 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Hạn giải quyết</span>
                   <span className="text-xs font-bold text-rose-600">{selectedDoc.dueDate}</span>
                 </div>
+                {selectedDoc.receptionMethod === 'EMAIL' && (
+                  <div className="col-span-2 bg-teal-50/80 p-2.5 rounded-lg border border-teal-200/80 flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-teal-600 shrink-0" />
+                    <div className="text-[11px] text-teal-900 leading-snug">
+                      <span className="font-bold">Tiếp nhận qua Hộp thư điện tử: </span>
+                      <span className="font-mono">{selectedDoc.senderEmail || 'email.congvu@donvi.gov.vn'}</span>
+                      {selectedDoc.emailSubject && (
+                        <span className="block text-[10px] text-teal-700 italic mt-0.5">Tiêu đề: {selectedDoc.emailSubject}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* WORKFLOW STEPPER FOR INCOMING DOCUMENTS (NĐ 30/2020/NĐ-CP) */}
@@ -2133,6 +2218,13 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
         isOpen={isSamplePdfModalOpen}
         onClose={() => setIsSamplePdfModalOpen(false)}
         onSelectSampleFile={handleSelectSamplePdfForModal}
+      />
+
+      {/* Email Receiver Modal */}
+      <EmailReceiverModal
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        onImportDoc={handleImportFromEmail}
       />
 
       {/* In-App Delete Confirmation Modal (100% Reliable in iFrames) */}

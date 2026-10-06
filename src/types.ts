@@ -107,6 +107,8 @@ export interface Dossier {
   updatedAt?: string;
 }
 
+export type ReceptionMethod = 'EMAIL' | 'TRUC_LIEN_THONG' | 'SCAN_TRUC_TIEP' | 'DICH_VU_CONG' | 'BUU_DIEN';
+
 export interface IncomingDocument {
   id: string;
   documentNumber: string; // Số đến (e.g. 124/UBND-VP)
@@ -129,6 +131,9 @@ export interface IncomingDocument {
   leaderId?: string; // Lãnh đạo chỉ đạo
   attachments: AttachmentFile[];
   linkedTaskIds?: string[];
+  receptionMethod?: ReceptionMethod; // Kênh tiếp nhận (Email công vụ, Trục liên thông, Quét scan, DVC)
+  senderEmail?: string; // Hộp thư người gửi (nếu tiếp nhận qua Email công vụ)
+  emailSubject?: string; // Tiêu đề email gửi đến
   createdById?: string;
   createdAt?: string;
   updatedAt?: string;

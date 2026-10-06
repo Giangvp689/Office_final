@@ -36,12 +36,14 @@ import {
   DocumentClassificationResult,
   UrgencyLevel,
   SecurityLevel,
+  AttachmentFile,
 } from '../types';
 import { classifyDocumentWithAI } from '../services/aiService';
 import { extractTextFromFile } from '../utils/fileExtractor';
 import { classifyDocumentLocally } from '../utils/localClassifier';
 import { SamplePdfModal } from '../components/SamplePdfModal';
-import { Download, ShieldAlert } from 'lucide-react';
+import { EmailReceiverModal } from '../components/EmailReceiverModal';
+import { Download, ShieldAlert, Mail } from 'lucide-react';
 import { isLeaderOrAdmin, isClerk } from '../utils/permission';
 import { db } from '../services/db';
 
@@ -272,6 +274,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [successActionMsg, setSuccessActionMsg] = useState<string | null>(null);
   const [isSamplePdfModalOpen, setIsSamplePdfModalOpen] = useState(false);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   // Duplication prevention & feedback states
   const [savedIncomingDoc, setSavedIncomingDoc] = useState<IncomingDocument | null>(null);
@@ -368,6 +371,23 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     setSuccessActionMsg(null);
     setSavedIncomingDoc(null);
     setSavedDossierTask(null);
+  };
+
+  // Import Document from Official Email Inbox into Classification Studio
+  const handleImportFromEmail = (docData: Partial<IncomingDocument>, attachments: AttachmentFile[]) => {
+    const att = attachments[0];
+    setInputTitle(docData.summary || docData.emailSubject || '');
+    setInputText(
+      `ỦY BAN NHÂN DÂN THÀNH PHỐ\nSố: ${docData.officialNumber || '.../VP'}\n\n${(docData.docType || 'CÔNG VĂN').toUpperCase()}\nV/v ${docData.summary || ''}\n\nCơ quan gửi qua Email công vụ: ${docData.issuingAuthority || 'Cơ quan gửi'} (${docData.senderEmail || ''})\nTiêu đề thư điện tử: ${docData.emailSubject || ''}\nTrích yếu nội dung: ${docData.summary || ''}`
+    );
+    if (att) {
+      setFileName(att.fileName);
+      setUploadedFileDataUrl(att.fileUrl || '');
+    }
+    setIsEmailModalOpen(false);
+    setSuccessActionMsg(
+      `Đã nạp văn bản [${docData.officialNumber || 'Thư điện tử'}] từ Hộp thư công vụ vào AI Studio! Bấm "Bắt đầu phân tích AI" để thực hiện phân loại.`
+    );
   };
 
   // Run AI classification
@@ -929,7 +949,16 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                   <FileText className="w-4 h-4 text-indigo-600" />
                   <span>Dữ liệu đầu vào văn bản</span>
                 </h3>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setIsEmailModalOpen(true)}
+                    className="text-xs bg-sky-50 hover:bg-sky-100 border border-sky-300 text-sky-800 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Tiếp nhận văn bản từ hòm thư điện tử công vụ"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Nhận từ Email Công Vụ</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setIsSamplePdfModalOpen(true)}
@@ -1766,6 +1795,13 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         isOpen={isSamplePdfModalOpen}
         onClose={() => setIsSamplePdfModalOpen(false)}
         onSelectSampleFile={handleSelectSamplePdfFile}
+      />
+
+      {/* Email Receiver Modal */}
+      <EmailReceiverModal
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        onImportDoc={handleImportFromEmail}
       />
 
       {/* Action Success & Navigation Modal */}
