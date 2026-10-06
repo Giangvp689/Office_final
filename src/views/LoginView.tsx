@@ -98,14 +98,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
             {/* Brand Logo & Name */}
             <div className="flex items-center gap-3.5 mb-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-600/30 border border-indigo-400/30 shrink-0">
-                <Building2 className="w-6 h-6 text-white" />
+              <div className="relative shrink-0">
+                <img
+                  src="/src/assets/images/gov_office_logo_1791271698168.jpg"
+                  alt="Logo Văn Phòng Số"
+                  className="w-13 h-13 rounded-2xl object-cover shadow-xl border border-white/25 ring-2 ring-indigo-400/30"
+                  referrerPolicy="no-referrer"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-400 border-2 border-slate-900 rounded-full"></span>
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">
                   VĂN PHÒNG SỐ
                 </h1>
-                <p className="text-xs text-indigo-300 font-semibold tracking-wide uppercase">
+                <p className="text-xs text-indigo-300 font-bold tracking-wide uppercase">
                   Điều Hành & Quản Trị Văn Bản
                 </p>
               </div>

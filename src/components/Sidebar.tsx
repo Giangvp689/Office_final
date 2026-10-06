@@ -95,14 +95,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div className="p-4 flex items-center justify-between border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-sm shadow-indigo-200">
-            V
+          <div className="relative shrink-0">
+            <img
+              src="/src/assets/images/gov_office_logo_1791271698168.jpg"
+              alt="Logo Văn Phòng Số"
+              className="w-10 h-10 rounded-xl object-cover shadow-sm border border-slate-200"
+              referrerPolicy="no-referrer"
+            />
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></span>
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-sm font-bold text-slate-800 leading-tight tracking-tight truncate">
+            <span className="text-sm font-black text-slate-800 leading-tight tracking-tight truncate">
               VĂN PHÒNG SỐ
             </span>
-            <span className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase truncate">
+            <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase truncate">
               Hồ Sơ & Điều Hành
             </span>
           </div>
