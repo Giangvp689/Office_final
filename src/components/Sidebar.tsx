@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { User, Role } from '../types';
 import { canAccessClassificationStudio } from '../utils/permission';
+import { AppLogo } from './AppLogo';
 
 export type NavSection =
   | 'DASHBOARD'
@@ -95,15 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div className="p-4 flex items-center justify-between border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="relative shrink-0">
-            <img
-              src="/src/assets/images/gov_office_logo_1791271698168.jpg"
-              alt="Logo Văn Phòng Số"
-              className="w-10 h-10 rounded-xl object-cover shadow-sm border border-slate-200"
-              referrerPolicy="no-referrer"
-            />
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></span>
-          </div>
+          <AppLogo size={42} showStatusDot={true} />
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-black text-slate-800 leading-tight tracking-tight truncate">
               VĂN PHÒNG SỐ

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { db } from '../services/db';
 import { User } from '../types';
 import { ForgotPasswordModal } from '../components/ForgotPasswordModal';
+import { AppLogo } from '../components/AppLogo';
 import {
   Lock,
   User as UserIcon,
@@ -98,15 +99,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
 
             {/* Brand Logo & Name */}
             <div className="flex items-center gap-3.5 mb-3">
-              <div className="relative shrink-0">
-                <img
-                  src="/src/assets/images/gov_office_logo_1791271698168.jpg"
-                  alt="Logo Văn Phòng Số"
-                  className="w-13 h-13 rounded-2xl object-cover shadow-xl border border-white/25 ring-2 ring-indigo-400/30"
-                  referrerPolicy="no-referrer"
-                />
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-400 border-2 border-slate-900 rounded-full"></span>
-              </div>
+              <AppLogo size={52} showStatusDot={true} />
               <div>
                 <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">
                   VĂN PHÒNG SỐ
