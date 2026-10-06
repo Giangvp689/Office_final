@@ -1649,7 +1649,7 @@ export const OutgoingDocsView: React.FC<OutgoingDocsViewProps> = ({
                   className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md cursor-pointer transition-all flex items-center gap-1.5"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Lưu & Phát Hành Vào MySQL</span>
+                  <span>Lưu & Phát Hành Văn Bản</span>
                 </button>
               </div>
             </form>

@@ -1235,7 +1235,7 @@ class DatabaseService {
     this.apiCall('/api/incoming-docs', 'POST', doc);
     firestoreSync.saveIncomingDoc(doc);
 
-    // Save attachments to central attachments storage and MySQL
+    // Save attachments to central attachments storage and Firestore
     if (doc.attachments && doc.attachments.length > 0) {
       const existingAttachments = this.getAttachments();
       const updatedAttachments = [...existingAttachments];
@@ -1255,6 +1255,7 @@ class DatabaseService {
           updatedAttachments.unshift(attachmentToSave);
         }
         this.apiCall('/api/attachments', 'POST', attachmentToSave);
+        firestoreSync.saveAttachment(attachmentToSave);
       }
       this.setList(DB_STORAGE_KEYS.ATTACHMENTS, updatedAttachments);
     }
@@ -1495,6 +1496,7 @@ class DatabaseService {
           updatedAttachments.unshift(attachmentToSave);
         }
         this.apiCall('/api/attachments', 'POST', attachmentToSave);
+        firestoreSync.saveAttachment(attachmentToSave);
       }
       this.setList(DB_STORAGE_KEYS.ATTACHMENTS, updatedAttachments);
     }
@@ -1718,6 +1720,7 @@ class DatabaseService {
           updatedAttachments.unshift(attachmentToSave);
         }
         this.apiCall('/api/attachments', 'POST', attachmentToSave);
+        firestoreSync.saveAttachment(attachmentToSave);
       }
       this.setList(DB_STORAGE_KEYS.ATTACHMENTS, updatedAttachments);
     }

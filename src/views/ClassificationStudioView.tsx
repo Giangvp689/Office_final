@@ -264,6 +264,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
   const [inputTitle, setInputTitle] = useState('');
   const [inputText, setInputText] = useState('');
   const [fileName, setFileName] = useState('');
+  const [uploadedFileDataUrl, setUploadedFileDataUrl] = useState<string>('');
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isClassifying, setIsClassifying] = useState(false);
   const [classificationResult, setClassificationResult] = useState<DocumentClassificationResult | null>(null);
@@ -330,6 +331,14 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     setErrorMessage(null);
     setSavedIncomingDoc(null);
     setSavedDossierTask(null);
+
+    // Read Data URL for full preview fidelity
+    const reader = new FileReader();
+    reader.onload = (re) => {
+      setUploadedFileDataUrl((re.target?.result as string) || '');
+    };
+    reader.readAsDataURL(file);
+
     try {
       const res = await extractTextFromFile(file);
       setFileName(file.name);
@@ -353,6 +362,7 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     setInputTitle(sample.title);
     setInputText(sample.text);
     setFileName(`${sample.docType}_${sample.domain}.txt`);
+    setUploadedFileDataUrl('');
     setClassificationResult(null);
     setErrorMessage(null);
     setSuccessActionMsg(null);
@@ -521,10 +531,11 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
           id: 'att-' + Date.now(),
           fileName: fileName || 'Van_ban_phan_loai_AI.pdf',
           fileSize: 1024 * 350,
-          fileType: 'application/pdf',
+          fileType: 'pdf',
+          fileUrl: uploadedFileDataUrl || '',
           category: 'VAN_BAN_DEN',
           uploadedByName: currentUser?.fullName || 'Văn thư cơ quan',
-          tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified'],
+          tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified', 'Cloud Firestore'],
         },
       ],
     };
@@ -623,10 +634,11 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
               id: 'att-' + Date.now(),
               fileName: fileName || 'Van_ban_phan_loai_AI.pdf',
               fileSize: 1024 * 350,
-              fileType: 'application/pdf',
+              fileType: 'pdf',
+              fileUrl: uploadedFileDataUrl || '',
               category: 'VAN_BAN_DEN',
               uploadedByName: currentUser?.fullName || 'Văn thư cơ quan',
-              tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified'],
+              tags: [classificationResult.primaryDomain, classificationResult.docType, 'AI-Classified', 'Cloud Firestore'],
             },
           ],
         };
@@ -712,9 +724,10 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
     const assignedStaff = users.find((u) => u.id === editableAssigneeId) || users.find((u) => u.role === 'STAFF') || currentUser;
     const assigneeName = assignedStaff?.fullName || 'Cán bộ phụ trách';
     const assigneeId = assignedStaff?.id || currentUser?.id || '';
+    const newTaskId = 'task-ai-' + Date.now();
 
     const newTask = {
-      id: 'task-ai-' + Date.now(),
+      id: newTaskId,
       code: `CV-2025-${Math.floor(Math.random() * 900 + 100)}`,
       title: `[${classificationResult.primaryDomain}] Xử lý ${classificationResult.docType}: ${(inputTitle || classificationResult.extractedEntities.summary).slice(0, 50)}...`,
       description: `Nhiệm vụ điều phối Lãnh đạo phê duyệt: ${classificationResult.dispatchRecommendation.routingReason}`,
@@ -731,7 +744,20 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
         title: act,
         completed: false,
       })),
-      attachments: [],
+      attachments: [
+        {
+          id: 'att-task-' + Date.now(),
+          fileName: fileName || 'Van_ban_giao_nhiem_vu.pdf',
+          fileSize: 1024 * 350,
+          fileType: 'pdf',
+          fileUrl: uploadedFileDataUrl || '',
+          category: 'HO_SO',
+          relatedId: newTaskId,
+          dossierId: finalDossierId,
+          uploadedByName: currentUser?.fullName || 'Lãnh đạo cơ quan',
+          tags: [classificationResult.primaryDomain, classificationResult.docType, 'Nhiệm vụ', 'Cloud Firestore'],
+        },
+      ],
     };
     onSaveTask(newTask);
 
@@ -926,6 +952,14 @@ export const ClassificationStudioView: React.FC<ClassificationStudioViewProps> =
                           setIsReadingFile(true);
                           setErrorMessage(null);
                           setSuccessActionMsg(null);
+
+                          // Preserve file Data URL for full preview fidelity
+                          const reader = new FileReader();
+                          reader.onload = (re) => {
+                            setUploadedFileDataUrl((re.target?.result as string) || '');
+                          };
+                          reader.readAsDataURL(file);
+
                           try {
                             const res = await extractTextFromFile(file);
                             setFileName(file.name);

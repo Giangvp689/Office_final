@@ -2120,7 +2120,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                   className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm hover:shadow-md cursor-pointer transition-all flex items-center gap-1.5"
                 >
                   <FileCheck className="w-4 h-4" />
-                  <span>Lưu Văn Bản Đến (MySQL)</span>
+                  <span>Lưu Văn Bản Đến</span>
                 </button>
               </div>
             </form>

@@ -811,7 +811,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </h1>
           </div>
           <p className="text-xs text-slate-500">
-            Theo dõi phân công đúng người thực hiện, trao đổi chỉ đạo 2 chiều giữa Lãnh đạo và Nhân viên, lưu trữ CSDL MySQL.
+            Theo dõi phân công đúng người thực hiện, trao đổi chỉ đạo 2 chiều giữa Lãnh đạo và Nhân viên, lưu trữ CSDL Cloud Firestore.
           </p>
         </div>
 
@@ -2180,7 +2180,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   </div>
                   <div className="flex items-center gap-1.5 text-[10px] text-emerald-300 bg-emerald-950/70 px-2.5 py-0.5 rounded-full font-bold border border-emerald-700/60">
                     <Database className="w-3 h-3" />
-                    <span>Lưu CSDL MySQL</span>
+                    <span>Lưu CSDL Cloud Firestore</span>
                   </div>
                 </div>
 

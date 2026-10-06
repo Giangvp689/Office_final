@@ -208,7 +208,7 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Quản lý tập trung toàn bộ tệp scan PDF, hình ảnh, văn bản đính kèm lưu trữ trong cơ sở dữ liệu MySQL
+            Quản lý tập trung toàn bộ tệp scan PDF, hình ảnh, văn bản đính kèm lưu trữ trên Cloud Firestore
           </p>
         </div>
 
@@ -512,7 +512,7 @@ export const DocumentsVaultView: React.FC<DocumentsVaultViewProps> = ({
                   className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-xs cursor-pointer transition-all flex items-center gap-1.5"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Tải lên & Lưu MySQL</span>
+                  <span>Tải lên & Lưu Trữ</span>
                 </button>
               </div>
             </form>
