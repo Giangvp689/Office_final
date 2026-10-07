@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import pdfToText from 'react-pdftotext';
+import { apiUrl } from './apiConfig';
 
 export interface ExtractedDocumentData {
   title: string;
@@ -337,7 +338,7 @@ export async function extractTextFromFile(file: File): Promise<ExtractedDocument
       // Step 2.2: If local extraction yielded empty text (scanned photo PDF), call backend Gemini Vision OCR
       try {
         const base64 = await fileToBase64(file);
-        const ocrResponse = await fetch('/api/ai/ocr-document', {
+        const ocrResponse = await fetch(apiUrl('/api/ai/ocr-document'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -387,7 +388,7 @@ export async function extractTextFromFile(file: File): Promise<ExtractedDocument
         const base64 = await fileToBase64(file);
         const mimeType = file.type || 'image/jpeg';
 
-        const ocrResponse = await fetch('/api/ai/ocr-document', {
+        const ocrResponse = await fetch(apiUrl('/api/ai/ocr-document'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

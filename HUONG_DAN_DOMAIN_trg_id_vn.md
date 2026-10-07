@@ -37,11 +37,64 @@ Bạn có 2 lựa chọn để đưa dự án lên chạy trực tiếp với t�
 
 ---
 
-### Cách 2: Triển Khai Qua Cloud Run (Trên AI Studio) Hoặc Vercel
+## 3. Mô Hình Kết Nối MySQL Trên Máy Của Bạn Qua Cloudflare Tunnel (api.trg.id.vn)
 
-1. **Trên Google AI Studio**:
-   - Ở góc trên cùng bên phải màn hình ứng dụng, bấm vào nút **Deploy** (Triển khai) > chọn **Cloud Run** hoặc **GitHub**.
-2. **Cấu hình DNS cho tên miền `trg.id.vn`**:
-   - Trong phần Custom Domain của Cloud Run hoặc dịch vụ hosting (Vercel/Cloudflare):
-   - Thêm bản ghi **CNAME** trỏ `trg.id.vn` về đích được cung cấp.
-3. Dự án được đóng gói đầy đủ cả frontend Vite React và backend Node/Express đã sẵn sàng hoạt động ở môi trường production.
+Đây là mô hình tối ưu khi bạn muốn **Frontend chạy trên Vercel (`https://trg.id.vn`)**, nhưng **dữ liệu được lưu trực tiếp vào CSDL MySQL trên máy tính của bạn**, và **tuyệt đối không cần mở cổng MySQL 3306 ra Internet**:
+
+```text
+               INTERNET
+                  │
+        https://trg.id.vn (Vercel Frontend)
+                  │
+                  ▼ (Gọi API qua HTTPS)
+        https://api.trg.id.vn
+                  │
+                  ▼
+          Cloudflare Tunnel
+                  │
+                  ▼ (Chuyển tiếp nội bộ an toàn)
+           Máy tính của bạn
+         npm run dev (localhost:3000)
+                  │
+                  ▼ (Truy vấn SQL nội bộ)
+          MySQL của bạn (localhost:3306)
+```
+
+### Các Bước Thực Hiện Cụ Thể:
+
+#### Bước 1: Khởi động MySQL và Backend Node.js trên máy bạn
+1. Bật MySQL trên máy bạn (qua XAMPP, Laragon, Docker hoặc dịch vụ Windows MySQL Service) tại cổng mặc định `3306`.
+2. Mở Terminal / CMD tại thư mục dự án và chạy:
+   ```bash
+   npm run dev
+   ```
+   Backend Express sẽ chạy tại `http://localhost:3000`.
+
+#### Bước 2: Thiết lập Cloudflare Tunnel trên máy bạn trỏ về localhost:3000
+1. Truy cập [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/) > chọn **Networks > Tunnels**.
+2. Tạo Tunnel mới (hoặc dùng Tunnel sẵn có của tên miền `trg.id.vn`).
+3. Trong tab **Public Hostname**, cấu hình:
+   - **Subdomain**: `api`
+   - **Domain**: `trg.id.vn`
+   - **Path**: để trống
+   - **Type**: `HTTP`
+   - **URL**: `localhost:3000` (hoặc `127.0.0.1:3000`)
+4. Hoặc chạy trực tiếp lệnh nhanh trên máy bạn:
+   ```bash
+   cloudflared tunnel --url http://localhost:3000
+   ```
+   *(Cloudflare sẽ tự động cấp chứng chỉ SSL HTTPS cho `api.trg.id.vn` và mã hóa toàn tuyến)*.
+
+#### Bước 3: Cấu hình biến môi trường trên Vercel
+1. Vào dự án của bạn trên [Vercel](https://vercel.com/) > chọn **Settings > Environment Variables**.
+2. Thêm biến môi trường:
+   - **Key**: `VITE_API_BASE_URL`
+   - **Value**: `https://api.trg.id.vn`
+3. Nhấn **Save** và bấm **Redeploy** lại phiên bản mới nhất trên Vercel.
+
+#### Bước 4: Kiểm tra hoạt động thực tế
+1. Từ điện thoại hoặc một máy tính khác, truy cập: `https://trg.id.vn`
+2. Mở menu **Quản Lý CSDL** (hoặc bấm vào Trung tâm CSDL) > chọn tab **Cloudflare Tunnel (api.trg.id.vn)**.
+3. Nhấn **"Kiểm Tra Kết Nối"**: hệ thống sẽ gửi ping qua `https://api.trg.id.vn/api/db-status` về máy tính bạn và thông báo thời gian phản hồi (ms) cùng số lượng bảng trong MySQL.
+4. Bạn thử tạo một văn bản mới hoặc nhiệm vụ mới trên máy khách: bản ghi sẽ được lưu ngay lập tức vào MySQL trên máy tính của bạn!
+

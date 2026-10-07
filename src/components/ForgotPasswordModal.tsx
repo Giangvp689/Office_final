@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { firestoreSync } from '../services/firestoreSync';
+import { apiUrl } from '../utils/apiConfig';
 import { User } from '../types';
 import {
   X,
@@ -135,7 +136,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
       // Dispatch to real email sending API endpoint targeting the user's specific email
       const targetEmail = user.email || cleanInput;
       try {
-        const mailRes = await fetch('/api/send-otp-email', {
+        const mailRes = await fetch(apiUrl('/api/send-otp-email'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

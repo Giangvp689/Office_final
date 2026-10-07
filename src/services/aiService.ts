@@ -1,5 +1,6 @@
 import { DocumentClassificationResult } from '../types';
 import { classifyDocumentLocally } from '../utils/localClassifier';
+import { apiUrl } from '../utils/apiConfig';
 import { generateLocalAssistantAnswer } from '../utils/localAssistant';
 
 export interface AIMandateItem {
@@ -43,7 +44,8 @@ export interface AITaskBreakdownResult {
 
 async function safeFetchJson<T>(url: string, body: any, defaultErrorMsg: string): Promise<T> {
   try {
-    const response = await fetch(url, {
+    const fullUrl = apiUrl(url);
+    const response = await fetch(fullUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

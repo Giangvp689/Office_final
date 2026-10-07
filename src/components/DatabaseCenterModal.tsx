@@ -20,9 +20,20 @@ import {
   Cloud,
   Mail,
   Send,
+  Globe,
+  Radio,
+  Link2,
+  Copy,
+  CheckCircle2,
 } from 'lucide-react';
 import { db } from '../services/db';
 import { firestoreSync } from '../services/firestoreSync';
+import {
+  apiUrl,
+  getApiBaseUrl,
+  setApiBaseUrl,
+  testBackendApiConnection,
+} from '../utils/apiConfig';
 
 import { User } from '../types';
 import { isLeaderOrAdmin } from '../utils/permission';
@@ -40,12 +51,54 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
   onDataResetOrRestored,
   currentUser,
 }) => {
-  const [activeTab, setActiveTab] = useState<'FIREBASE' | 'MYSQL' | 'EMAIL' | 'BACKUP'>('MYSQL');
+  const [activeTab, setActiveTab] = useState<'FIREBASE' | 'MYSQL' | 'TUNNEL' | 'EMAIL' | 'BACKUP'>('TUNNEL');
   const [jsonText, setJsonText] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [dbStatus, setDbStatus] = useState<{ connected: boolean; tablesCount?: number; error?: string; config?: any } | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [initResult, setInitResult] = useState<string | null>(null);
+
+  // Cloudflare Tunnel State
+  const [apiEndpoint, setApiEndpoint] = useState<string>(() => getApiBaseUrl() || 'https://api.trg.id.vn');
+  const [tunnelTesting, setTunnelTesting] = useState(false);
+  const [tunnelResult, setTunnelResult] = useState<{ connected: boolean; mySqlConnected: boolean; message: string; data?: any } | null>(null);
+  const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
+
+  const handleCopyCommand = (cmd: string, key: string) => {
+    navigator.clipboard.writeText(cmd);
+    setCopiedCmd(key);
+    setTimeout(() => setCopiedCmd(null), 2500);
+  };
+
+  const handleTestTunnelConnection = async (target?: string) => {
+    setTunnelTesting(true);
+    setTunnelResult(null);
+    try {
+      const res = await testBackendApiConnection(target !== undefined ? target : apiEndpoint);
+      setTunnelResult(res);
+      if (res.connected) {
+        await checkStatus();
+      }
+    } finally {
+      setTunnelTesting(false);
+    }
+  };
+
+  const handleSaveApiEndpoint = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setApiBaseUrl(apiEndpoint.trim());
+    await handleTestTunnelConnection(apiEndpoint.trim());
+    await db.checkAndSyncMySql();
+    onDataResetOrRestored();
+  };
+
+  const handleResetToDefaultEndpoint = async () => {
+    setApiBaseUrl('');
+    setApiEndpoint('https://api.trg.id.vn');
+    await handleTestTunnelConnection('');
+    await db.checkAndSyncMySql();
+    onDataResetOrRestored();
+  };
 
   // Email status & test
   const [emailStatus, setEmailStatus] = useState<{
@@ -97,7 +150,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
 
   const checkEmailStatus = async () => {
     try {
-      const res = await fetch('/api/email-status');
+      const res = await fetch(apiUrl('/api/email-status'));
       if (res.ok) {
         const data = await res.json();
         setEmailStatus(data);
@@ -113,7 +166,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
     setIsSendingTestEmail(true);
     setTestEmailResult(null);
     try {
-      const res = await fetch('/api/send-test-email', {
+      const res = await fetch(apiUrl('/api/send-test-email'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toEmail: testEmailTo.trim() }),
@@ -170,7 +223,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
 
   const checkStatus = async () => {
     try {
-      const res = await fetch('/api/db-status');
+      const res = await fetch(apiUrl('/api/db-status'));
       if (res.ok) {
         const data = await res.json();
         setDbStatus(data);
@@ -191,7 +244,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
     e.preventDefault();
     setConfigSaveMsg('Đang kiểm tra kết nối...');
     try {
-      const res = await fetch('/api/db-config', {
+      const res = await fetch(apiUrl('/api/db-config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ host, port: Number(port) || 3306, user, password, database }),
@@ -212,7 +265,7 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
     setIsInitializing(true);
     setInitResult(null);
     try {
-      const res = await fetch('/api/init-db', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/init-db'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setInitResult('Khởi tạo database `vanphong_so`, các bảng và nạp 100% dữ liệu mẫu vào MySQL thành công!');
@@ -325,6 +378,20 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
           >
             <Server className="w-3.5 h-3.5 text-indigo-600" />
             <span>MySQL Backend (Offline/Local)</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('TUNNEL');
+              handleTestTunnelConnection();
+            }}
+            className={`pb-2.5 px-3 font-bold text-xs flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'TUNNEL'
+                ? 'border-cyan-600 text-cyan-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-cyan-600" />
+            <span>Cloudflare Tunnel (api.trg.id.vn)</span>
           </button>
           <button
             onClick={() => setActiveTab('EMAIL')}
@@ -635,6 +702,233 @@ export const DatabaseCenterModal: React.FC<DatabaseCenterModalProps> = ({
                   <Download className="w-3.5 h-3.5" />
                   <span>Tải File .SQL</span>
                 </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'TUNNEL' && (
+            <div className="space-y-4">
+              {/* Architecture Explanation Card */}
+              <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl border border-slate-700 shadow-lg">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      <Globe className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-xs text-white">Kiến Trúc Cloudflare Tunnel & Máy Chủ Cục Bộ</h3>
+                      <p className="text-[11px] text-slate-400">Vercel (Frontend) ➔ Cloudflare Tunnel ➔ Máy tính của bạn ➔ MySQL</p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-300 font-bold text-[11px] border border-cyan-500/30">
+                    <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+                    Bảo mật SSL 100%
+                  </span>
+                </div>
+
+                {/* 4-Step Architecture Flow Diagram */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-2 pb-1">
+                  <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/80 text-center">
+                    <span className="text-[10px] font-bold text-slate-400 block mb-0.5">1. TRÌNH DUYỆT / VERCEL</span>
+                    <span className="font-mono text-[11px] text-emerald-400 font-bold block truncate">trg.id.vn</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">React Frontend</span>
+                  </div>
+
+                  <div className="p-2.5 bg-slate-800/80 rounded-xl border border-cyan-700/50 text-center relative">
+                    <span className="text-[10px] font-bold text-cyan-300 block mb-0.5">2. CLOUDFLARE TUNNEL</span>
+                    <span className="font-mono text-[11px] text-cyan-300 font-bold block truncate">api.trg.id.vn</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">Cầu nối HTTPS an toàn</span>
+                  </div>
+
+                  <div className="p-2.5 bg-slate-800/80 rounded-xl border border-indigo-700/50 text-center">
+                    <span className="text-[10px] font-bold text-indigo-300 block mb-0.5">3. MÁY TÍNH CỦA BẠN</span>
+                    <span className="font-mono text-[11px] text-indigo-300 font-bold block truncate">localhost:3000</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">npm run dev (Node.js)</span>
+                  </div>
+
+                  <div className="p-2.5 bg-slate-800/80 rounded-xl border border-amber-700/50 text-center">
+                    <span className="text-[10px] font-bold text-amber-300 block mb-0.5">4. CSDL MYSQL NỘI BỘ</span>
+                    <span className="font-mono text-[11px] text-amber-300 font-bold block truncate">localhost:3306</span>
+                    <span className="text-[10px] text-emerald-400 mt-0.5 block font-medium">Không cần mở Internet</span>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-3 border-t border-slate-800 text-[11px] text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-emerald-300">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    Cổng MySQL 3306 được bảo vệ hoàn toàn, chỉ backend Node.js trên máy bạn truy cập trực tiếp.
+                  </span>
+                </div>
+              </div>
+
+              {/* Endpoint Config & Test Tool */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-xs">Cấu Hình Địa Chỉ Backend API (Cloudflare Tunnel)</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Frontend sẽ gửi tất cả yêu cầu thêm, sửa, xóa, tìm kiếm đến địa chỉ này để lưu thẳng vào MySQL máy bạn.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveApiEndpoint} className="space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <Link2 className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        value={apiEndpoint}
+                        onChange={(e) => setApiEndpoint(e.target.value)}
+                        placeholder="https://api.trg.id.vn hoặc để trống nếu chạy cùng máy"
+                        className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-hidden"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Lưu & Áp Dụng</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleTestTunnelConnection()}
+                      disabled={tunnelTesting}
+                      className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${tunnelTesting ? 'animate-spin' : ''}`} />
+                      <span>{tunnelTesting ? 'Đang Kiểm Tra...' : 'Kiểm Tra Kết Nối'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleResetToDefaultEndpoint}
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                      title="Đặt lại về mặc định cùng domain"
+                    >
+                      <span>Mặc định</span>
+                    </button>
+                  </div>
+                </form>
+
+                {/* Test Result Message Box */}
+                {tunnelResult && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs ${
+                      tunnelResult.connected && tunnelResult.mySqlConnected
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : tunnelResult.connected
+                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        : 'bg-rose-50 text-rose-800 border-rose-200'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {tunnelResult.connected && tunnelResult.mySqlConnected ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <p className="font-bold">{tunnelResult.message}</p>
+                        {tunnelResult.connected && (
+                          <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                            <span className="px-2 py-0.5 rounded-md bg-white/80 border border-slate-200 font-mono">
+                              Backend Node.js: Đang hoạt động
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-md font-mono ${
+                                tunnelResult.mySqlConnected
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}
+                            >
+                              MySQL Cục Bộ: {tunnelResult.mySqlConnected ? 'Đã kết nối' : 'Chưa kết nối'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 3 Step Practical Setup Guide for User */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                  <Settings className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Các Bước Chạy Cloudflare Tunnel Trên Máy Tính Của Bạn</span>
+                </h4>
+
+                <div className="space-y-2.5 text-[11px]">
+                  {/* Step 1 */}
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">Bước 1: Bật MySQL & Khởi Chạy Backend Node.js</span>
+                      <span className="text-[10px] font-mono text-indigo-600 font-bold">Máy tính của bạn</span>
+                    </div>
+                    <p className="text-slate-500">Mở Terminal trong thư mục dự án và chạy máy chủ backend:</p>
+                    <div className="p-2 bg-slate-900 rounded-lg text-emerald-400 font-mono text-xs flex items-center justify-between">
+                      <span>npm run dev</span>
+                      <button
+                        onClick={() => handleCopyCommand('npm run dev', 'npm_dev')}
+                        className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                        title="Sao chép"
+                      >
+                        {copiedCmd === 'npm_dev' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic">Máy chủ sẽ chạy tại http://localhost:3000 và lắng nghe các truy vấn CSDL.</p>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">Bước 2: Chạy Cloudflare Tunnel Trỏ Về Localhost 3000</span>
+                      <span className="text-[10px] font-mono text-cyan-600 font-bold">Cloudflare Zero Trust</span>
+                    </div>
+                    <p className="text-slate-500">Trong Cloudflare Dashboard hoặc qua lệnh cloudflared trên máy bạn:</p>
+                    <div className="p-2 bg-slate-900 rounded-lg text-cyan-300 font-mono text-xs flex items-center justify-between">
+                      <span>cloudflared tunnel --url http://localhost:3000</span>
+                      <button
+                        onClick={() => handleCopyCommand('cloudflared tunnel --url http://localhost:3000', 'tunnel_cmd')}
+                        className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                        title="Sao chép"
+                      >
+                        {copiedCmd === 'tunnel_cmd' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic">
+                      Hoặc trong Cloudflare Zero Trust: Tạo Public hostname <b>api.trg.id.vn</b> trỏ về <b>http://localhost:3000</b>.
+                    </p>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">Bước 3: Cấu Hình Biến Môi Trường Trên Vercel</span>
+                      <span className="text-[10px] font-mono text-emerald-600 font-bold">Vercel Dashboard</span>
+                    </div>
+                    <p className="text-slate-500">
+                      Vào <b>Project Settings ➔ Environment Variables</b> trên Vercel của dự án <b>trg.id.vn</b>, thêm biến:
+                    </p>
+                    <div className="p-2 bg-slate-900 rounded-lg text-amber-300 font-mono text-xs flex items-center justify-between">
+                      <span>VITE_API_BASE_URL=https://api.trg.id.vn</span>
+                      <button
+                        onClick={() => handleCopyCommand('VITE_API_BASE_URL=https://api.trg.id.vn', 'env_cmd')}
+                        className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                        title="Sao chép"
+                      >
+                        {copiedCmd === 'env_cmd' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 italic">Sau đó bấm Redeploy lại Vercel là hệ thống sẽ liên kết trực tiếp với MySQL trên máy bạn!</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}

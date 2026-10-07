@@ -26,6 +26,7 @@ import {
   INITIAL_MASTER_DATA,
 } from '../data/mockData';
 import { firestoreSync } from './firestoreSync';
+import { apiUrl } from '../utils/apiConfig';
 
 const DB_STORAGE_KEYS = {
   USERS: 'qlvb_users_v2',
@@ -441,14 +442,14 @@ class DatabaseService {
   public async checkAndSyncMySql(): Promise<boolean> {
     if (typeof window === 'undefined') return false;
     try {
-      const statusRes = await fetch('/api/db-status');
+      const statusRes = await fetch(apiUrl('/api/db-status'));
       if (statusRes.ok) {
         const status = await statusRes.json();
         this.mySqlConnected = Boolean(status.connected);
         this.mySqlInfo = status;
       }
 
-      const syncRes = await fetch('/api/sync-all');
+      const syncRes = await fetch(apiUrl('/api/sync-all'));
       if (syncRes.ok) {
         const syncData = await syncRes.json();
         if (syncData && syncData.data) {
@@ -686,7 +687,7 @@ class DatabaseService {
 
   public async initMySqlDatabase() {
     try {
-      const res = await fetch('/api/init-db', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/init-db'), { method: 'POST' });
       const result = await res.json();
       await this.checkAndSyncMySql();
       return result;
@@ -702,7 +703,7 @@ class DatabaseService {
       return;
     }
     try {
-      const res = await fetch(url, {
+      const res = await fetch(apiUrl(url), {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: body ? JSON.stringify(body) : undefined,
@@ -838,7 +839,7 @@ class DatabaseService {
 
     // 1. Try real server API endpoint
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(apiUrl('/api/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -874,7 +875,7 @@ class DatabaseService {
         this.safeSetItem(DB_STORAGE_KEYS.USERS, JSON.stringify(currentUsers));
 
         // Sync with backend API
-        fetch('/api/users', {
+        fetch(apiUrl('/api/users'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(firestoreUser),
@@ -1033,7 +1034,7 @@ class DatabaseService {
     this.saveUser(user);
 
     try {
-      await fetch('/api/change-password', {
+      await fetch(apiUrl('/api/change-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, oldPassword: oldPass, newPassword: newPass }),
@@ -1081,7 +1082,7 @@ class DatabaseService {
 
     // 3. Call server reset API
     try {
-      const res = await fetch('/api/reset-password', {
+      const res = await fetch(apiUrl('/api/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ emailOrUsername, newPassword }),
@@ -1165,7 +1166,7 @@ class DatabaseService {
 
   public async fetchAndRefreshAuditLogs(): Promise<AuditLog[]> {
     try {
-      const res = await fetch('/api/audit-logs');
+      const res = await fetch(apiUrl('/api/audit-logs'));
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data) && json.data.length > 0) {

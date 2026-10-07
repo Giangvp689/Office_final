@@ -29,8 +29,33 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
+// Full Cross-Origin Resource Sharing (CORS) support
+// Supports Cloudflare Tunnel (https://api.trg.id.vn), Vercel Frontend (https://trg.id.vn), preview URLs, and localhost
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string;
+  res.header('Access-Control-Allow-Origin', origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-Custom-Header');
+  res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Quick health check / tunnel ping route
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    tunnel: 'active',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
 
 // Helper to safely run DB queries with auto-retry & auto-schema migration
 async function safeDbRun(fn: (client: any) => Promise<any>): Promise<{ success: boolean; error?: string; fromDb: boolean }> {

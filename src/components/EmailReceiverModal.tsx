@@ -18,6 +18,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { IncomingDocument, AttachmentFile } from '../types';
+import { apiUrl } from '../utils/apiConfig';
 
 interface EmailItem {
   id: string;
@@ -64,7 +65,7 @@ export const EmailReceiverModal: React.FC<EmailReceiverModalProps> = ({
   const fetchRealInboundEmails = async () => {
     setIsLoadingRealEmails(true);
     try {
-      const res = await fetch('/api/inbound-emails');
+      const res = await fetch(apiUrl('/api/inbound-emails'));
       const data = await res.json();
       if (data.success && Array.isArray(data.data) && data.data.length > 0) {
         const mapped: EmailItem[] = data.data.map((item: any) => ({
@@ -98,7 +99,7 @@ export const EmailReceiverModal: React.FC<EmailReceiverModalProps> = ({
   const handleTriggerTestInbound = async () => {
     setIsTriggeringTest(true);
     try {
-      const res = await fetch('/api/test-inbound-email', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/test-inbound-email'), { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         await fetchRealInboundEmails();
