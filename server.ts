@@ -137,8 +137,8 @@ async function generateGeminiContent(options: {
   systemInstruction?: string;
 }): Promise<string> {
   const ai = getAIClient();
-  // Order of models: prioritize gemini-3.8-flash for top-tier reasoning and summarization, followed by flash lite
-  const models = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+  // Order of models: prioritize gemini-2.5-flash / gemini-2.5-pro, with fallbacks
+  const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
   let lastError: any = null;
 
   let requestContents: any;

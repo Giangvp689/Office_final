@@ -32,6 +32,7 @@ import {
   Check,
 } from 'lucide-react';
 import { ReportModal } from '../components/ReportModal';
+import { isLeaderOrAdmin, isStaff, isClerk } from '../utils/permission';
 
 interface DashboardViewProps {
   incomingDocs: IncomingDocument[];
@@ -73,7 +74,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [timeRange, setTimeRange] = useState<TimeFilterOption>('30_DAYS');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [scope, setScope] = useState<'ALL' | 'MY_WORK' | string>('ALL');
+  const isStaffUser = isStaff(currentUser);
+  const [scope, setScope] = useState<'ALL' | 'MY_WORK' | string>(() =>
+    currentUser?.role === 'STAFF' ? 'MY_WORK' : 'ALL'
+  );
   const [isReportOpen, setIsReportOpen] = useState(false);
 
   // Current system date
@@ -168,10 +172,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Scope label for reports and headers
   const scopeLabel = useMemo(() => {
-    if (scope === 'MY_WORK') return `Tiến độ cá nhân (${currentUser?.fullName || 'Tôi'})`;
+    if (isStaffUser || scope === 'MY_WORK') return `Tiến độ & Báo cáo cá nhân (${currentUser?.fullName || 'Tôi'})`;
     if (scope === 'ALL') return 'Toàn cơ quan / Tất cả đơn vị';
     return `Phòng ban: ${scope}`;
-  }, [scope, currentUser]);
+  }, [scope, currentUser, isStaffUser]);
 
   // Date parsing helper
   const getDocDate = (doc: IncomingDocument) => (doc.receivedDate || doc.issueDate || doc.createdAt || '').slice(0, 10);
@@ -180,6 +184,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Check matching scope (User activity diagram: "Kiểm tra quyền và phạm vi dữ liệu")
   const isMatchScope = (assigneeId?: string, coAssigneeIds?: string[]) => {
+    // Chuyên viên (STAFF) bắt buộc giới hạn nghiêm ngặt theo công việc của chính mình
+    if (isStaffUser) {
+      if (!currentUser) return false;
+      return assigneeId === currentUser.id || Boolean(coAssigneeIds?.includes(currentUser.id));
+    }
+
     if (scope === 'ALL') return true;
     if (scope === 'MY_WORK') {
       if (!currentUser) return true;
@@ -198,16 +208,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Filtered Datasets based on Time & Scope
   const filteredIncomingDocs = useMemo(() => {
-    return incomingDocs.filter((d) => isMatchTime(getDocDate(d)) && isMatchScope(d.assigneeId, d.coAssigneeIds));
-  }, [incomingDocs, startDate, endDate, timeRange, scope, currentUser, users]);
+    return incomingDocs.filter((d) => {
+      if (!isMatchTime(getDocDate(d))) return false;
+      if (isStaffUser) {
+        if (!currentUser) return false;
+        const isDirect = d.assigneeId === currentUser.id || Boolean(d.coAssigneeIds?.includes(currentUser.id)) || d.createdById === currentUser.id;
+        const hasLinkedTask = tasks.some(
+          (t) => (t.incomingDocId === d.id || t.linkedDocId === d.id || d.linkedTaskIds?.includes(t.id)) &&
+                 (t.assigneeId === currentUser.id || t.coAssigneeIds?.includes(currentUser.id))
+        );
+        return isDirect || hasLinkedTask;
+      }
+      return isMatchScope(d.assigneeId, d.coAssigneeIds);
+    });
+  }, [incomingDocs, startDate, endDate, timeRange, scope, currentUser, users, isStaffUser, tasks]);
 
   const filteredOutgoingDocs = useMemo(() => {
-    return outgoingDocs.filter((d) => isMatchTime(getOutDocDate(d)) && isMatchScope(d.drafterId || d.signerId));
-  }, [outgoingDocs, startDate, endDate, timeRange, scope, currentUser, users]);
+    return outgoingDocs.filter((d) => {
+      if (!isMatchTime(getDocDate(d as any))) return false;
+      if (isStaffUser) {
+        if (!currentUser) return false;
+        return d.drafterId === currentUser.id || d.createdById === currentUser.id || d.signerId === currentUser.id;
+      }
+      return isMatchScope(d.drafterId || d.signerId);
+    });
+  }, [outgoingDocs, startDate, endDate, timeRange, scope, currentUser, users, isStaffUser]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => isMatchTime(getTaskDate(t)) && isMatchScope(t.assigneeId, t.coAssigneeIds));
-  }, [tasks, startDate, endDate, timeRange, scope, currentUser, users]);
+  }, [tasks, startDate, endDate, timeRange, scope, currentUser, users, isStaffUser]);
 
   // Dynamic KPI Metrics for filtered range
   const totalIncoming = filteredIncomingDocs.length;
@@ -425,21 +454,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {/* Scope Selector (Activity Diagram step: "Kiểm tra quyền và phạm vi dữ liệu") */}
             <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
               <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <select
-                value={scope}
-                onChange={(e) => setScope(e.target.value)}
-                className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer pr-1"
-              >
-                <option value="ALL">Toàn cơ quan (Mọi đơn vị)</option>
-                {currentUser && (
-                  <option value="MY_WORK">Tiến độ của tôi ({currentUser.fullName})</option>
-                )}
-                {departments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    Phòng: {dept}
-                  </option>
-                ))}
-              </select>
+              {isStaffUser ? (
+                <span className="text-xs font-bold text-indigo-700 py-0.5" title="Chuyên viên chỉ có quyền xem và xuất báo cáo trong phạm vi công việc cá nhân được giao">
+                  Phạm vi: Việc cá nhân ({currentUser?.fullName})
+                </span>
+              ) : (
+                <select
+                  value={scope}
+                  onChange={(e) => setScope(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer pr-1"
+                >
+                  <option value="ALL">Toàn cơ quan (Mọi đơn vị)</option>
+                  {currentUser && (
+                    <option value="MY_WORK">Tiến độ của tôi ({currentUser.fullName})</option>
+                  )}
+                  {departments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      Phòng: {dept}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Export Report Action (Activity diagram: "Xuất báo cáo / Nhận file báo cáo") */}

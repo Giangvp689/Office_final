@@ -50,7 +50,12 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   dossiers,
   currentUser,
 }) => {
-  const [reportTitle, setReportTitle] = useState('BÁO CÁO TỔNG KẾT TÌNH HÌNH TIẾP NHẬN, XỬ LÝ VĂN BẢN VÀ TIẾN ĐỘ CÔNG VIỆC');
+  const isStaffUser = currentUser?.role === 'STAFF';
+  const [reportTitle, setReportTitle] = useState(() =>
+    isStaffUser
+      ? 'BÁO CÁO KẾT QUẢ TIẾP NHẬN, XỬ LÝ VĂN BẢN VÀ TIẾN ĐỘ CÔNG VIỆC CÁ NHÂN'
+      : 'BÁO CÁO TỔNG KẾT TÌNH HÌNH TIẾP NHẬN, XỬ LÝ VĂN BẢN VÀ TIẾN ĐỘ CÔNG VIỆC'
+  );
   const [reportSigner, setReportSigner] = useState(currentUser?.fullName || 'Nguyễn Văn An');
   const [signerPosition, setSignerPosition] = useState(currentUser?.position || 'Giám đốc');
 
@@ -331,22 +336,35 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           {/* Phần Ký tên chuẩn thể thức văn bản */}
           <div className="pt-8 grid grid-cols-2 gap-4 text-center">
             <div>
-              <div className="text-xs font-bold uppercase text-slate-700">NGƯỜI LẬP BÁO CÁO</div>
+              <div className="text-xs font-bold uppercase text-slate-700">
+                {isStaffUser ? 'CÁN BỘ BÁO CÁO' : 'NGƯỜI LẬP BÁO CÁO'}
+              </div>
               <div className="text-[11px] text-slate-500 italic mt-0.5">(Ký và ghi rõ họ tên)</div>
               <div className="mt-16 font-bold text-xs text-slate-900">
                 {currentUser?.fullName || 'Văn thư cơ quan'}
               </div>
+              {isStaffUser && (
+                <div className="text-[11px] text-slate-500 font-medium">
+                  {currentUser?.position || 'Chuyên viên'}
+                </div>
+              )}
             </div>
 
             <div>
-              <div className="text-xs font-bold uppercase text-slate-900">THỦ TRƯỞNG ĐƠN VỊ</div>
-              <div className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu hoặc ký số điện tử)</div>
+              <div className="text-xs font-bold uppercase text-slate-900">
+                {isStaffUser ? 'LÃNH ĐẠO XÁC NHẬN' : 'THỦ TRƯỞNG ĐƠN VỊ'}
+              </div>
+              <div className="text-[11px] text-slate-500 italic mt-0.5">
+                {isStaffUser ? '(Ký duyệt xác nhận tiến độ)' : '(Ký, đóng dấu hoặc ký số điện tử)'}
+              </div>
               <div className="mt-16 font-black text-xs text-slate-900 uppercase">
-                {reportSigner}
+                {isStaffUser ? 'Trưởng phòng / Lãnh đạo phụ trách' : reportSigner}
               </div>
-              <div className="text-[11px] text-slate-600 font-medium">
-                {signerPosition}
-              </div>
+              {!isStaffUser && (
+                <div className="text-[11px] text-slate-600 font-medium">
+                  {signerPosition}
+                </div>
+              )}
             </div>
           </div>
         </div>
