@@ -33,7 +33,7 @@ import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { DatabaseCenterModal } from './components/DatabaseCenterModal';
 import { FacebookNotificationToast } from './components/FacebookNotificationToast';
-import { Lock } from 'lucide-react';
+import { Lock, Calendar, Clock, Bell } from 'lucide-react';
 import { canAccessClassificationStudio, isLeaderOrAdmin } from './utils/permission';
 
 export const App: React.FC = () => {
@@ -46,6 +46,7 @@ export const App: React.FC = () => {
 
   // Navigation State
   const [currentSection, setCurrentSection] = useState<NavSection>('DASHBOARD');
+  const [calendarSubTab, setCalendarSubTab] = useState<'CALENDAR' | 'REMINDERS' | 'NOTIFICATIONS'>('CALENDAR');
   const [reminderInitialTab, setReminderInitialTab] = useState<'REMINDERS' | 'NOTIFICATIONS'>('REMINDERS');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -356,8 +357,8 @@ export const App: React.FC = () => {
           onMarkAllAsRead={() => db.markAllNotificationsAsRead(currentUser.id)}
           onDeleteNotification={(id) => db.deleteNotification(id)}
           onOpenNotificationHistory={() => {
-            setReminderInitialTab('NOTIFICATIONS');
-            setCurrentSection('REMINDERS');
+            setCalendarSubTab('NOTIFICATIONS');
+            setCurrentSection('CALENDAR');
           }}
           onSelectNotificationTarget={handleSelectNotificationTarget}
           searchQuery={searchQuery}
@@ -590,16 +591,19 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentSection === 'DOSSIERS' && (
+          {(currentSection === 'DOSSIERS' || currentSection === 'VAULT') && (
             <DossiersView
               dossiers={dossiers}
               incomingDocs={incomingDocs}
               outgoingDocs={outgoingDocs}
               tasks={tasks}
+              attachments={attachments}
               users={users}
               masterData={masterData}
               onSaveDossier={(dossier) => db.saveDossier(dossier, currentUser)}
               onDeleteDossier={(id) => db.deleteDossier(id, currentUser)}
+              onUploadAttachment={(file) => db.saveAttachment(file, currentUser)}
+              onDeleteAttachment={(id) => db.deleteAttachment(id, currentUser)}
               currentUser={currentUser}
               onOpenTaskDetail={(taskId) => {
                 setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
@@ -618,62 +622,121 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentSection === 'CALENDAR' && (
-            <CalendarView
-              tasks={tasks}
-              incomingDocs={incomingDocs}
-              users={users}
-              currentUser={currentUser}
-              onOpenTaskDetail={(id) => {
-                if (id) setActiveTarget({ type: 'TASK', id, timestamp: Date.now() });
-                setCurrentSection('ALL_TASKS');
-              }}
-              onOpenIncomingDocDetail={(id) => {
-                if (id) setActiveTarget({ type: 'INCOMING_DOC', id, timestamp: Date.now() });
-                setCurrentSection('INCOMING_DOCS');
-              }}
-            />
-          )}
+          {(currentSection === 'CALENDAR' || currentSection === 'REMINDERS') && (
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
+              {/* Header Tab Switcher for Unified Calendar & Reminders */}
+              <div className="px-6 py-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCalendarSubTab('CALENDAR')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                      calendarSubTab === 'CALENDAR'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Calendar className="w-4 h-4" />
+                    <span>Lịch Công Tác (Lưới Tháng / Tuần)</span>
+                  </button>
 
-          {currentSection === 'REMINDERS' && (
-            <RemindersView
-              tasks={tasks}
-              incomingDocs={incomingDocs}
-              outgoingDocs={outgoingDocs}
-              users={users}
-              currentUser={currentUser}
-              notifications={userNotifications}
-              onMarkNotificationAsRead={(id) => db.markNotificationAsRead(id)}
-              onMarkAllAsRead={() => db.markAllNotificationsAsRead(currentUser.id)}
-              onDeleteNotification={(id) => db.deleteNotification(id)}
-              onClearAllNotifications={() => db.clearAllNotifications(currentUser.id)}
-              onNavigateToTarget={handleSelectNotificationTarget}
-              initialTab={reminderInitialTab}
-              onOpenTaskDetail={(taskId) => {
-                if (taskId) setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
-                setCurrentSection('ALL_TASKS');
-              }}
-              onOpenIncomingDocDetail={(docId) => {
-                if (docId) setActiveTarget({ type: 'INCOMING_DOC', id: docId, timestamp: Date.now() });
-                setCurrentSection('INCOMING_DOCS');
-              }}
-              onOpenOutgoingDocDetail={(docId) => {
-                if (docId) setActiveTarget({ type: 'OUTGOING_DOC', id: docId, timestamp: Date.now() });
-                setCurrentSection('OUTGOING_DOCS');
-              }}
-              onCreateNotification={(title, message, userId) => {
-                db.addNotification(
-                  {
-                    title,
-                    message,
-                    userId,
-                    type: 'DEADLINE_TODAY',
-                    linkType: 'TASK',
-                  },
-                  currentUser
-                );
-              }}
-            />
+                  <button
+                    type="button"
+                    onClick={() => setCalendarSubTab('REMINDERS')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                      calendarSubTab === 'REMINDERS'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    <span>Theo Dõi Hạn Chót & Đôn Đốc</span>
+                    {counts.overdue > 0 && (
+                      <span className="ml-1 text-[10px] px-2 py-0.5 bg-rose-500 text-white font-bold rounded-full">
+                        {counts.overdue} trễ
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCalendarSubTab('NOTIFICATIONS')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                      calendarSubTab === 'NOTIFICATIONS'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Bell className="w-4 h-4 text-blue-500" />
+                    <span>Thông Báo Cá Nhân</span>
+                    {counts.reminders > 0 && (
+                      <span className="ml-1 text-[10px] px-2 py-0.5 bg-rose-500 text-white font-bold rounded-full animate-pulse">
+                        {counts.reminders}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Sub-view Content */}
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                {calendarSubTab === 'CALENDAR' ? (
+                  <CalendarView
+                    tasks={tasks}
+                    incomingDocs={incomingDocs}
+                    users={users}
+                    currentUser={currentUser}
+                    onOpenTaskDetail={(id) => {
+                      if (id) setActiveTarget({ type: 'TASK', id, timestamp: Date.now() });
+                      setCurrentSection('ALL_TASKS');
+                    }}
+                    onOpenIncomingDocDetail={(id) => {
+                      if (id) setActiveTarget({ type: 'INCOMING_DOC', id, timestamp: Date.now() });
+                      setCurrentSection('INCOMING_DOCS');
+                    }}
+                  />
+                ) : (
+                  <RemindersView
+                    tasks={tasks}
+                    incomingDocs={incomingDocs}
+                    outgoingDocs={outgoingDocs}
+                    users={users}
+                    currentUser={currentUser}
+                    notifications={userNotifications}
+                    onMarkNotificationAsRead={(id) => db.markNotificationAsRead(id)}
+                    onMarkAllAsRead={() => db.markAllNotificationsAsRead(currentUser.id)}
+                    onDeleteNotification={(id) => db.deleteNotification(id)}
+                    onClearAllNotifications={() => db.clearAllNotifications(currentUser.id)}
+                    onNavigateToTarget={handleSelectNotificationTarget}
+                    initialTab={calendarSubTab === 'NOTIFICATIONS' ? 'NOTIFICATIONS' : 'REMINDERS'}
+                    onOpenTaskDetail={(taskId) => {
+                      if (taskId) setActiveTarget({ type: 'TASK', id: taskId, timestamp: Date.now() });
+                      setCurrentSection('ALL_TASKS');
+                    }}
+                    onOpenIncomingDocDetail={(docId) => {
+                      if (docId) setActiveTarget({ type: 'INCOMING_DOC', id: docId, timestamp: Date.now() });
+                      setCurrentSection('INCOMING_DOCS');
+                    }}
+                    onOpenOutgoingDocDetail={(docId) => {
+                      if (docId) setActiveTarget({ type: 'OUTGOING_DOC', id: docId, timestamp: Date.now() });
+                      setCurrentSection('OUTGOING_DOCS');
+                    }}
+                    onCreateNotification={(title, message, userId) => {
+                      db.addNotification(
+                        {
+                          title,
+                          message,
+                          userId,
+                          type: 'DEADLINE_TODAY',
+                          linkType: 'TASK',
+                        },
+                        currentUser
+                      );
+                    }}
+                  />
+                )}
+              </div>
+            </div>
           )}
 
           {currentSection === 'PERSONNEL' && (
@@ -691,19 +754,6 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentSection === 'VAULT' && (
-            <DocumentsVaultView
-              attachments={attachments}
-              dossiers={dossiers}
-              incomingDocs={incomingDocs}
-              outgoingDocs={outgoingDocs}
-              tasks={tasks}
-              users={users}
-              onUploadFile={(file) => db.saveAttachment(file, currentUser)}
-              onDeleteFile={(id) => db.deleteAttachment(id, currentUser)}
-              currentUser={currentUser}
-            />
-          )}
 
           {currentSection === 'MASTER_DATA' && (
             <MasterDataView

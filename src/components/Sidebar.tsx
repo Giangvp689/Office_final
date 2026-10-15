@@ -164,28 +164,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               id="nav-calendar"
               onClick={() => onSelectSection('CALENDAR')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'CALENDAR'
-                  ? 'bg-indigo-50 text-indigo-700 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Lịch Công Tác & Hạn Chót</span>
-            </button>
-
-            <button
-              id="nav-reminders"
-              onClick={() => onSelectSection('REMINDERS')}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'REMINDERS'
+                currentSection === 'CALENDAR' || currentSection === 'REMINDERS'
                   ? 'bg-indigo-50 text-indigo-700 font-bold'
                   : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               <div className="flex items-center gap-3">
-                <Bell className="w-4 h-4 text-amber-600" />
-                <span>Thông Báo & Nhắc Hạn</span>
+                <Calendar className="w-4 h-4 text-indigo-600" />
+                <span>Lịch Công Tác & Nhắc Hạn</span>
               </div>
               <div className="flex items-center gap-1">
                 {counts.reminders > 0 && (
@@ -253,26 +240,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               id="nav-dossiers"
               onClick={() => onSelectSection('DOSSIERS')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'DOSSIERS'
+                currentSection === 'DOSSIERS' || currentSection === 'VAULT'
                   ? 'bg-indigo-50 text-indigo-700 font-bold'
                   : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               <FolderArchive className="w-4 h-4 text-indigo-600" />
-              <span>Hồ Sơ Vụ Việc (Mã HS)</span>
-            </button>
-
-            <button
-              id="nav-vault"
-              onClick={() => onSelectSection('VAULT')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
-                currentSection === 'VAULT'
-                  ? 'bg-indigo-50 text-indigo-700 font-bold'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <Files className="w-4 h-4 text-slate-500" />
-              <span>Kho Tài Liệu & Đính Kèm</span>
+              <span>Hồ Sơ Vụ Việc & Tài Liệu</span>
             </button>
           </div>
         </div>

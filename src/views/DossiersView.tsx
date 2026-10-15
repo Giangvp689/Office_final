@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Dossier,
   IncomingDocument,
@@ -25,7 +25,15 @@ import {
   UserCheck,
   ChevronRight,
   FolderOpen,
+  Upload,
+  Download,
+  Eye,
+  FileSpreadsheet,
+  FileCode,
+  File,
+  Image as ImageIcon,
 } from 'lucide-react';
+import { FilePreviewModal } from '../components/FilePreviewModal';
 import { canAccessDossier, isLeaderOrAdmin } from '../utils/permission';
 
 interface DossiersViewProps {
@@ -33,9 +41,12 @@ interface DossiersViewProps {
   incomingDocs: IncomingDocument[];
   outgoingDocs: OutgoingDocument[];
   tasks: Task[];
+  attachments?: AttachmentFile[];
   users: User[];
   onSaveDossier: (dossier: Dossier) => void;
   onDeleteDossier: (id: string) => void;
+  onUploadAttachment?: (file: AttachmentFile) => void;
+  onDeleteAttachment?: (id: string) => void;
   currentUser: User;
   onOpenTaskDetail: (id: string) => void;
   onOpenIncomingDocDetail: (id: string) => void;
@@ -50,9 +61,12 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   incomingDocs,
   outgoingDocs,
   tasks,
+  attachments = [],
   users,
   onSaveDossier,
   onDeleteDossier,
+  onUploadAttachment,
+  onDeleteAttachment,
   currentUser,
   onOpenTaskDetail,
   onOpenIncomingDocDetail,
@@ -63,6 +77,9 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
 }) => {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [previewFile, setPreviewFile] = useState<AttachmentFile | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedDossier, setSelectedDossier] = useState<Dossier | null>(null);
 
@@ -123,6 +140,63 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
     const matchStatus = filterStatus === 'ALL' || d.status === filterStatus;
     return matchSearch && matchStatus;
   });
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes || bytes === 0) return '0 KB';
+    const k = 1024;
+    if (bytes < k * k) return (bytes / k).toFixed(1) + ' KB';
+    return (bytes / (k * k)).toFixed(2) + ' MB';
+  };
+
+  const getFileIcon = (fileName?: string, fileType?: string) => {
+    const ext = (fileType || fileName?.split('.').pop() || '').toLowerCase();
+    if (ext === 'pdf') return <FileText className="w-4 h-4 text-rose-500" />;
+    if (['doc', 'docx'].includes(ext)) return <FileCode className="w-4 h-4 text-blue-500" />;
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return <FileSpreadsheet className="w-4 h-4 text-emerald-500" />;
+    if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return <ImageIcon className="w-4 h-4 text-purple-500" />;
+    return <File className="w-4 h-4 text-slate-500" />;
+  };
+
+  const handleDownloadAttachment = (file: AttachmentFile) => {
+    if (!file.fileUrl || file.fileUrl === '#') return;
+    const a = document.createElement('a');
+    a.href = file.fileUrl;
+    a.download = file.fileName || 'tai-lieu';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !selectedDossier) return;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
+        const newAttachment: AttachmentFile = {
+          id: 'att-' + Date.now() + '-' + i,
+          fileName: f.name,
+          fileSize: f.size,
+          fileType: ext || 'file',
+          fileUrl: dataUrl,
+          category: 'HO_SO',
+          relatedId: selectedDossier.id,
+          dossierId: selectedDossier.id,
+          dossierCode: selectedDossier.code,
+          uploadedById: currentUser?.id || 'usr-01',
+          uploadedByName: currentUser?.fullName || 'Cán bộ thụ lý',
+          uploadedAt: new Date().toISOString(),
+          tags: [selectedDossier.code, 'Tài liệu hồ sơ'],
+        };
+        onUploadAttachment?.(newAttachment);
+      };
+      reader.readAsDataURL(f);
+    }
+    e.target.value = '';
+  };
 
   const handleOpenAddModal = () => {
     setEditingDossier({
@@ -266,6 +340,9 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
           const linkedIn = incomingDocs.filter((doc) => doc.dossierId === d.id || doc.dossierId === d.code);
           const linkedOut = outgoingDocs.filter((doc) => doc.dossierId === d.id || doc.dossierId === d.code);
           const linkedTasks = tasks.filter((t) => t.dossierId === d.id || t.dossierId === d.code);
+          const linkedAttachments = attachments.filter(
+            (a) => a.dossierId === d.id || a.dossierCode === d.code || a.relatedId === d.id
+          );
           const manager = getUser(d.managerId);
 
           return (
@@ -293,7 +370,7 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
 
               <div>
                 {/* Linked counters */}
-                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-center mb-3">
+                <div className="grid grid-cols-4 gap-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-center mb-3">
                   <div>
                     <div className="font-bold text-blue-600 text-xs">{linkedIn.length}</div>
                     <div className="text-[10px] text-slate-400">VB Đến</div>
@@ -305,6 +382,10 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
                   <div>
                     <div className="font-bold text-purple-600 text-xs">{linkedTasks.length}</div>
                     <div className="text-[10px] text-slate-400">Nhiệm vụ</div>
+                  </div>
+                  <div>
+                    <div className="font-bold text-amber-600 text-xs">{linkedAttachments.length}</div>
+                    <div className="text-[10px] text-slate-400">Tài liệu</div>
                   </div>
                 </div>
 
@@ -483,6 +564,107 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
                     ))}
                 </div>
               </div>
+
+              {/* Linked Dossier Attachments & Direct Upload */}
+              <div className="bg-white p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <Paperclip className="w-4 h-4 text-amber-600" />
+                    Tài liệu & Tệp đính kèm hồ sơ ({
+                      attachments.filter(
+                        (a) => a.dossierId === selectedDossier.id || a.dossierCode === selectedDossier.code || a.relatedId === selectedDossier.id
+                      ).length
+                    })
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>+ Tải tệp vào hồ sơ</span>
+                  </button>
+                </div>
+
+                {(() => {
+                  const dossierFiles = attachments.filter(
+                    (a) => a.dossierId === selectedDossier.id || a.dossierCode === selectedDossier.code || a.relatedId === selectedDossier.id
+                  );
+
+                  if (dossierFiles.length === 0) {
+                    return (
+                      <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center">
+                        <Paperclip className="w-6 h-6 text-slate-400 mx-auto mb-1.5 opacity-60" />
+                        <p className="text-slate-600 font-medium text-xs">Chưa có tệp tài liệu nào gắn với hồ sơ này</p>
+                        <p className="text-slate-400 text-[11px] mt-0.5">
+                          Bấm nút &quot;+ Tải tệp vào hồ sơ&quot; ở trên để tải trực tiếp văn bản scan, PDF, Word hoặc hình ảnh.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      {dossierFiles.map((att) => (
+                        <div
+                          key={att.id}
+                          className="p-2.5 bg-slate-50 hover:bg-slate-100/70 rounded-lg border border-slate-200 flex items-center justify-between transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            <div className="p-1.5 bg-white rounded-md border border-slate-200 shrink-0">
+                              {getFileIcon(att.fileName, att.fileType)}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-bold text-slate-800 text-xs block truncate" title={att.fileName}>
+                                {att.fileName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block">
+                                {formatFileSize(att.fileSize)} • Người tải: {att.uploadedByName || 'Cán bộ'} • {att.uploadedAt ? new Date(att.uploadedAt).toLocaleDateString('vi-VN') : ''}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreviewFile(att);
+                                setIsPreviewOpen(true);
+                              }}
+                              className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors cursor-pointer"
+                              title="Xem trước tài liệu"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadAttachment(att)}
+                              className="p-1.5 text-slate-600 hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
+                              title="Tải về máy"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            {onDeleteAttachment && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Bạn có chắc chắn muốn xóa tệp "${att.fileName}" khỏi hồ sơ này?`)) {
+                                    onDeleteAttachment(att.id);
+                                  }
+                                }}
+                                className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                title="Xóa tài liệu"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
             {/* Footer Actions */}
@@ -641,6 +823,25 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Hidden file input for direct dossier attachment upload */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        multiple
+        onChange={handleFileSelected}
+      />
+
+      {/* File Preview Modal */}
+      <FilePreviewModal
+        file={previewFile}
+        isOpen={isPreviewOpen}
+        onClose={() => {
+          setIsPreviewOpen(false);
+          setPreviewFile(null);
+        }}
+      />
     </div>
   );
 };
