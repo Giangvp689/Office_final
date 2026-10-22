@@ -1,0 +1,3718 @@
+ĐẠI HỌC CÔNG NGHỆ GTVT
+KHOA CÔNG NGHỆ THÔNG TIN
+Trần Trường Giang
+XÂY DỰNG HỆ THỐNG PHÂN LOẠI NỘI
+DUNG VĂN BẢN ỨNG DỤNG TRONG QUẢN
+LÝ VĂN THƯ
+HỌC PHẦN: ĐỒ ÁN XÂY DỰNG VÀ PHÁT TRIỂN PHẦN MỀM
+Ngành: Công Nghệ Thông Tin
+HÀ NỘI – 2026
+
+-- 1 of 134 --
+
+ĐẠI HỌC CÔNG NGHỆ GTVT
+KHOA CÔNG NGHỆ THÔNG TIN
+Trần Trường Giang
+XÂY DỰNG HỆ THỐNG PHÂN LOẠI NỘI
+DUNG VĂN BẢN ỨNG DỤNG TRONG QUẢN LÝ
+VĂN THƯ
+HỌC PHẦN: ĐỒ ÁN XÂY DỰNG VÀ PHÁT TRIỂN PHẦN MỀM
+Ngành: Công Nghệ Thông Tin
+Cán bộ hướng dẫn: Ths. Lê Thị Hường
+HÀ NỘI – 2026
+
+-- 2 of 134 --
+
+TÓM TẮT
+Tóm tắt: Trong bối cảnh chuyển đổi số, việc quản lý văn bản hành chính và điều phối
+công việc theo phương thức thủ công còn nhiều hạn chế như xử lý chậm, khó kiểm soát tiến độ,
+khó tra cứu và thiếu công cụ hỗ trợ ra quyết định. Báo cáo trình bày quá trình khảo sát, phân
+tích, thiết kế và xây dựng XÂY DỰNG HỆ THỐNG PHÂN LOẠI NỘI DUNG VĂN BẢN
+ỨNG DỤNG TRONG QUẢN LÝ VĂN THƯ, đồng thời vận dụng các công cụ của Quản lý dự
+án phần mềm để lập kế hoạch và kiểm soát quá trình phát triển.
+Về mặt kỹ thuật, hệ thống được xây dựng theo kiến trúc Full-stack với React 19,
+TypeScript, Tailwind CSS, Node.js/Express và Vite. Dữ liệu được tổ chức theo mô hình lưu trữ
+Hybrid, kết hợp MySQL cho dữ liệu quan hệ và Firebase Cloud Firestore cho khả năng vận
+hành trực tuyến, đồng bộ dữ liệu và mở rộng truy cập. Hệ thống đồng thời tích hợp Google
+Gemini API để hỗ trợ trích xuất thông tin, phân loại văn bản, gợi ý xử lý, tóm tắt nội dung và
+hỗ trợ soạn thảo; khi dịch vụ AI không khả dụng, hệ thống có cơ chế phân loại heuristic dự
+phòng.
+Về nghiệp vụ, hệ thống cung cấp các nhóm chức năng chính gồm đăng nhập và phân
+quyền, Dashboard và báo cáo, quản lý văn bản đến, quản lý văn bản đi, quản lý nhiệm vụ, quản
+lý hồ sơ và kho lưu trữ số, lịch công tác và nhắc việc, xử lý và phân tích AI, cùng quản trị hệ
+thống và nhân sự. Các chức năng được liên kết theo quy trình: văn bản được tiếp nhận và phân
+tích, sau đó có thể được phân công thành nhiệm vụ; kết quả xử lý có thể hình thành văn bản đi
+và được tập hợp trong hồ sơ công việc. Dashboard và hệ thống thông báo hỗ trợ người dùng
+theo dõi tiến độ, hạn xử lý và tình trạng công việc.
+Kết quả đạt được gồm bộ tài liệu yêu cầu, các biểu đồ UML (use case, hoạt động, tuần
+tự, trạng thái, thành phần, lớp), thiết kế cơ sở dữ liệu quan hệ gồm 10 bảng và sản phẩm phần
+mềm cho phép tiếp nhận văn bản đến, phân công nhiệm vụ, theo dõi tiến độ, phát hành văn bản
+đi và quản lý hồ sơ công việc. Kết quả thử nghiệm bước đầu cho thấy hệ thống đáp ứng các yêu
+cầu nghiệp vụ cơ bản. Hướng phát triển gồm chữ ký số, ứng dụng di động và mở rộng khả năng
+phân tích dữ liệu bằng trí tuệ nhân tạo.
+Từ khóa: quản lý dự án phần mềm, hệ thống quản lý văn bản, trí tuệ nhân tạo, UML.
+
+-- 3 of 134 --
+
+LỜI CAM ĐOAN
+Tôi xin cam đoan báo cáo môn học với đề tài "XÂY DỰNG HỆ THỐNG PHÂN
+LOẠI NỘI DUNG VĂN BẢN ỨNG DỤNG TRONG QUẢN LÝ VĂN THƯ " là công
+trình tìm hiểu, nghiên cứu và xây dựng của bản thân tôi, dưới sự hướng dẫn của ThS.
+Lê Thị Hường.
+Các số liệu, kết quả khảo sát thực tế, nội dung phân tích - thiết kế hệ thống và mã
+nguồn chương trình được trình bày trong báo cáo là trung thực, do tôi trực tiếp thực hiện
+và chưa từng được công bố trong bất kỳ công trình nào khác.
+Những nội dung có tham khảo từ giáo trình, tài liệu chuyên môn, bài báo khoa học
+và mã nguồn mở đều đã được trích dẫn rõ ràng, đầy đủ nguồn gốc trong mục Tài liệu
+tham khảo. Tôi xin chịu hoàn toàn trách nhiệm nếu phát hiện có sự sao chép hoặc gian
+lận trong quá trình thực hiện đồ án.
+Hà Nội, ngày tháng năm 2026
+Sinh viên thực hiện
+TRẦN TRƯỜNG GIANG
+
+-- 4 of 134 --
+
+LỜI CẢM ƠN
+Trong quá trình thực hiện báo cáo môn học, tôi đã nhận được rất nhiều sự giúp đỡ,
+hướng dẫn tận tình từ quý thầy cô, gia đình và bạn bè. Nhân đây, tôi xin gửi lời cảm ơn
+chân thành và sâu sắc nhất.
+Trước hết, tôi xin bày tỏ lòng biết ơn tới ThS. Lê Thị Hường — người đã trực tiếp
+hướng dẫn, định hướng đề tài, góp ý về phương pháp quản lý dự án cũng như kiến trúc
+kỹ thuật, và luôn đồng hành, tạo điều kiện thuận lợi trong suốt quá trình tôi thực hiện
+báo cáo này.
+Tôi cũng xin chân thành cảm ơn Ban Giám hiệu Trường Đại học Công nghệ Giao
+thông Vận tải, quý thầy cô Khoa Công nghệ Thông tin đã truyền đạt những kiến thức
+nền tảng và chuyên sâu về công nghệ phần mềm cũng như quản lý dự án trong suốt thời
+gian học tập, làm cơ sở quan trọng để tôi có thể hoàn thành đồ án này.
+Do thời gian thực hiện và kiến thức thực tiễn còn hạn chế, báo cáo khó tránh khỏi
+những thiếu sót. Tôi rất mong nhận được sự góp ý, chỉ bảo của quý thầy cô để đề tài
+được hoàn thiện hơn.
+Tôi xin chân thành cảm ơn!
+Hà Nội, ngày tháng năm 2026
+
+-- 5 of 134 --
+
+MỤC LỤC
+LỜI MỞ ĐẦU .........................................................................................................1
+CHƯƠNG 1: TỔNG QUAN ..................................................................................2
+1.1. Lý do chọn đề tài .........................................................................................2
+1.1.1. Thực trạng chuyển đổi số và nhu cầu quản lý văn bản, điều hành công
+việc...........................................................................................................................2
+1.1.2. Lý do chọn đề tài gắn với môn học Đồ án xây dựng và phát triển phần
+mềm .........................................................................................................................2
+1.2. Mục tiêu nghiên cứu ....................................................................................3
+1.2.1. Mục tiêu tổng quát ................................................................................3
+1.2.2. Mục tiêu cụ thể .....................................................................................3
+1.3. Đối tượng và phạm vi nghiên cứu ...............................................................4
+1.3.1. Đối tượng nghiên cứu ...........................................................................4
+1.3.2. Phạm vi nghiên cứu ..............................................................................4
+1.4. Phương pháp nghiên cứu .............................................................................5
+1.4.1. Phương pháp nghiên cứu tài liệu ..........................................................5
+1.4.2. Phương pháp khảo sát thực tế ...............................................................5
+1.4.3. Phương pháp phân tích, thiết kế hướng đối tượng ...............................5
+1.4.4. Phương pháp quản lý dự án và thực nghiệm ........................................5
+1.5. Cấu trúc đồ án ..............................................................................................6
+CHƯƠNG 2: CƠ SỞ LÝ THUYẾT .......................................................................7
+2.1. Nền tảng công nghệ sử dụng xây dựng hệ thống.........................................7
+2.2. Kiến trúc ứng dụng web Full-stack và giao tiếp REST API .......................8
+2.3. Mô hình lưu trữ dữ liệu Hybrid ...................................................................8
+2.4. Trí tuệ nhân tạo trong phân loại và trích xuất thông tin văn bản .................9
+2.5. Cơ sở lý thuyết về phân tích, thiết kế và quản lý dự án phần mềm .............9
+CHƯƠNG 3: KHẢO SÁT, PHÂN TÍCH VÀ THIẾT KẾ HỆ THỐNG .............11
+
+-- 6 of 134 --
+
+3.1. Khảo sát hệ thống ......................................................................................11
+3.1.1. Các tác nhân hệ thống .........................................................................11
+3.1.2. Khảo sát thực tế ..................................................................................11
+3.1.3. Thực trạng hiện nay ............................................................................12
+3.1.4. Vấn đề tồn tại ......................................................................................13
+3.1.5. Định hướng giải pháp .........................................................................13
+3.1.6. Yêu cầu chức năng ..............................................................................13
+3.1.7. Yêu cầu phi chức năng........................................................................14
+3.2. Phân tích và thiết kế hệ thống ....................................................................15
+3.2.1. Biểu đồ use case ..................................................................................15
+3.2.2. Biểu đồ hoạt động ...............................................................................27
+3.2.3. Biểu đồ tuần tự ....................................................................................47
+3.2.4. Biểu đồ trạng thái................................................................................66
+3.2.5. Biểu đồ thành phần .............................................................................68
+3.2.6. Biểu đồ lớp ..........................................................................................69
+3.2.7. Thiết kế cơ sở dữ liệu .........................................................................70
+3.3. Lập kế hoạch quản lý dự án .......................................................................83
+3.3.1. Cơ cấu phân rã công việc (WBS) .......................................................83
+3.3.2. Lập lịch trình dự án (sơ đồ Gantt) ......................................................85
+3.3.3. Phân công vai trò - trách nhiệm (ma trận RACI) ...............................87
+3.3.4. Quản lý rủi ro dự án ............................................................................88
+3.3.5. Ước lượng chi phí dự án .....................................................................90
+CHƯƠNG 4: TRIỂN KHAI ỨNG DỤNG ...........................................................92
+4.1. Xây dựng các module hệ thống .............................................................92
+4.1.1. Module Backend — API nghiệp vụ và tích hợp trí tuệ nhân tạo .......92
+4.1.2. Module Frontend — giao diện và quản lý trạng thái ..........................95
+4.1.3. Module xác thực và phân quyền .........................................................96
+4.1.4. Module quản lý văn bản đến ...............................................................98
+
+-- 7 of 134 --
+
+4.1.5. Module quản lý văn bản đi .................................................................98
+4.1.6. Module quản lý nhiệm vụ và điều hành công việc .............................99
+4.1.7. Module quản lý hồ sơ công việc và tài liệu ......................................100
+4.1.8. Module thông báo, Dashboard và tra cứu .........................................101
+4.1.9. Tổng hợp kết quả xây dựng các module ...........................................101
+4.2. Xây dựng giao diện ..................................................................................103
+4.3. Cài đặt và triển khai chương trình ...........................................................113
+4.4. Kiểm thử hệ thống ...................................................................................115
+KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN ..........................................................118
+TÀI LIỆU THAM KHẢO ..................................................................................120
+
+-- 8 of 134 --
+
+DANH MỤC HÌNH ẢNH
+Hình 3.1. Biểu đồ use case tổng quát của hệ thống ............................................................. 14
+Hình 3.2. Use Case: Đăng nhập & Xác thực ....................................................................... 15
+Hình 3.3. Use Case: Báo cáo thống kê (Dashboard & Analytics) ....................................... 16
+Hình 3.4. Use Case: Quản lý Văn bản đến .......................................................................... 17
+Hình 3.5. Use Case: Quản lý Văn bản đi ............................................................................. 19
+Hình 3.6. Use Case: Quản lý Nhiệm vụ & Công việc ......................................................... 20
+Hình 3.7. Use Case: Quản lý Hồ sơ & Tài liệu.................................................................... 21
+Hình 3.8. Use Case: Lịch công tác & Quản lý nhắc việc .................................................... 23
+Hình 3.9. Use Case: Xử lý & Phân tích AI .......................................................................... 24
+Hình 3.10. Use Case: Quản trị hệ thống & Nhân sự ............................................................ 25
+Hình 3.11. Biểu đồ hoạt động – Đăng nhập & Xác thực ..................................................... 27
+Hình 3.12. Biểu đồ hoạt động – Quên mật khẩu.................................................................. 28
+Hình 3.13. Biểu đồ hoạt động – Tra cứu số liệu thống kê ................................................... 29
+Hình 3.14. Biểu đồ hoạt động – Xuất báo cáo ..................................................................... 29
+Hình 3.15. Biểu đồ hoạt động – Văn thư – Tiếp nhận và vào sổ văn bản đến..................... 30
+Hình 3.16. Biểu đồ hoạt động – Văn thư – Sửa thông tin văn bản đến ............................... 30
+Hình 3.17. Biểu đồ hoạt động – Văn thư – Xóa văn bản đến .............................................. 31
+Hình 3.18. Biểu đồ hoạt động – Tra cứu văn bản đến ......................................................... 31
+Hình 3.19. Biểu đồ hoạt động – Lãnh đạo – Chỉ đạo và phân công văn bản đến ................ 32
+Hình 3.20. Biểu đồ hoạt động – Chuyên viên – Tiếp nhận và xử lý văn bản đến ............... 32
+Hình 3.21. Biểu đồ hoạt động – Chuyên viên – Thêm văn bản đi (soạn thảo và trình duyệt)
+.................................................................................................................................................. 33
+Hình 3.22. Biểu đồ hoạt động – Chuyên viên – Sửa dự thảo văn bản đi ............................. 33
+Hình 3.23. Biểu đồ hoạt động – Chuyên viên – Xóa dự thảo văn bản đi ............................ 34
+Hình 3.24. Biểu đồ hoạt động – Cán bộ – Tra cứu văn bản đi ............................................ 34
+Hình 3.25. Biểu đồ hoạt động – Lãnh đạo – Thẩm định và ký duyệt văn bản đi ................ 35
+Hình 3.26. Biểu đồ hoạt động – Văn thư – Cấp số và phát hành văn bản đi ....................... 35
+Hình 3.27. Biểu đồ hoạt động – Lãnh đạo – Thêm nhiệm vụ (phân công và nghiệm thu).. 36
+Hình 3.28. Biểu đồ hoạt động – Lãnh đạo – Xóa nhiệm vụ ................................................ 36
+Hình 3.29. Biểu đồ hoạt động – Chuyên viên/Văn thư – Sửa nhiệm vụ (thực hiện và cập
+nhật tiến độ) .............................................................................................................................. 37
+Hình 3.30. Biểu đồ hoạt động – Cán bộ – Tra cứu nhiệm vụ .............................................. 37
+Hình 3.31. Biểu đồ hoạt động – Cán bộ – Trao đổi và đính kèm báo cáo ........................... 38
+Hình 3.32. Biểu đồ hoạt động – Thêm hồ sơ vụ việc .......................................................... 39
+Hình 3.33. Biểu đồ hoạt động – Sửa hồ sơ công việc .......................................................... 40
+Hình 3.34. Biểu đồ hoạt động – Văn thư/Lãnh đạo – Xóa hồ sơ và tài liệu ........................ 40
+Hình 3.35. Biểu đồ hoạt động – Tra cứu hồ sơ và tài liệu ................................................... 41
+Hình 3.36. Biểu đồ hoạt động – Tra cứu lịch công tác ........................................................ 41
+Hình 3.37. Biểu đồ hoạt động – Lãnh đạo/Văn thư – Đôn đốc công việc ........................... 42
+Hình 3.38. Biểu đồ hoạt động – Trích xuất thực thể NER và phân loại nội dung văn bản . 42
+Hình 3.39. Biểu đồ hoạt động – Đề xuất luồng điều phối và hạn xử lý .............................. 43
+Hình 3.40. Biểu đồ hoạt động – Hỏi đáp trợ lý AI .............................................................. 43
+Hình 3.41. Biểu đồ hoạt động – Ghi và xem nhật ký kiểm toán.......................................... 44
+Hình 3.42. Biểu đồ hoạt động – Quản trị CSDL Hybrid và đồng bộ dữ liệu lên Cloud...... 44
+
+-- 9 of 134 --
+
+Hình 3.43. Biểu đồ hoạt động – Quản lý cán bộ và phân quyền ......................................... 45
+Hình 3.44. Biểu đồ hoạt động – Quản lý danh mục dùng chung ......................................... 45
+Hình 3.45. Biểu đồ tuần tự – Đăng nhập & Xác thực .......................................................... 46
+Hình 3.46. Biểu đồ tuần tự – Quên mật khẩu ...................................................................... 46
+Hình 3.47. Biểu đồ tuần tự – Tra cứu số liệu thống kê ........................................................ 47
+Hình 3.48. Biểu đồ tuần tự – Xuất báo cáo .......................................................................... 47
+Hình 3.49. Biểu đồ tuần tự – Văn thư – Tiếp nhận và vào sổ văn bản đến ......................... 48
+Hình 3.50. Biểu đồ tuần tự – Văn thư – Sửa thông tin văn bản đến .................................... 48
+Hình 3.51. Biểu đồ tuần tự – Văn thư – Xóa văn bản đến ................................................... 49
+Hình 3.52. Biểu đồ tuần tự – Lãnh đạo – Chỉ đạo và phân công xử lý văn bản .................. 49
+Hình 3.53. Biểu đồ tuần tự – Chuyên viên – Tra cứu và xử lý văn bản được giao ............. 50
+Hình 3.54. Biểu đồ tuần tự – Chuyên viên – Soạn thảo & Trình duyệt văn bản đi ............. 50
+Hình 3.55. Biểu đồ tuần tự – Chuyên viên – Sửa dự thảo văn bản đi ................................. 51
+Hình 3.56. Biểu đồ tuần tự – Chuyên viên – Xóa dự thảo văn bản đi ................................. 51
+Hình 3.57. Biểu đồ tuần tự – Cán bộ – Tra cứu văn bản đi ................................................. 52
+Hình 3.58. Biểu đồ tuần tự – Lãnh đạo – Thẩm định & Phê duyệt dự thảo ........................ 52
+Hình 3.59. Biểu đồ tuần tự – Văn thư – Cấp số & Phát hành chính thức ............................ 53
+Hình 3.60. Biểu đồ tuần tự – Lãnh đạo – Khởi tạo & Phân công nhiệm vụ ........................ 53
+Hình 3.61. Biểu đồ tuần tự – Lãnh đạo – Xóa nhiệm vụ ..................................................... 54
+Hình 3.62. Biểu đồ tuần tự – Chuyên viên – Thực hiện, Cập nhật tiến độ & Trình nghiệm
+thu ............................................................................................................................................. 54
+Hình 3.63. Biểu đồ tuần tự – Lãnh đạo – Thẩm định & Nghiệm thu đóng việc ................. 55
+Hình 3.64. Biểu đồ tuần tự – Văn thư – Theo dõi nhiệm vụ liên quan đến văn bản ........... 55
+Hình 3.65. Biểu đồ tuần tự – Quản trị viên – Giám sát nhiệm vụ toàn hệ thống................. 56
+Hình 3.66. Biểu đồ tuần tự – Cán bộ – Trao đổi & Đính kèm báo cáo ............................... 56
+Hình 3.67. Biểu đồ tuần tự – Theo dõi tiến độ Kanban & Cảnh báo quá hạn ..................... 57
+Hình 3.68. Biểu đồ tuần tự – Văn thư – Tạo lập & Gom tài liệu vào hồ sơ ........................ 57
+Hình 3.69. Biểu đồ tuần tự – Văn thư/Lãnh đạo – Xóa hồ sơ công việc ............................. 58
+Hình 3.70. Biểu đồ tuần tự – Người dùng – Khai thác kho tài liệu & Bổ sung hồ sơ ......... 58
+Hình 3.71. Biểu đồ tuần tự – Lãnh đạo – Nghiệm thu & Đóng hồ sơ công việc ................. 59
+Hình 3.72. Biểu đồ tuần tự – Điều hành & Theo dõi lịch công tác ..................................... 59
+Hình 3.73. Biểu đồ tuần tự – Đồng bộ hạn xử lý từ VB & Task ......................................... 60
+Hình 3.74. Biểu đồ tuần tự – Cảnh báo sắp hạn/quá hạn ..................................................... 60
+Hình 3.75. Biểu đồ tuần tự – Trích xuất thực thể NER & Phân loại văn bản...................... 61
+Hình 3.76. Biểu đồ tuần tự – Đề xuất luồng điều phối và hạn xử lý ................................... 61
+Hình 3.77. Biểu đồ tuần tự – Trợ lý ảo AI – Hỏi đáp & Hỗ trợ soạn thảo .......................... 62
+Hình 3.78. Biểu đồ tuần tự – Quản lý nhân sự & Phân quyền RBAC ................................. 62
+Hình 3.79. Biểu đồ tuần tự – Cấu hình danh mục dùng chung (Master Data) .................... 63
+Hình 3.80. Biểu đồ tuần tự – Quản trị CSDL Hybrid & Đồng bộ dữ liệu ........................... 63
+Hình 3.81. Biểu đồ tuần tự – Ghi nhật ký kiểm toán (Audit Trail Logging) ....................... 64
+Hình 3.82. Biểu đồ trạng thái vòng đời của Nhiệm vụ (Task)............................................. 64
+Hình 3.83. Biểu đồ trạng thái vòng đời của Văn bản đến .................................................... 65
+Hình 3.84. Biểu đồ trạng thái vòng đời của Văn bản đi ...................................................... 65
+Hình 3.85. Biểu đồ trạng thái vòng đời của Hồ sơ công việc .............................................. 66
+Hình 3.86. Biểu đồ thành phần kiến trúc hệ thống .............................................................. 66
+Hình 3.87. Biểu đồ lớp của hệ thống .................................................................................. 67
+
+-- 10 of 134 --
+
+Hình 3.88. Sơ đồ thực thể – liên kết (ERD) của cơ sở dữ liệu ............................................ 68
+Hình 3.89. Cơ cấu phân rã công việc (WBS) của dự án ...................................................... 83
+Hình 3.90. Sơ đồ Gantt lịch trình triển khai dự án............................................................... 84
+Hình 4.1. Giao diện đăng nhập hệ thống ........................................................................... 102
+Hình 4.2. Giao diện Bảng điều khiển (Dashboard)............................................................ 102
+Hình 4.3. Giao diện quản lý văn bản đến........................................................................... 103
+Hình 4.4. Giao diện phân loại nội dung văn bản và điều phối tự động ............................. 104
+Hình 4.5. Giao diện tiếp nhận văn bản đến và đề xuất thông tin bằng AI ......................... 104
+Hình 4.6. Giao diện quản lý văn bản đi ............................................................................. 105
+Hình 4.7. Giao diện quản lý nhiệm vụ ............................................................................... 106
+Hình 4.8. Giao diện cập nhật tiến độ và xử lý nhiệm vụ ................................................... 107
+Hình 4.9. Giao diện quản lý Hồ sơ công việc .................................................................... 108
+Hình 4.10. Giao diện chi tiết Hồ sơ công việc ................................................................... 108
+Hình 4.11. Giao diện Quản lý nhân sự .............................................................................. 109
+Hình 4.12. Giao diện Quản lý Danh mục hệ thống............................................................ 109
+Hình 4.13. Giao diện Nhật ký hệ thống ............................................................................. 110
+
+-- 11 of 134 --
+
+DANH MỤC BẢNG BIỂU
+Bảng 3.1. Danh sách tác nhân của hệ thống ........................................................................ 10
+Bảng 3.2. Danh mục yêu cầu chức năng của hệ thống ........................................................ 13
+Bảng 3.3. Danh mục yêu cầu phi chức năng của hệ thống .................................................. 13
+Bảng 3.4. Đặc tả Use Case "Đăng nhập & Xác thực" ......................................................... 15
+Bảng 3.5. Đặc tả Use Case "Báo cáo thống kê"................................................................... 17
+Bảng 3.6. Đặc tả Use Case "Quản lý Văn bản đến" ............................................................ 18
+Bảng 3.7. Đặc tả Use Case "Quản lý Văn bản đi" ............................................................... 19
+Bảng 3.8. Đặc tả Use Case "Quản lý Nhiệm vụ & Công việc" ........................................... 20
+Bảng 3.9. Đặc tả Use Case "Quản lý Hồ sơ & Tài liệu" ...................................................... 22
+Bảng 3.10. Đặc tả Use Case "Lịch công tác & Quản lý nhắc việc"..................................... 23
+Bảng 3.11. Đặc tả Use Case "Xử lý & Phân tích AI" .......................................................... 24
+Bảng 3.12. Đặc tả Use Case "Quản trị hệ thống & Nhân sự" .............................................. 26
+Bảng 3.12. Danh mục các bảng trong cơ sở dữ liệu ............................................................ 69
+Bảng 3.13. Từ điển dữ liệu bảng departments ..................................................................... 70
+Bảng 3.14. Từ điển dữ liệu bảng positions .......................................................................... 70
+Bảng 3.15. Từ điển dữ liệu bảng users ................................................................................ 71
+Bảng 3.16. Từ điển dữ liệu bảng dossiers ............................................................................ 71
+Bảng 3.17. Từ điển dữ liệu bảng incoming_documents ...................................................... 72
+Bảng 3.18. Từ điển dữ liệu bảng outgoing_documents ....................................................... 74
+Bảng 3.19. Từ điển dữ liệu bảng tasks................................................................................. 75
+Bảng 3.20. Từ điển dữ liệu bảng attachments ..................................................................... 76
+Bảng 3.21. Từ điển dữ liệu bảng audit_logs ........................................................................ 77
+Bảng 3.22. Từ điển dữ liệu bảng notifications..................................................................... 77
+Bảng 3.23. Từ điển dữ liệu bảng system_settings…………………………………87
+Bảng 3.24. Tổng hợp các mối quan hệ giữa các thực thể ......................................... 78
+Bảng 3.24. Danh mục work package và tiêu chí hoàn thành ............................................... 82
+Bảng 3.25. Kế hoạch thực hiện và điểm kiểm soát theo tuần .............................................. 84
+Bảng 3.26. Các mốc quan trọng (milestone) của dự án ....................................................... 85
+Bảng 3.27. Ma trận phân công vai trò - trách nhiệm (RACI) .............................................. 86
+Bảng 3.28. Bảng nhận diện và ứng phó rủi ro dự án ........................................................... 86
+Bảng 3.29. Khái toán chi phí dự án theo phương pháp ước lượng từ dưới lên ................... 88
+Bảng 4.1. Một số API REST tiêu biểu được xây dựng ........................................................ 91
+Bảng 4.2. Các nhóm giao diện chính của hệ thống.............................................................. 93
+Bảng 4.3. Phân quyền chức năng theo vai trò...................................................................... 94
+Bảng 4.4. Các chức năng chính của module văn bản đến.................................................... 96
+Bảng 4.5. Quy trình xử lý văn bản đi ................................................................................... 97
+Bảng 4.6. Các chức năng chính của module quản lý nhiệm vụ ........................................... 97
+Bảng 4.7. Các loại dữ liệu được liên kết trong hồ sơ công việc .......................................... 98
+Bảng 4.8. Một số sự kiện tạo thông báo .............................................................................. 99
+Bảng 4.9. Tổng hợp các module chương trình chính........................................................... 99
+Bảng 4.10. Các bước cài đặt và khởi chạy hệ thống .......................................................... 111
+Bảng 4.11. Một số kịch bản kiểm thử tiêu biểu ................................................................. 113
+
+-- 12 of 134 --
+
+DANH MỤC KÝ HIỆU, CHỮ VIẾT TẮT
+Ký hiệu / Chữ viết
+tắt Tiếng Anh Diễn giải (Tiếng Việt)
+AI Artificial Intelligence Trí tuệ nhân tạo
+API Application Programming
+Interface Giao diện lập trình ứng dụng
+CNTT — Công nghệ thông tin
+CSDL — Cơ sở dữ liệu
+ERD Entity Relationship Diagram Sơ đồ thực thể - liên kết
+PM Project Management Quản lý dự án
+PMBOK Project Management Body of
+Knowledge
+Hệ thống tri thức quản lý dự án
+(của PMI)
+RBAC Role-Based Access Control Kiểm soát truy cập theo vai trò
+REST Representational State Transfer Kiến trúc API theo chuẩn REST
+SDLC Software Development Life
+Cycle Vòng đời phát triển phần mềm
+SLA Service Level Agreement Thỏa thuận / cam kết mức độ
+dịch vụ (hạn xử lý)
+UAT User Acceptance Testing Kiểm thử chấp nhận người dùng
+UI/UX User Interface / User
+Experience
+Giao diện / trải nghiệm người
+dùng
+UML Unified Modeling Language Ngôn ngữ mô hình hóa hợp nhất
+UTT University of Transport
+Technology
+Trường Đại học Công nghệ Giao
+thông Vận tải
+WBS Work Breakdown Structure Cơ cấu phân rã công việc
+
+-- 13 of 134 --
+
+1
+LỜI MỞ ĐẦU
+Chuyển đổi số đang trở thành yêu cầu tất yếu đối với hoạt động quản lý, điều hành
+của các cơ quan, doanh nghiệp trong giai đoạn hiện nay, trong đó công tác văn thư -
+hành chính và điều hành công việc là một trong những lĩnh vực cần được số hóa sớm do
+tính chất lặp lại, khối lượng lớn và ảnh hưởng trực tiếp tới hiệu quả vận hành chung.
+Việc ứng dụng công nghệ thông tin, đặc biệt là trí tuệ nhân tạo, vào quản lý văn bản và
+điều hành công việc không chỉ giúp rút ngắn thời gian xử lý mà còn góp phần chuẩn hóa
+quy trình, tăng tính minh bạch và khả năng kiểm soát tiến độ.
+Song song với yêu cầu về công nghệ, việc tổ chức xây dựng một hệ thống phần
+mềm thành công còn phụ thuộc rất lớn vào năng lực quản lý dự án: từ việc xác định
+đúng phạm vi, lập kế hoạch tiến độ - nguồn lực hợp lý, kiểm soát rủi ro, cho đến việc
+điều phối các giai đoạn phân tích, thiết kế, xây dựng và kiểm thử một cách khoa học.
+Đây chính là lý do môn học Quản lý dự án phần mềm lựa chọn hình thức đồ án gắn với
+một sản phẩm phần mềm cụ thể, nhằm giúp sinh viên vừa nắm vững lý thuyết, vừa có
+trải nghiệm thực hành quản lý một dự án phần mềm từ đầu đến cuối.
+Trên tinh thần đó, báo cáo lựa chọn đề tài “XÂY DỰNG HỆ THỐNG PHÂN
+LOẠI NỘI DUNG VĂN BẢN ỨNG DỤNG TRONG QUẢN LÝ VĂN THƯ” — dựa
+trên nền tảng mã nguồn dự án cá nhân Office_final — làm bối cảnh thực hành xuyên
+suốt. Báo cáo được tổ chức thành 4 chương: Chương 1 trình bày tổng quan về lý do,
+mục tiêu, đối tượng, phạm vi và phương pháp nghiên cứu; Chương 2 trình bày cơ sở lý
+thuyết về nền tảng công nghệ sử dụng; Chương 3 trình bày kết quả khảo sát, phân tích,
+thiết kế hệ thống bằng UML cùng toàn bộ kế hoạch quản lý dự án (WBS, Gantt, RACI,
+rủi ro, chi phí); Chương 4 trình bày quá trình xây dựng, cài đặt và kiểm thử sản phẩm
+phần mềm. Phần cuối báo cáo tổng kết những kết quả đạt được, hạn chế còn tồn tại và
+đề xuất hướng phát triển tiếp theo của đề tài.
+Do thời gian thực hiện có hạn và đây là lần đầu vận dụng đồng thời cả kiến thức
+quản lý dự án lẫn công nghệ mới vào một sản phẩm hoàn chỉnh, báo cáo khó tránh khỏi
+những thiếu sót nhất định. Tác giả rất mong nhận được sự góp ý của quý thầy cô để tiếp
+tục hoàn thiện đề tài.
+
+-- 14 of 134 --
+
+2
+CHƯƠNG 1: TỔNG QUAN
+1.1. Lý do chọn đề tài
+1.1.1. Thực trạng chuyển đổi số và nhu cầu quản lý văn bản, điều hành công việc
+Ngày 03/6/2020, Thủ tướng Chính phủ đã ban hành Quyết định số 749/QĐ-TTg
+phê duyệt “Chương trình Chuyển đổi số quốc gia đến năm 2025, định hướng đến năm
+2030”, trong đó xác định phát triển chính phủ số, nâng cao hiệu quả, hiệu lực hoạt động
+của bộ máy hành chính là một trong ba trụ cột trọng tâm. Chương trình này đang thúc
+đẩy các cơ quan nhà nước, doanh nghiệp chuyển từ phương thức làm việc dựa trên giấy
+tờ sang môi trường số. Tuy vậy, tại nhiều đơn vị, công tác văn thư - hành chính vẫn còn
+phụ thuộc lớn vào quy trình thủ công: văn bản giấy được luân chuyển tay, sổ theo dõi
+công văn ghi chép rời rạc, việc giao việc và đôn đốc tiến độ chủ yếu dựa vào trí nhớ
+hoặc trao đổi miệng. Hệ quả là tốc độ xử lý văn bản chậm, khó tra cứu lại lịch sử xử lý,
+dễ thất lạc hồ sơ, và đặc biệt là lãnh đạo thiếu công cụ trực quan để biết văn bản nào
+đang bị chậm trễ, nhiệm vụ nào sắp quá hạn. [2]
+Một số đơn vị đã đầu tư phần mềm quản lý văn bản, song phần lớn dừng lại ở việc
+số hóa "sổ công văn" mà chưa gắn kết chặt chẽ với việc giao việc, theo dõi tiến độ và
+quản lý hồ sơ trong cùng một luồng nghiệp vụ; việc nhập liệu thông tin văn bản (số hiệu,
+ngày ban hành, cơ quan gửi, trích yếu) vẫn hoàn toàn thủ công, tốn thời gian và dễ sai
+sót. Sự phát triển của các mô hình ngôn ngữ lớn (Large Language Model) và các API trí
+tuệ nhân tạo tạo sinh như Google Gemini mở ra khả năng tự động đọc hiểu, trích xuất
+thông tin và đề xuất phân loại văn bản ngay khi văn bản được tải lên hệ thống — đây
+chính là khoảng trống thực tiễn mà đề tài hướng tới giải quyết.
+Xét riêng ở góc độ đào tạo, phần lớn chương trình giảng dạy về hệ thống thông tin
+quản lý mới dừng ở việc mô tả nghiệp vụ văn thư một cách lý thuyết, ít có ví dụ gắn với
+một sản phẩm phần mềm hoàn chỉnh có khả năng vận hành thử nghiệm thực tế. Việc lựa
+chọn một bài toán vừa quen thuộc về nghiệp vụ (ai cũng có thể hình dung được quy trình
+công văn, giao việc), vừa đủ phức tạp về kỹ thuật (đòi hỏi tích hợp AI, thiết kế CSDL
+nhiều bảng, phân quyền) giúp đồ án vừa có tính thực tiễn, vừa đủ “đất” để vận dụng đầy
+đủ các công cụ quản lý dự án đã học.
+1.1.2. Lý do chọn đề tài gắn với môn học Đồ án xây dựng và phát triển phần mềm
+Xây dựng một hệ thống thông tin hoàn chỉnh — từ khảo sát nghiệp vụ, phân tích -
+thiết kế, đến phát triển và triển khai — không chỉ đòi hỏi năng lực kỹ thuật mà còn đòi
+hỏi khả năng tổ chức, lập kế hoạch và kiểm soát dự án một cách khoa học. Đây chính là
+
+-- 15 of 134 --
+
+3
+lý do đề tài được lựa chọn làm đồ án môn học Quản lý dự án phần mềm: thay vì chỉ trình
+bày lý thuyết quản lý dự án một cách trừu tượng, đề tài lấy một sản phẩm phần mềm cụ
+thể — Hệ thống Quản lý Văn bản và Điều hành Công việc (repository “Office_final”)
+— làm bối cảnh thực hành, qua đó vận dụng đầy đủ các nhóm tiến trình quản lý dự án:
+khởi tạo, lập kế hoạch (phạm vi, tiến độ, nguồn lực, rủi ro), thực hiện, giám sát - kiểm
+soát và kết thúc dự án.
+Việc lựa chọn một dự án gắn với công nghệ hiện đại (React, Node.js/Express,
+MySQL, Cloud Firestore, Vercel và tích hợp AI) giúp minh họa rõ nét những đặc thù
+của quản lý dự án phần mềm so với các loại hình dự án khác: yêu cầu dễ thay đổi, sản
+phẩm vô hình khó ước lượng khối lượng công việc, phụ thuộc nhiều vào chất lượng con
+người và hạ tầng triển khai, đồng thời cần cách tiếp cận lặp (iterative) thay vì mô hình
+thác nước cứng nhắc.
+Về nguồn gốc, hệ thống được lựa chọn làm bối cảnh thực hành là dự án mã nguồn
+mở cá nhân “Office_final”, được công bố công khai trên nền tảng lưu trữ mã nguồn
+GitHub. Đây là một dự án ở quy mô vừa phải nhưng đã hình thành tương đối đầy đủ các
+thành phần của một hệ thống thông tin quản lý hiện đại: có giao diện người dùng, có
+máy chủ xử lý nghiệp vụ, có cơ sở dữ liệu quan hệ và có tích hợp dịch vụ trí tuệ nhân
+tạo — nhờ vậy phù hợp để đóng vai trò “sản phẩm mục tiêu” cho việc áp dụng toàn bộ
+quy trình quản lý dự án phần mềm, từ giai đoạn khởi tạo, lập kế hoạch cho đến khi có
+sản phẩm chạy thử nghiệm được, thay vì chỉ dừng lại ở mức đề xuất ý tưởng.
+1.2. Mục tiêu nghiên cứu
+1.2.1. Mục tiêu tổng quát
+Vận dụng kiến thức, công cụ và quy trình Quản lý dự án phần mềm để tổ chức
+khảo sát, lập kế hoạch, phân tích - thiết kế và xây dựng thành công Hệ thống Quản lý
+Văn bản và Điều hành Công việc có ứng dụng trí tuệ nhân tạo, làm cơ sở đối chiếu giữa
+lý thuyết quản lý dự án với thực tiễn triển khai một dự án phần mềm cụ thể.
+1.2.2. Mục tiêu cụ thể
+● Khảo sát, phân tích được thực trạng và yêu cầu nghiệp vụ quản lý
+văn bản, điều hành công việc tại một đơn vị hành chính điển hình, từ đó xác định
+phạm vi và yêu cầu của dự án.
+● Xây dựng được bộ hồ sơ quản lý dự án: cơ cấu phân rã công việc
+(WBS), lịch trình thực hiện theo sơ đồ Gantt, ma trận phân công vai trò - trách
+nhiệm và kế hoạch quản lý rủi ro.
+
+-- 16 of 134 --
+
+4
+● Phân tích, thiết kế hệ thống theo hướng đối tượng bằng UML (biểu
+đồ use case, hoạt động, tuần tự, trạng thái, thành phần, lớp) và thiết kế cơ sở dữ
+liệu quan hệ tương ứng.
+● Xây dựng được sản phẩm phần mềm minh họa các chức năng cốt
+lõi (quản lý văn bản đến/đi, giao việc, theo dõi tiến độ, quản lý hồ sơ, phân loại
+văn bản bằng AI) và triển khai chạy thử nghiệm.
+● Đánh giá hiệu quả của việc áp dụng quy trình quản lý dự án phần
+mềm đối với khả năng kiểm soát phạm vi, tiến độ, chi phí và chất lượng của sản
+phẩm, đồng thời rút ra bài học kinh nghiệm.
+1.3. Đối tượng và phạm vi nghiên cứu
+1.3.1. Đối tượng nghiên cứu
+● Quy trình và các nhóm tiến trình quản lý dự án phần mềm (khởi
+tạo, lập kế hoạch, thực hiện, giám sát - kiểm soát, kết thúc) áp dụng cho dự án
+phát triển phần mềm quy mô nhỏ.
+● Nghiệp vụ quản lý văn bản đến, văn bản đi, giao việc và quản lý hồ
+sơ công việc tại khối cơ quan hành chính, doanh nghiệp.
+● Công nghệ phát triển ứng dụng web hiện đại (React 19, TypeScript,
+Node.js/Express) kết hợp cơ sở dữ liệu Hybrid (MySQL và Firebase Cloud
+Firestore) và công nghệ trí tuệ nhân tạo tạo sinh (Google Gemini API) được sử
+dụng để xây dựng hệ thống quản lý văn bản, điều hành công việc và đồng bộ dữ
+liệu giữa môi trường nội bộ với môi trường đám mây.
+1.3.2. Phạm vi nghiên cứu
+Về nghiệp vụ: đề tài giới hạn trong các chức năng cốt lõi gồm tiếp nhận và phân
+loại văn bản đến, giao việc và theo dõi tiến độ, soạn thảo và phát hành văn bản đi, quản
+lý hồ sơ công việc, thông báo và nhắc việc. Đề tài không đi sâu vào hạ tầng chữ ký số
+công cộng (PKI/CA) hay tích hợp trục liên thông văn bản quốc gia (VDXP) — đây được
+xác định là hướng phát triển tiếp theo.
+Về quản lý dự án: các công cụ và kế hoạch quản lý dự án được xây dựng ở quy mô
+một dự án nhỏ (một sinh viên thực hiện), thời gian thực hiện khoảng 6 tuần (từ
+20/08/2026 đến 30/09/2026), chưa bao gồm các nội dung quản lý đấu thầu, mua sắm
+(procurement) phức tạp như trong các dự án CNTT quy mô lớn.
+
+-- 17 of 134 --
+
+5
+Về kỹ thuật: sản phẩm được xây dựng theo kiến trúc web Full-stack
+Node.js/Express, sử dụng React 19, TypeScript và Tailwind CSS ở phía giao diện; phía
+máy chủ sử dụng Node.js/Express và Vite middleware. Dữ liệu được tổ chức theo kiến
+trúc lưu trữ ba tầng, kết hợp bộ nhớ/cache tạm, MySQL quan hệ và Cloud Firestore trực
+tuyến; đồng thời tích hợp Gemini qua SDK @google/genai và bộ phân loại heuristic dự
+phòng.
+1.4. Phương pháp nghiên cứu
+1.4.1. Phương pháp nghiên cứu tài liệu
+Thu thập, tổng hợp và phân tích giáo trình, tài liệu chuyên môn về quản lý dự án
+phần mềm (nền tảng theo chuẩn PMBOK của PMI), các mô hình phát triển phần mềm
+(Waterfall, Agile/Scrum), ngôn ngữ mô hình hóa UML, cùng tài liệu kỹ thuật chính thức
+của các công nghệ sử dụng (React, Node.js/Express, MySQL, Firebase Cloud Firestore,
+Cloudflare Tunnel/Zero Trust, Vercel và Google Gemini API).
+1.4.2. Phương pháp khảo sát thực tế
+Khảo sát theo tình huống mô phỏng dựa trên quy trình tiếp nhận, xử lý văn bản và
+giao việc của một đơn vị hành chính điển hình (gồm Ban Giám đốc và các phòng: Văn
+phòng - Hành chính, Tài chính - Kế toán, Tổ chức Cán bộ, Kế hoạch - Tổng hợp, Trung
+tâm CNTT), kết hợp tổng hợp biểu mẫu, sổ công văn và các quy định nghiệp vụ liên
+quan để xác định yêu cầu hệ thống.
+1.4.3. Phương pháp phân tích, thiết kế hướng đối tượng
+Sử dụng ngôn ngữ mô hình hóa hợp nhất UML để đặc tả hệ thống qua các góc nhìn
+khác nhau (biểu đồ use case mô tả chức năng, biểu đồ hoạt động và tuần tự mô tả luồng
+xử lý, biểu đồ trạng thái mô tả vòng đời đối tượng, biểu đồ thành phần mô tả kiến trúc,
+biểu đồ lớp mô tả cấu trúc dữ liệu), kết hợp phương pháp mô hình hóa dữ liệu quan hệ
+(E-R) để thiết kế cơ sở dữ liệu.
+1.4.4. Phương pháp quản lý dự án và thực nghiệm
+Áp dụng quy trình quản lý dự án theo các nhóm tiến trình của PMBOK, kết hợp
+mô hình phát triển lặp - tăng trưởng theo tinh thần Agile/Scrum để lập kế hoạch, phân
+rã công việc (WBS), xây dựng lịch trình (Gantt), quản lý rủi ro; sau đó xây dựng sản
+phẩm phần mềm theo từng vòng lặp (sprint) ngắn, kiểm thử và thực nghiệm để đánh giá
+kết quả đạt được so với kế hoạch ban đầu.
+
+-- 18 of 134 --
+
+6
+Các phương pháp trên không được vận dụng tách rời mà đan xen nhau theo trình
+tự thực hiện đồ án: phương pháp nghiên cứu tài liệu và khảo sát thực tế được sử dụng
+chủ yếu ở giai đoạn đầu (Chương 1, Chương 3 - mục 3.1); phương pháp phân tích - thiết
+kế hướng đối tượng và phương pháp quản lý dự án được vận dụng song song trong giai
+đoạn lập kế hoạch và thiết kế (Chương 3 - mục 3.2, 3.3); còn phương pháp thực nghiệm
+được sử dụng ở giai đoạn cuối để xây dựng, kiểm thử sản phẩm và đối chiếu kết quả với
+kế hoạch (Chương 4).
+1.5. Cấu trúc đồ án
+Ngoài phần Tóm tắt, Lời cam đoan, Lời cảm ơn, Mục lục, Danh mục ký hiệu - chữ
+viết tắt và Lời mở đầu, nội dung chính của báo cáo được tổ chức thành 4 chương như
+sau:
+● Chương 1 - Tổng quan: trình bày lý do chọn đề tài, mục tiêu, đối
+tượng, phạm vi và phương pháp nghiên cứu.
+● Chương 2 - Cơ sở lý thuyết: trình bày nền tảng công nghệ và các
+công cụ, thư viện được sử dụng để xây dựng hệ thống.
+● Chương 3 - Khảo sát, phân tích và thiết kế hệ thống: trình bày kết
+quả khảo sát hiện trạng, yêu cầu hệ thống, các biểu đồ UML, thiết kế cơ sở dữ
+liệu, đồng thời trình bày kế hoạch quản lý dự án (WBS, Gantt, rủi ro, nguồn lực).
+● Chương 4 - Triển khai ứng dụng: trình bày việc xây dựng các
+module chương trình chính, giao diện người dùng và hướng dẫn cài đặt, kiểm thử
+hệ thống.
+● Phần Kết luận và hướng phát triển: tổng kết những kết quả đạt
+được, hạn chế còn tồn tại và đề xuất hướng phát triển tiếp theo của đề tài.
+Tóm tắt chương: Chương 1 đã trình bày bối cảnh, lý do lựa chọn đề tài gắn với
+môn học Quản lý dự án phần mềm, xác định rõ mục tiêu, đối tượng, phạm vi và
+phương pháp thực hiện. Đây là cơ sở định hướng cho việc trình bày cơ sở lý thuyết
+công nghệ ở Chương 2 và triển khai khảo sát, phân tích, thiết kế, lập kế hoạch dự án
+ở Chương 3.
+
+-- 19 of 134 --
+
+7
+CHƯƠNG 2: CƠ SỞ LÝ THUYẾT
+2.1. Nền tảng công nghệ sử dụng xây dựng hệ thống
+React 19 & TypeScript (giao diện): React là thư viện JavaScript xây dựng giao
+diện theo hướng component, sử dụng Virtual DOM để tối ưu hiệu năng cập nhật giao
+diện; TypeScript bổ sung kiểu tĩnh (static typing) cho JavaScript, giúp phát hiện lỗi sớm
+và tăng khả năng bảo trì mã nguồn. Tailwind CSS được dùng kèm theo để xây dựng
+giao diện nhanh theo phương pháp utility-first.
+Node.js & Express (máy chủ ứng dụng): Node.js là môi trường thực thi JavaScript
+phía máy chủ theo cơ chế non-blocking I/O, phù hợp xây dựng các API có nhiều thao
+tác vào/ra (đọc file, gọi API AI, truy vấn CSDL) đồng thời; Express là framework giúp
+định tuyến (routing) và xử lý middleware để xây dựng REST API một cách nhanh chóng,
+gọn nhẹ.
+MySQL (cơ sở dữ liệu quan hệ): MySQL là hệ quản trị cơ sở dữ liệu quan hệ mã
+nguồn mở, phù hợp lưu trữ dữ liệu có cấu trúc rõ ràng và nhiều mối quan hệ như văn
+bản, nhiệm vụ, hồ sơ, người dùng trong hệ thống. Trong kiến trúc Hybrid, MySQL được
+duy trì làm lớp dữ liệu quan hệ chính, phục vụ vận hành, sao lưu và xuất SQL Dump.
+Ngoài khả năng truy cập nội bộ, máy chủ MySQL được cấu hình để cho phép truy cập
+từ xa có kiểm soát thông qua Cloudflare Tunnel (cloudflared) và chính sách Cloudflare
+Zero Trust/Access; cách này giúp kết nối từ xa mà không cần công khai trực tiếp cổng
+MySQL 3306 ra Internet.
+Google Gemini API (trí tuệ nhân tạo): Hệ thống sử dụng SDK chính thức
+@google/genai để kết nối với các mô hình Gemini, hỗ trợ trích xuất thông tin và phân
+tích nội dung văn bản. Cơ chế xử lý AI được tổ chức theo dạng cascade model failover:
+khi một mô hình gặp lỗi, quá tải hoặc đạt giới hạn sử dụng, hệ thống tự động chuyển
+sang mô hình tiếp theo trong chuỗi cấu hình. Khi dịch vụ Gemini không khả dụng hoặc
+chưa cấu hình API Key, hệ thống chuyển sang bộ phân loại heuristic cục bộ để duy trì
+các chức năng nhận diện và phân loại cơ bản.
+Firebase Cloud Firestore (cơ sở dữ liệu đám mây): Firestore là lớp dữ liệu trực
+tuyến trong kiến trúc lưu trữ của hệ thống, tổ chức dữ liệu theo collection và document.
+Hệ thống hỗ trợ đồng bộ dữ liệu giữa phía ứng dụng và Firestore, đồng thời duy trì
+MySQL làm lớp dữ liệu quan hệ phục vụ vận hành nội bộ, sao lưu và khôi phục.
+Thư viện hỗ trợ: Mammoth được sử dụng để chuyển đổi nội dung tệp .docx phục
+vụ trích xuất; react-pdftotext hỗ trợ đọc và trích xuất văn bản PDF; jsPDF hỗ trợ kết
+
+-- 20 of 134 --
+
+8
+xuất tài liệu dạng PDF; mysql2 hỗ trợ kết nối MySQL; dotenv quản lý biến môi trường;
+motion hỗ trợ tạo hiệu ứng giao diện; lucide-react cung cấp hệ thống biểu tượng;
+@tailwindcss/vite tích hợp Tailwind CSS với Vite; và tsx hỗ trợ thực thi TypeScript trực
+tiếp trong môi trường phát triển.
+2.2. Kiến trúc ứng dụng web Full-stack và giao tiếp REST API
+Kiến trúc Client – Server: Ứng dụng được chia thành phía client (trình duyệt
+chạy giao diện React) và phía server (Node.js/Express xử lý nghiệp vụ, truy cập cơ sở
+dữ liệu, gọi Gemini API). Hai phía trao đổi qua giao thức HTTP theo mô hình yêu cầu
+– phản hồi, dữ liệu truyền dưới dạng JSON; nhờ đó mỗi phía được phát triển độc lập và
+các thông tin nhạy cảm như khóa API chỉ nằm ở máy chủ.
+REST API: REST là phong cách thiết kế API trong đó mỗi tài nguyên (văn bản,
+nhiệm vụ, hồ sơ, người dùng) được định danh bằng một URL và được thao tác qua các
+phương thức HTTP chuẩn: GET (đọc), POST (tạo mới), PUT/PATCH (cập nhật),
+DELETE (xóa). Máy chủ không lưu trạng thái giữa các yêu cầu (stateless) và phản hồi
+bằng mã trạng thái HTTP. Trong Express, mỗi yêu cầu đi qua chuỗi middleware (đọc
+JSON, kiểm tra xác thực, kiểm tra quyền, xử lý lỗi) trước khi đến hàm xử lý chính; Vite
+được tích hợp dưới dạng middleware để một máy chủ vừa cung cấp API vừa phục vụ
+giao diện.
+Phân quyền theo vai trò (RBAC): Quyền truy cập được gán cho vai trò thay vì
+từng cá nhân; mỗi người dùng thuộc một vai trò (Quản trị viên, Lãnh đạo, Văn thư,
+Chuyên viên) và chỉ sử dụng các chức năng, dữ liệu tương ứng. Mô hình này phù hợp
+tổ chức hành chính có phân cấp rõ ràng.
+2.3. Mô hình lưu trữ dữ liệu Hybrid
+Cơ sở dữ liệu quan hệ tổ chức dữ liệu thành các bảng có khóa chính, khóa ngoại
+và ràng buộc toàn vẹn, truy vấn bằng SQL và đảm bảo giao dịch theo tính chất ACID,
+phù hợp dữ liệu nghiệp vụ có nhiều mối quan hệ như văn bản, nhiệm vụ, hồ sơ. Cloud
+Firestore lưu dữ liệu dạng document trong collection, không cần lược đồ cố định và hỗ
+trợ lắng nghe thay đổi theo thời gian thực, thuận lợi cho đồng bộ giữa nhiều môi trường.
+Kiến trúc Hybrid kết hợp ưu điểm của hai loại cơ sở dữ liệu: MySQL là lớp quan
+hệ phục vụ vận hành, sao lưu và khôi phục; Firestore là lớp dữ liệu trực tuyến; các bảng
+quan hệ được ánh xạ sang collection/document tương ứng. Cùng với bộ nhớ tạm phía
+client và cache phía server, hệ thống có thể tiếp tục hoạt động khi một lớp dữ liệu tạm
+
+-- 21 of 134 --
+
+9
+thời không khả dụng. Đổi lại, cần có cơ chế đồng bộ giữa các lớp, được thiết kế chi tiết
+ở mục 3.2.7.
+2.4. Trí tuệ nhân tạo trong phân loại và trích xuất thông tin văn bản
+Phân loại văn bản (text classification) là gán văn bản vào nhóm phù hợp như lĩnh
+vực chuyên môn, mức độ khẩn; nhận diện thực thể có tên (NER) là trích xuất các thông
+tin như số hiệu, ngày ban hành, cơ quan ban hành, trích yếu. Các mô hình ngôn ngữ lớn
+như Gemini hiểu được ngữ cảnh tiếng Việt, xử lý cả văn bản lẫn hình ảnh nên có thể
+thực hiện các tác vụ này chỉ bằng chỉ dẫn (prompt), thường yêu cầu trả về JSON có cấu
+trúc để backend xử lý. Trước khi đưa vào mô hình, tệp .docx được Mammoth chuyển
+thành văn bản, tệp PDF được react-pdftotext đọc, tài liệu ảnh được gửi trực tiếp cho mô
+hình.
+Do dịch vụ AI bên ngoài có thể chậm, quá tải hoặc vượt giới hạn sử dụng và kết
+quả không phải lúc nào cũng chính xác, hệ thống dùng chiến lược nhiều lớp: chuyển lần
+lượt qua các mô hình trong chuỗi cấu hình (cascade failover), và khi toàn bộ dịch vụ
+không khả dụng thì dùng bộ phân loại heuristic dựa trên từ khóa, biểu thức chính quy
+và điểm số theo lĩnh vực. Kết quả AI được xem là gợi ý hỗ trợ, không thay thế việc rà
+soát của cán bộ có thẩm quyền.
+2.5. Cơ sở lý thuyết về phân tích, thiết kế và quản lý dự án phần mềm
+UML là ngôn ngữ mô hình hóa thống nhất mô tả hệ thống qua nhiều góc nhìn: biểu
+đồ use case (chức năng theo góc nhìn tác nhân), hoạt động (luồng nghiệp vụ theo từng
+tác nhân), tuần tự (tương tác giữa các thành phần theo thời gian), trạng thái (vòng đời
+đối tượng), thành phần (kiến trúc triển khai) và lớp (cấu trúc dữ liệu). Cùng với sơ đồ
+thực thể – liên kết (ERD), các biểu đồ này là đầu vào cho thiết kế cơ sở dữ liệu và xây
+dựng chương trình.
+Về quản lý dự án, đồ án vận dụng các nhóm tiến trình của PMBOK (khởi tạo, lập
+kế hoạch, thực hiện, giám sát – kiểm soát, kết thúc) cùng các công cụ: WBS chia phạm
+vi thành các gói công việc kiểm chứng được; sơ đồ Gantt biểu diễn lịch trình, mốc kiểm
+soát; ma trận RACI phân định trách nhiệm; bảng rủi ro đánh giá theo khả năng và mức
+ảnh hưởng; ước lượng chi phí từ dưới lên theo person-day. Quy trình lặp – tăng trưởng
+theo Agile/Scrum với các sprint ngắn được dùng để phù hợp quy mô dự án một sinh
+viên. Kiểm thử được thực hiện theo các mức đơn vị, tích hợp, hệ thống và chấp nhận.
+
+-- 22 of 134 --
+
+10
+Tóm tắt chương: Chương 2 đã trình bày nền tảng công nghệ, kiến trúc Full-stack,
+mô hình lưu trữ Hybrid, cơ sở lý thuyết về AI và các kiến thức nền về UML, quản lý dự
+án, kiểm thử, làm cơ sở cho Chương 3 và Chương 4.
+
+-- 23 of 134 --
+
+11
+CHƯƠNG 3: KHẢO SÁT, PHÂN TÍCH VÀ THIẾT KẾ HỆ THỐNG
+3.1. Khảo sát hệ thống
+3.1.1. Các tác nhân hệ thống
+Trên cơ sở khảo sát mô hình tổ chức điển hình của một đơn vị hành chính (gồm
+Ban Giám đốc và các phòng: Văn phòng - Hành chính, Tài chính - Kế toán, Tổ chức
+Cán bộ, Kế hoạch - Tổng hợp, Trung tâm CNTT & Chuyển đổi số), hệ thống xác định
+5 nhóm tác nhân (actor) chính như trình bày ở Bảng 3.1.
+Bảng 3.1: Danh sách tác nhân của hệ thống
+Tác nhân Vai trò trong hệ thống Chức năng chính sử
+dụng
+Văn thư (CLERK) Tiếp nhận, vào sổ văn bản đến/đi; quản
+lý lưu trữ hồ sơ
+Tiếp nhận văn bản đến,
+cấp số văn bản đi,
+quản lý hồ sơ, tra cứu
+Chuyên viên (STAFF) Cán bộ được giao xử lý trực tiếp nhiệm
+vụ, soạn thảo văn bản
+Cập nhật tiến độ, soạn
+thảo văn bản đi, nhận
+thông báo
+Lãnh đạo (LEADER) Thủ trưởng cơ quan / Trưởng phòng: chỉ
+đạo, phê duyệt
+Giao việc, duyệt kết
+quả, trình duyệt & ký
+văn bản đi, xem báo
+cáo
+Quản trị viên
+(ADMIN)
+Quản trị hệ thống, phân quyền, cấu hình
+danh mục
+Quản lý người dùng,
+phân quyền, thống kê
+tổng hợp
+Hệ thống AI (Gemini) Tác nhân phụ (hệ thống ngoài) hỗ trợ
+phân tích văn bản
+Trích xuất thực thể, đề
+xuất phân loại văn bản
+đến
+Trong năm tác nhân trên, Văn thư và Lãnh đạo là hai tác nhân có tần suất tương
+tác với hệ thống nhiều nhất do gắn trực tiếp với luồng “tiếp nhận - chỉ đạo - phát hành”
+văn bản; Chuyên viên là tác nhân đông đảo nhất về số lượng người dùng nhưng phạm
+vi thao tác gọn hơn (chủ yếu trong phạm vi nhiệm vụ được giao); Quản trị viên có tần
+suất sử dụng thấp nhưng nắm quyền hạn cao nhất đối với dữ liệu danh mục và tài khoản;
+riêng Hệ thống AI là tác nhân duy nhất không phải con người, được hệ thống chủ động
+gọi tới (không có “giao diện” theo nghĩa thông thường) nên trong biểu đồ use case ở
+mục 3.2.1 được thể hiện là tác nhân phụ, chỉ tham gia vào một use case đơn lẻ.
+3.1.2. Khảo sát thực tế
+Quá trình khảo sát được thực hiện thông qua việc tổng hợp quy trình xử lý công
+văn tại một đơn vị hành chính điển hình (số liệu, biểu mẫu, danh mục hồ sơ trong đồ án
+
+-- 24 of 134 --
+
+12
+mang tính mô phỏng, phục vụ mục đích học thuật), theo dõi luồng đi của một văn bản
+từ khi được tiếp nhận cho đến khi được xử lý xong và lưu trữ. Kết quả khảo sát cho thấy
+quy trình hiện tại được thực hiện qua các bước: (1) Văn thư nhận văn bản giấy hoặc
+email, ghi chép thủ công vào sổ công văn đến; (2) Trình lãnh đạo xem, bút phê chỉ đạo
+trực tiếp trên bản giấy; (3) Văn thư sao chụp, chuyển bản phô-tô đến phòng ban được
+chỉ định; (4) Cán bộ nhận và xử lý, báo cáo tiến độ qua trao đổi trực tiếp hoặc email rời
+rạc; (5) Kết quả xử lý (nếu có văn bản trả lời) được soạn thảo, trình ký và phát hành theo
+quy trình văn thư truyền thống; (6) Hồ sơ liên quan được lưu trữ dưới dạng tủ hồ sơ giấy
+hoặc thư mục máy tính cá nhân, không có sự liên kết tập trung.
+Để minh họa cụ thể hơn, có thể hình dung một tình huống điển hình: phòng Văn
+phòng - Hành chính tiếp nhận trung bình một số lượng văn bản đến nhất định mỗi ngày
+làm việc (công văn, quyết định, tờ trình từ các đơn vị trong và ngoài cơ quan). Với cách
+làm thủ công, văn thư phải đọc lướt toàn bộ nội dung để tự xác định số hiệu, ngày ban
+hành, cơ quan gửi và tóm tắt trích yếu trước khi ghi vào sổ; sau đó văn bản được photo
+thành nhiều bản để trình các cấp và chuyển cho đơn vị liên quan. Toàn bộ thao tác này
+diễn ra tách rời với việc theo dõi xem văn bản đó có được xử lý đúng hạn hay không —
+thông tin về hạn xử lý (nếu văn bản có nêu) chỉ được ghi chú trong sổ mà không có cơ
+chế nhắc lại khi gần đến hạn.
+3.1.3. Thực trạng hiện nay
+Bên cạnh quy trình giấy tờ nêu trên, một số đơn vị đã bước đầu ứng dụng công cụ
+văn phòng điện tử (email, bảng tính Excel chia sẻ, phần mềm quản lý văn bản cơ bản)
+để hỗ trợ theo dõi công văn. Tuy nhiên, việc theo dõi tiến độ nhiệm vụ, gắn kết văn bản
+với hồ sơ công việc và tự động nhắc hạn hầu như vẫn chưa được thực hiện một cách hệ
+thống; phần lớn phụ thuộc vào việc lãnh đạo, chuyên viên tự ghi nhớ hoặc nhắc nhau
+qua điện thoại, tin nhắn. Việc nhập liệu thông tin văn bản (số hiệu, ngày ban hành, cơ
+quan gửi, trích yếu) hoàn toàn thủ công, trung bình tốn nhiều thời gian và dễ phát sinh
+sai sót khi khối lượng văn bản tăng cao, đặc biệt vào các đợt cao điểm.
+Ngoài ra, khảo sát cũng cho thấy sự thiếu liên kết giữa các công cụ đang được sử
+dụng song song: văn bản đến được ghi trong một sổ/tệp Excel, nhiệm vụ giao cho cán
+bộ lại được trao đổi qua một kênh chat riêng, còn hồ sơ lưu trữ nằm trong thư mục máy
+tính cá nhân của từng chuyên viên. Khi lãnh đạo cần biết tổng thể tình hình xử lý văn
+bản của một phòng ban tại một thời điểm, không có báo cáo tổng hợp tức thời mà phải
+tổng hợp thủ công từ nhiều nguồn khác nhau — đây là cơ sở thực tiễn quan trọng để xác
+
+-- 25 of 134 --
+
+13
+định yêu cầu về một nền tảng dữ liệu tập trung, thống nhất ở mục 3.1.5 và nhóm chức
+năng thống kê, báo cáo ở mục 3.1.6.
+3.1.4. Vấn đề tồn tại
+● Thiếu một nền tảng duy nhất liên kết văn bản đến - nhiệm vụ - văn
+bản đi - hồ sơ công việc; dữ liệu bị phân tán ở nhiều nơi (sổ giấy, email, file Excel
+cá nhân).
+● Việc nhập thông tin văn bản (số hiệu, ngày ký, cơ quan ban hành,
+trích yếu, đề xuất phân loại) hoàn toàn thủ công, tốn thời gian và dễ sai sót, đặc
+biệt khi khối lượng văn bản lớn.
+● Lãnh đạo không có công cụ trực quan để biết văn bản/nhiệm vụ nào
+sắp hoặc đã quá hạn xử lý, dẫn tới đôn đốc bị động, chậm trễ.
+● Không có cơ chế ghi nhật ký (audit trail) đầy đủ cho các thao tác
+thêm mới, chỉnh sửa, chuyển giao văn bản — khó truy vết trách nhiệm khi có sai
+sót.
+● Việc phân quyền truy cập thông tin theo vai trò (lãnh đạo, trưởng
+phòng, chuyên viên, văn thư) chưa được kiểm soát chặt chẽ trên các công cụ hiện
+có (Excel, email).
+3.1.5. Định hướng giải pháp
+Từ các vấn đề tồn tại nêu trên, giải pháp được định hướng là xây dựng một hệ
+thống văn phòng số tập trung, thống nhất luồng nghiệp vụ “tiếp nhận văn bản → phân
+loại/trích xuất tự động bằng AI → giao việc → theo dõi tiến độ → phát hành văn bản đi
+→ lưu trữ hồ sơ” trên cùng một nền tảng web, có phân quyền rõ ràng theo vai trò
+(RBAC), có cơ chế nhắc việc/cảnh báo hạn tự động và ghi nhật ký thao tác đầy đủ.
+Trong đó, tầng trí tuệ nhân tạo (Google Gemini API, có cơ chế dự phòng bằng bộ phân
+loại quy tắc cục bộ khi mất kết nối mạng) đóng vai trò trợ lý, tự động đề xuất thông tin
+trích xuất và phân loại ngay khi văn bản được tải lên, giúp giảm thời gian nhập liệu thủ
+công của văn thư.
+3.1.6. Yêu cầu chức năng
+Trên cơ sở kết quả khảo sát và định hướng giải pháp nêu trên, yêu cầu chức năng
+của hệ thống được tổng hợp và phân nhóm theo 10 nhóm chức năng chính tại Bảng 3.2,
+tương ứng với các module sẽ được thiết kế chi tiết ở mục 3.2 và xây dựng ở Chương 4.
+
+-- 26 of 134 --
+
+14
+Việc đánh mã yêu cầu (FR-01 đến FR-10) giúp thuận tiện tham chiếu ngược trở lại trong
+quá trình thiết kế, xây dựng và kiểm thử ở các chương sau.
+Bảng 3.2: Danh mục yêu cầu chức năng của hệ thống
+Mã YC Nhóm chức năng Mô tả yêu cầu
+FR-01 Đăng nhập & phân quyền Xác thực người dùng; phân quyền theo 4 vai trò
+LEADER/STAFF/CLERK/ADMIN; hỗ trợ quên
+mật khẩu, xác thực mã OTP qua email công vụ và
+đặt lại mật khẩu.
+FR-02 Quản lý văn bản đến Tiếp nhận, trích xuất/phân loại bằng AI, vào sổ,
+gán người xử lý và hạn hoàn thành
+FR-03 Quản lý văn bản đi Soạn thảo, trình duyệt nội bộ, cấp số, phát hành,
+liên kết văn bản trả lời
+FR-04 Quản lý nhiệm vụ (Task) Giao việc (chủ trì/phối hợp/hạn), cập nhật tiến độ
+0-100%, việc con, bình luận, duyệt đóng
+FR-05 Quản lý hồ sơ công việc Lập danh mục hồ sơ theo mã đề mục; gom văn
+bản đến/đi, nhiệm vụ, tệp liên quan; đóng hồ sơ
+FR-06 Quản lý tệp đính kèm Tải lên, gắn thẻ (tag), liên kết tệp với văn
+bản/nhiệm vụ/hồ sơ tương ứng
+FR-07 Thông báo & nhắc việc Sinh thông báo tự động khi được giao việc, sắp
+đến hạn, quá hạn; điều hướng nhanh (deep-link)
+FR-08 Nhật ký thao tác (Audit log) Ghi lại người dùng, thời gian, hành động và đối
+tượng bị tác động cho mọi thao tác quan trọng
+FR-09 Thống kê & báo cáo Tổng hợp số liệu văn bản/nhiệm vụ theo trạng
+thái, phòng ban, thời gian phục vụ lãnh đạo, quản
+trị
+FR-10 Tìm kiếm, tra cứu Tìm kiếm văn bản, hồ sơ, nhiệm vụ theo số hiệu,
+trích yếu, người xử lý, khoảng thời gian
+3.1.7. Yêu cầu phi chức năng
+Song song với yêu cầu chức năng, các yêu cầu phi chức năng — vốn quyết định
+trải nghiệm sử dụng và độ tin cậy vận hành lâu dài của hệ thống — cũng được xác định
+ngay từ giai đoạn khảo sát, tổng hợp tại Bảng 3.3. Trong đó, yêu cầu về độ sẵn sàng/dự
+phòng và bảo mật được đặc biệt chú trọng do đặc thù nghiệp vụ văn thư - hành chính
+liên quan tới dữ liệu có tính nhạy cảm và yêu cầu vận hành liên tục.
+Bảng 3.3: Danh mục yêu cầu phi chức năng của hệ thống
+Nhóm Yêu cầu
+Hiệu năng Giao diện phản hồi tức thời (phản hồi nhanh) với thao tác cục bộ nhờ
+kiến trúc Reactive Store; API trả kết quả trong thời gian hợp lý với dữ
+liệu vừa và nhỏ
+
+-- 27 of 134 --
+
+15
+Độ sẵn sàng / dự
+phòng
+Cơ chế AI Fallback: khi mất mạng hoặc hết hạn mức Gemini API, tự
+động chuyển sang bộ phân loại quy tắc cục bộ, không làm gián đoạn
+nghiệp vụ
+Bảo mật Phân quyền RBAC; ghi audit log; xác thực trước khi truy cập chức
+năng; hỗ trợ quên mật khẩu bằng mã OTP gửi tới email công vụ đã
+đăng ký, mã có thời hạn.
+Khả năng mở rộng Kiến trúc REST API tách bạch client/server, dễ bổ sung client mới (di
+động) hoặc mở rộng module nghiệp vụ
+Khả năng bảo trì Mã nguồn TypeScript có kiểu tĩnh, tổ chức theo module chức năng, dễ
+đọc và bảo trì
+Tính khả dụng
+(Usability)
+Giao diện trực quan, hỗ trợ thông báo dạng toast, điều hướng nhanh
+(deep-link) tới đúng nội dung
+Khả năng tương thích Vận hành tốt trên các trình duyệt phổ biến (Chrome, Edge, Firefox),
+giao diện đáp ứng (responsive)
+3.2. Phân tích và thiết kế hệ thống
+3.2.1. Biểu đồ use case
+Hình 3.1: Biểu đồ use case tổng quát của hệ thống
+Biểu đồ tổng quát xác định các tác nhân chính và phạm vi chức năng của hệ thống.
+Từ Văn thư, Lãnh đạo, Chuyên viên và Quản trị viên, người dùng tương tác với các
+
+-- 28 of 134 --
+
+16
+nhóm chức năng như xác thực, báo cáo, quản lý văn bản, nhiệm vụ, hồ sơ, lịch công tác,
+AI và quản trị hệ thống; riêng Gemini AI tham gia hỗ trợ phân tích văn bản.
+Trên cơ sở biểu đồ Use Case tổng quát ở Hình 3.1, tương ứng 9 nhóm chức năng
+chính đã xác định, mỗi Use Case được đặc tả chi tiết theo bảng thuộc tính gồm: tên Use
+Case, tác nhân tham gia, mô tả, tiền điều kiện, hậu điều kiện, luồng sự kiện chính, luồng
+thay thế và dữ liệu liên quan (các bảng tương ứng từ CSDL thiết kế tại mục 3.2.7), nhằm
+làm rõ phạm vi và cách thức hệ thống đáp ứng từng yêu cầu nghiệp vụ trước khi chuyển
+sang giai đoạn thiết kế chi tiết (biểu đồ hoạt động, tuần tự, trạng thái) và xây dựng
+chương trình ở Chương 4.
+a) Use Case: Đăng nhập & Xác thực
+Hình 3.2: Use Case: Đăng nhập & Xác thực
+Luồng bắt đầu khi người dùng mở chức năng đăng nhập và nhập thông tin tài
+khoản. Hệ thống tiếp nhận yêu cầu, kiểm tra thông tin xác thực và quyền truy cập; nếu
+hợp lệ, người dùng được vào hệ thống với các chức năng tương ứng vai trò, còn thông
+tin không hợp lệ sẽ không được cấp quyền truy cập.
+Bảng 3.4: Đặc tả Use Case "Đăng nhập & Xác thực"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-01
+Tên Use Case Đăng nhập & Xác thực
+Tác nhân Quản trị viên, Lãnh đạo, Văn thư, Chuyên viên
+
+-- 29 of 134 --
+
+17
+Mô tả Xác thực danh tính cán bộ để cấp quyền truy cập hệ thống theo đúng
+vai trò nghiệp vụ (RBAC); hỗ trợ người dùng tự khôi phục mật khẩu
+qua email công vụ.
+Tiền điều kiện Người dùng truy cập trang đăng nhập; tài khoản đang ở trạng thái
+hoạt động.
+Hậu điều kiện Đăng nhập thành công, hệ thống điều hướng vào Dashboard theo
+đúng phân quyền.
+Luồng sự kiện chính 1. Người dùng nhập Email công vụ/Tên đăng nhập và Mật khẩu, nhấn
+"Đăng nhập".
+2. Hệ thống kiểm tra tài khoản, xác thực mật khẩu và xác định vai trò
+của người dùng.
+3. Hệ thống khởi tạo phiên làm việc, ghi nhận nhật ký và hiển thị giao
+diện theo đúng vai trò.
+4. Xử lý khi Quên mật khẩu:
+- Người dùng chọn "Quên mật khẩu", nhập email công vụ.
+- Hệ thống kiểm tra email và gửi mã xác thực OTP 6 số qua email.
+- Người dùng nhập mã OTP và mật khẩu mới để đặt lại mật khẩu
+thành công.
+Luồng ngoại lệ - Sai mật khẩu: Hệ thống báo lỗi "Tài khoản hoặc mật khẩu không
+chính xác".
+- Tài khoản bị khóa: Hệ thống từ chối đăng nhập và thông báo liên hệ
+Quản trị viên.
+- Sai mã OTP: Hệ thống từ chối đổi mật khẩu và cho phép yêu cầu gửi
+lại mã mới.
+Dữ liệu liên quan users, departments, positions, audit_logs.
+b) Use Case: Báo cáo thống kê
+Hình 3.3: Use Case: Báo cáo thống kê (Dashboard & Analytics)
+
+-- 30 of 134 --
+
+18
+Người dùng chọn chức năng báo cáo và yêu cầu các chỉ số theo phạm vi được
+phép. Hệ thống kiểm tra quyền, truy vấn dữ liệu văn bản, nhiệm vụ và hồ sơ, sau đó
+tổng hợp và hiển thị kết quả thống kê để người dùng theo dõi tình hình xử lý.
+Bảng 3.5: Đặc tả Use Case "Báo cáo thống kê"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-02
+Tên Use Case Báo cáo thống kê (Dashboard & Analytics)
+Tác nhân Lãnh đạo (chính), Quản trị viên, Văn thư, Chuyên viên
+Mô tả Tổng hợp và hiển thị trực quan các chỉ số điều hành (KPI) theo thời
+gian thực; cho phép người dùng tra cứu chi tiết số liệu và xuất tệp báo
+cáo phục vụ điều hành.
+Tiền điều kiện Người dùng đã đăng nhập thành công vào hệ thống.
+Hậu điều kiện Các chỉ số, biểu đồ và tệp báo cáo phản ánh đúng số liệu văn bản, tiến
+độ công việc.
+Luồng sự kiện chính 1. Người dùng truy cập phân hệ "Bảng điều khiển (Dashboard)".
+2. Hệ thống tự động tổng hợp và hiển thị các thẻ KPI: Tổng văn bản
+đến, Văn bản đi đã phát hành, Nhiệm vụ đang làm, Việc trễ hạn/cần
+xử lý gấp, Tỷ lệ hoàn thành (%).
+3. Tra cứu số liệu thống kê: Người dùng lọc số liệu theo mốc thời gian
+(tuần, tháng, quý) hoặc theo phòng ban; bấm vào từng mục để xem
+danh sách chi tiết cấu thành số liệu.
+4. Xuất báo cáo: Người dùng chọn chức năng kết xuất báo cáo, hệ
+thống tổng hợp dữ liệu và tải về tệp báo cáo theo mẫu.
+Luồng ngoại lệ - Chưa có dữ liệu phát sinh: Hệ thống hiển thị các chỉ số mặc định
+bằng 0 và đồ thị trống.
+Dữ liệu liên quan incoming_documents, outgoing_documents, tasks, dossiers.
+c) Use Case: Quản lý Văn bản đến
+Hình 3.4: Use Case: Quản lý Văn bản đến
+Use Case này mô tả quy trình tiếp nhận và xử lý văn bản gửi đến cơ quan. Văn thư
+tiếp nhận tệp văn bản, hệ thống hỗ trợ AI trích xuất và phân loại thông tin; Văn thư kiểm
+
+-- 31 of 134 --
+
+19
+tra, hiệu chỉnh kết quả, nhập số đến và vào sổ. Lãnh đạo xem xét văn bản, bút phê chỉ
+đạo, phân công Chuyên viên chủ trì/phối hợp và đặt hạn xử lý; hệ thống tạo/liên kết
+nhiệm vụ và gửi thông báo để Chuyên viên tiếp nhận, nghiên cứu và xử lý.
+Bảng 3.6: Đặc tả Use Case "Quản lý Văn bản đến"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-03
+Tên Use Case Quản lý Văn bản đến
+Tác nhân Văn thư (thao tác chính), Lãnh đạo, Chuyên viên
+Mô tả Quản lý toàn diện quy trình xử lý văn bản đến cơ quan: tiếp nhận tệp
+số hóa, vào sổ công văn, chỉnh sửa thông tin, xóa bản ghi sai sót và tra
+cứu văn bản theo nhiều tiêu chí.
+Tiền điều kiện Người dùng đăng nhập với quyền hạn phù hợp (Văn thư/Lãnh
+đạo/Chuyên viên).
+Hậu điều kiện Văn bản đến được lưu vào sổ công văn, cập nhật thông tin và sẵn sàng
+cho việc chỉ đạo, phân công công việc.
+Luồng sự kiện chính 1. Người dùng mở màn hình "Quản lý Văn bản Đến", hệ thống hiển
+thị danh sách sổ công văn.
+2. Tiếp nhận & Vào sổ văn bản đến: Văn thư tải tệp tài liệu lên; hệ
+thống hỗ trợ đọc thông tin sơ bộ; Văn thư nhập số đến, số ký hiệu gốc,
+cơ quan gửi, trích yếu, hạn xử lý và nhấn "Vào sổ văn bản đến" để lưu
+bản ghi mới.
+3. Sửa thông tin văn bản đến: Người dùng chọn văn bản cần chỉnh
+sửa, cập nhật lại trích yếu, nơi ban hành hoặc người phụ trách rồi bấm
+"Lưu thay đổi".
+4. Xóa văn bản đến: Văn thư/Admin chọn xóa bản ghi tiếp nhận nhầm
+sau khi xác nhận hệ thống.
+5. Tra cứu văn bản đến: Cán bộ tìm kiếm văn bản theo số hiệu, trích
+yếu, cơ quan gửi hoặc lọc theo trạng thái, độ khẩn; bấm xem chi tiết
+nội dung và tệp đính kèm.
+Luồng ngoại lệ - Tệp tải lên sai định dạng: Hệ thống cảnh báo chỉ hỗ trợ định dạng
+PDF, Word, Ảnh.
+- Xóa văn bản đã phát sinh công việc: Hệ thống ngăn chặn xóa và
+thông báo văn bản đang gắn với nhiệm vụ xử lý.
+Dữ liệu liên quan incoming_documents, attachments, tasks, notifications, audit_logs.
+d) Use Case: Quản lý Văn bản đi
+
+-- 32 of 134 --
+
+20
+Hình 3.5: Use Case: Quản lý Văn bản đi
+Use Case này mô tả quy trình hình thành và phát hành văn bản từ phía cơ quan.
+Chuyên viên soạn thảo, đính kèm tệp và liên kết văn bản đến cần phúc đáp nếu có, sau
+đó trình duyệt. Lãnh đạo xem xét và phê duyệt nội bộ hoặc trả lại để chỉnh sửa; Văn thư
+kiểm tra thể thức, cấp số và thực hiện phát hành.
+Bảng 3.7: Đặc tả Use Case "Quản lý Văn bản đi"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-04
+Tên Use Case Quản lý Văn bản đi
+Tác nhân Chuyên viên (soạn thảo), Lãnh đạo (ký duyệt), Văn thư (phát hành)
+Mô tả Quản lý quy trình soạn thảo và ban hành văn bản của cơ quan: tạo mới
+dự thảo, chỉnh sửa, thẩm định ký duyệt, xóa bản nháp, cấp số chính
+thức phát hành và tra cứu sổ văn bản đi.
+Tiền điều kiện Người dùng đã đăng nhập hệ thống và có thẩm quyền xử lý tương ứng
+với từng khâu.
+Hậu điều kiện Văn bản đi được duyệt, cấp số vào sổ chính thức và chuyển trạng thái
+phát hành (ISSUED/SENT).
+Luồng sự kiện chính 1. Người dùng truy cập "Quản lý Văn bản Đi & Phát Hành", xem
+danh sách các văn bản đi.
+2. Thêm văn bản đi: Chuyên viên tạo dự thảo mới, nhập trích yếu, nơi
+nhận, loại văn bản, đính kèm tệp, gắn liên kết văn bản đến (nếu là văn
+bản phúc đáp) và gửi trình duyệt.
+3. Sửa văn bản đi:
+- Chuyên viên chỉnh sửa hoàn thiện nội dung bản nháp.
+- Lãnh đạo kiểm tra dự thảo, thực hiện ký duyệt (chuyển trạng thái Đã
+ký) hoặc trả lại yêu cầu chỉnh sửa.
+- Văn thư kiểm tra thể thức, nhập số đi chính thức, ngày ban hành để
+phát hành văn bản.
+4. Xóa văn bản đi: Người soạn thảo xóa các bản nháp tạo thử hoặc
+
+-- 33 of 134 --
+
+21
+không còn sử dụng.
+5. Tra cứu văn bản đi: Người dùng tìm kiếm văn bản theo số hiệu, nơi
+nhận, người soạn thảo hoặc lọc theo trạng thái duyệt.
+Luồng ngoại lệ - Lãnh đạo từ chối duyệt: Hệ thống chuyển văn bản về trạng thái Nháp
+kèm lý do phản hồi để chuyên viên chỉnh sửa.
+- Xóa văn bản đã phát hành: Hệ thống từ chối xóa đối với văn bản đã
+được cấp số phát hành chính thức.
+Dữ liệu liên quan outgoing_documents, incoming_documents, dossiers, attachments,
+audit_logs.
+e) Use Case: Quản lý Nhiệm vụ & Công việc
+Hình 3.6: Use Case: Quản lý Nhiệm vụ & Công việc
+Nhiệm vụ được tạo từ chỉ đạo văn bản hoặc được Lãnh đạo/Quản trị viên tạo trực
+tiếp. Hệ thống phân quyền hiển thị, người được giao cập nhật việc con và tiến độ, gửi
+kết quả; Lãnh đạo xem xét và xác nhận đóng nhiệm vụ, trong khi nhiệm vụ chưa hoàn
+thành khi quá hạn sẽ được chuyển sang trạng thái quá hạn và phát cảnh báo.
+Bảng 3.8: Đặc tả Use Case "Quản lý Nhiệm vụ & Công việc"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-05
+Tên Use Case Quản lý Nhiệm vụ & Công việc
+Tác nhân Lãnh đạo (giao việc, nghiệm thu), Chuyên viên (thực hiện), Văn thư,
+Quản trị viên
+Mô tả Quản lý quy trình phân công, thực hiện và nghiệm thu công việc: tạo
+mới nhiệm vụ, cập nhật tiến độ và việc con, xóa nhiệm vụ không cần
+thiết, nghiệm thu kết quả và tra cứu công việc trên bảng Kanban/danh
+sách.
+Tiền điều kiện Người dùng đã đăng nhập hệ thống.
+Hậu điều kiện Nhiệm vụ được giao, cập nhật tiến độ chính xác và được Lãnh đạo
+thẩm định đóng hoàn thành.
+
+-- 34 of 134 --
+
+22
+Luồng sự kiện chính 1. Người dùng mở phân hệ "Quản lý Phân Công & Điều Hành Nhiệm
+Vụ".
+2. Thêm nhiệm vụ: Lãnh đạo/Admin tạo nhiệm vụ mới (độc lập hoặc
+từ văn bản đến), chọn người chủ trì, người phối hợp, mức ưu tiên, hạn
+hoàn thành và giao việc.
+3. Sửa nhiệm vụ:
+- Chuyên viên cập nhật tiến độ (0% → 100%), tích việc con
+(checklist), đính kèm báo cáo kết quả và bấm "Trình nghiệm thu".
+- Lãnh đạo kiểm tra kết quả: nếu đạt thì bấm "Nghiệm thu hoàn
+thành", nếu chưa đạt thì trả lại yêu cầu làm tiếp.
+- Người dùng có thể kéo thả thẻ công việc giữa các cột trên bảng
+Kanban.
+4. Xóa nhiệm vụ: Người giao việc hoặc Admin xóa các nhiệm vụ hủy
+bỏ hoặc trùng lặp.
+5. Tra cứu nhiệm vụ: Người dùng lọc nhanh "Việc tôi làm", "Việc tôi
+giao", lọc theo trạng thái, người phụ trách hoặc mức độ khẩn để nắm
+bắt tiến độ.
+Luồng ngoại lệ - Hạn hoàn thành không hợp lệ: Hệ thống báo lỗi nếu hạn kết thúc
+trước ngày bắt đầu.
+- Chuyên viên tự đóng việc: Hệ thống ngăn chặn việc tự ý đổi trạng
+thái Hoàn thành khi chưa có phê duyệt của Lãnh đạo.
+Dữ liệu liên quan tasks, users, incoming_documents, dossiers, notifications, audit_logs.
+f) Use Case: Quản lý Hồ sơ & Tài liệu
+Hình 3.7: Use Case: Quản lý Hồ sơ & Tài liệu
+Người dùng tạo mã hồ sơ công việc, sau đó văn bản đến, văn bản đi, nhiệm vụ và
+tệp liên quan được tập hợp theo hồ sơ. Người dùng có thể tra cứu, lọc và khai thác tài
+liệu; khi công việc hoàn tất, hồ sơ được phê duyệt để chuyển sang trạng thái đóng và
+lưu trữ lịch sử.
+
+-- 35 of 134 --
+
+23
+Bảng 3.9: Đặc tả Use Case "Quản lý Hồ sơ & Tài liệu"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-06
+Tên Use Case Quản lý Hồ sơ & Tài liệu
+Tác nhân Văn thư, Chuyên viên, Lãnh đạo, Quản trị viên
+Mô tả Thiết lập danh mục hồ sơ công việc theo đề mục hành chính, gom các
+văn bản đến/đi, nhiệm vụ và tệp đính kèm vào hồ sơ vụ việc; cập nhật,
+đóng hồ sơ lưu trữ và tra cứu, xem trước tài liệu số hóa.
+Tiền điều kiện Người dùng đã đăng nhập hệ thống.
+Hậu điều kiện Hồ sơ được tạo lập, liên kết tài liệu chặt chẽ và đóng băng lưu trữ khi
+hoàn thành nhiệm vụ.
+Luồng sự kiện chính 1. Người dùng truy cập phân hệ "Quản lý Hồ Sơ Vụ Việc" hoặc "Kho
+Tài Liệu & Đính Kèm".
+2. Thêm hồ sơ & tài liệu:
+- Người dùng tạo mã hồ sơ mới (ví dụ: HS-2025-CDS-01), nhập tiêu
+đề, phòng ban chủ trì, thời hạn lưu trữ.
+- Người dùng chọn gom các văn bản đến, văn bản đi, nhiệm vụ hoặc
+tải tệp tài liệu số trực tiếp vào hồ sơ.
+3. Sửa hồ sơ & tài liệu: Người dùng cập nhật thông tin hồ sơ; khi vụ
+việc hoàn tất, Lãnh đạo kiểm tra và bấm "Nghiệm thu & Đóng hồ sơ"
+để lưu trữ lịch sử.
+4. Xóa hồ sơ & tài liệu: Người dùng xóa hồ sơ tạo sai (khi chưa có tài
+liệu liên kết) hoặc gỡ bỏ tệp tin đính kèm thừa.
+5. Tra cứu hồ sơ & tài liệu: Người dùng tìm kiếm hồ sơ theo mã đề
+mục, tiêu đề hoặc từ khóa tệp tin; mở tính năng xem trước (Preview)
+trực tuyến văn bản PDF, Word, Ảnh ngay trên hệ thống.
+Luồng ngoại lệ - Đóng hồ sơ khi còn việc dở dang: Hệ thống cảnh báo từ chối đóng
+hồ sơ nếu vẫn còn nhiệm vụ bên trong chưa hoàn thành.
+- Trùng mã hồ sơ: Hệ thống báo lỗi trùng lặp mã đề mục và yêu cầu
+nhập lại.
+Dữ liệu liên quan dossiers, incoming_documents, outgoing_documents, tasks,
+attachments, audit_logs.
+g) Use Case: Lịch công tác & Quản lý nhắc việc
+
+-- 36 of 134 --
+
+24
+Hình 3.8: Use Case: Lịch công tác & Quản lý nhắc việc
+Lãnh đạo hoặc Quản trị viên có thể tạo lịch họp và lịch làm việc, đồng thời hệ
+thống đồng bộ các hạn xử lý của văn bản và nhiệm vụ lên lịch. Hệ thống tiếp tục quét
+thời hạn, gửi nhắc việc khi sắp đến hạn hoặc cảnh báo khi quá hạn; các mốc nhắc vẫn
+được duy trì nếu người dùng chưa xử lý xong công việc.
+Bảng 3.10: Đặc tả Use Case "Lịch công tác & Quản lý nhắc việc"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-07
+Tên Use Case Lịch công tác & Quản lý nhắc việc
+Tác nhân Lãnh đạo, Chuyên viên, Văn thư, Quản trị viên
+Mô tả Theo dõi lịch công tác, lịch họp của cơ quan; tự động quét hạn xử lý
+của văn bản và công việc để đồng bộ lên lịch; chủ động phát cảnh báo
+sắp hạn/quá hạn và hỗ trợ Lãnh đạo đôn đốc xử lý công việc.
+Tiền điều kiện Người dùng đã đăng nhập hệ thống.
+Hậu điều kiện Mốc hạn của các văn bản/nhiệm vụ được đồng bộ lên lịch; thông báo
+nhắc việc gửi đến đúng cán bộ chịu trách nhiệm.
+Luồng sự kiện chính 1. Người dùng mở phân hệ "Lịch Công Tác & Hạn Chót" hoặc "Nhắc
+Việc & Trễ Hạn".
+2. Hệ thống tự động quét hạn chót (dueDate) từ văn bản và nhiệm vụ,
+phân loại mức độ cảnh báo (Bình thường, Sắp đến hạn - Vàng, Quá
+hạn - Đỏ) và đồng bộ lên lưới lịch.
+3. Tra cứu lịch: Người dùng xem lịch theo Ngày/Tuần/Tháng, lọc theo
+
+-- 37 of 134 --
+
+25
+cán bộ hoặc phòng ban; click vào từng đầu việc trên lịch để mở trực
+tiếp văn bản/nhiệm vụ cần xử lý.
+4. Đôn đốc công việc: Lãnh đạo hoặc Văn thư bấm chọn các việc
+chậm tiến độ và gửi thông báo nhắc nhở; hệ thống gửi thông báo toast
+cảnh báo đến cán bộ phụ trách.
+Luồng ngoại lệ - Trùng lịch công tác: Hệ thống hiển thị cảnh báo trùng khung giờ khi
+tạo lịch họp mới để người dùng điều chỉnh.
+Dữ liệu liên quan tasks, incoming_documents, notifications, users.
+h) Use Case: Xử lý & Phân tích AI
+Hình 3.9: Use Case: Xử lý & Phân tích AI
+Khi văn bản được tải lên, hệ thống gửi nội dung tới tầng AI để nhận dạng, trích
+xuất số hiệu, cơ quan ban hành, ngày ký, trích yếu và đề xuất phân loại, đơn vị chủ trì,
+hạn xử lý. Người dùng có thể tiếp tục tương tác với Trợ lý AI để tóm tắt, trích xuất thông
+tin hoặc tra cứu; nếu Gemini không khả dụng, hệ thống chuyển sang bộ phân loại quy
+tắc cục bộ.
+Bảng 3.11: Đặc tả Use Case "Xử lý & Phân tích AI"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-08
+Tên Use Case Xử lý & Phân tích AI (Smart Administrative AI Engine)
+Tác nhân Văn thư, Lãnh đạo, Chuyên viên, Quản trị viên, Gemini AI (Tác nhân
+ngoài)
+Mô tả Ứng dụng trí tuệ nhân tạo để tự động bóc tách thực thể hành chính
+(NER), chấm điểm phân loại lĩnh vực, đề xuất luồng phân công xử lý
+
+-- 38 of 134 --
+
+26
+văn bản đến và cung cấp Trợ lý ảo AI hỗ trợ hỏi đáp, tra cứu dữ liệu
+cơ quan.
+Tiền điều kiện Người dùng đã đăng nhập; có tệp văn bản tải lên hoặc câu hỏi gửi tới
+Trợ lý ảo.
+Hậu điều kiện Thông tin trích xuất và luồng phân công được điền tự động vào biểu
+mẫu; câu trả lời của Trợ lý ảo hiển thị kèm dữ liệu dẫn chứng.
+Luồng sự kiện chính 1. Hệ thống nhận nội dung văn bản (khi tiếp nhận văn bản đến) hoặc
+câu hỏi của người dùng (tại giao diện Trợ lý ảo).
+2. Phân loại nội dung văn bản:
+- Hệ thống gọi dịch vụ AI bóc tách thực thể (Số ký hiệu, Ngày ký, Cơ
+quan ban hành, Trích yếu).
+- AI tính toán điểm số lĩnh vực nghiệp vụ và đưa ra đề xuất luồng điều
+phối: Gợi ý phòng ban chủ trì, chuyên viên thụ lý, mức độ khẩn và
+hạn hoàn thành.
+- Văn thư chỉ cần rà soát và bấm chọn áp dụng dữ liệu đề xuất.
+3. Hỏi đáp trợ lý AI:
+- Người dùng đặt câu hỏi bằng tiếng Việt (yêu cầu tóm tắt văn bản, rà
+soát việc quá hạn, gợi ý soạn công văn...).
+- Trợ lý AI phân tích ngữ cảnh hệ thống và phản hồi thông tin ngắn
+gọn, chính xác kèm liên kết dữ liệu liên quan.
+Luồng ngoại lệ - Mất kết nối mạng hoặc hết hạn mức AI Cloud: Hệ thống tự động
+chuyển sang bộ phân loại quy tắc nội bộ (localClassifier) và trợ lý dự
+phòng (localAssistant) để tiếp tục phục vụ công việc.
+Dữ liệu liên quan incoming_documents, outgoing_documents, tasks, departments,
+users, Gemini API.
+i) Use Case: Quản trị hệ thống & Nhân sự
+Hình 3.10: Use Case: Quản trị hệ thống & Nhân sự
+Quản trị viên và Lãnh đạo có quyền quản lý cán bộ, phòng ban, chức vụ, vai trò và
+các danh mục dùng chung theo phạm vi được cấp. Hệ thống đồng thời ghi nhật ký các
+
+-- 39 of 134 --
+
+27
+thao tác quan trọng; nếu Chuyên viên hoặc Văn thư cố truy cập khu vực quản trị, hệ
+thống từ chối và ghi nhận hành vi vào audit log.
+Bảng 3.12: Đặc tả Use Case "Quản trị hệ thống & Nhân sự"
+Thuộc tính Nội dung chi tiết
+Mã Use Case UC-09
+Tên Use Case Quản trị hệ thống & Nhân sự
+Tác nhân Quản trị viên (Admin - chính), Lãnh đạo
+Mô tả Quản lý danh mục nhân sự và phân quyền vai trò (RBAC); cấu hình
+các danh mục dùng chung (Master Data); giám sát trạng thái CSDL và
+theo dõi nhật ký hệ thống (Audit Trail Logging) để bảo đảm an toàn,
+minh bạch.
+Tiền điều kiện Người dùng đăng nhập với vai trò Quản trị viên (ADMIN) hoặc Lãnh
+đạo (LEADER).
+Hậu điều kiện Dữ liệu nhân sự, danh mục và cấu hình được cập nhật an toàn; các
+hành động thay đổi đều được ghi vết kiểm toán.
+Luồng sự kiện chính 1. Quản trị viên truy cập khu vực "Quản Trị & Danh Mục" trên thanh
+menu.
+2. Quản lý cán bộ & Phân quyền: Admin thêm mới, sửa thông tin, đặt
+lại mật khẩu, phân bổ phòng ban, chức vụ, gán vai trò (ADMIN,
+LEADER, CLERK, STAFF) hoặc khóa tài khoản cán bộ.
+3. Quản lý danh mục dùng chung: Admin quản lý 4 nhóm danh mục
+chuẩn của cơ quan (Loại văn bản, Đơn vị ban hành, Phòng ban, Chức
+vụ); thực hiện thêm mục mới hoặc xóa mục lỗi thời.
+4. Xem nhật ký hệ thống: Admin/Lãnh đạo mở màn hình Nhật ký
+kiểm toán (AuditLogsView) để tra cứu lịch sử thao tác theo người
+dùng, mốc thời gian và loại hành động; theo dõi trạng thái kết nối
+CSDL và đồng bộ dữ liệu.
+Luồng ngoại lệ - Truy cập trái phép: Cán bộ không có quyền truy cập bị chặn lại
+(HTTP 403) và hành vi được ghi nhận vào nhật ký kiểm toán.
+- Xóa danh mục đang được sử dụng: Hệ thống từ chối xóa mục nếu
+mục đó đang được liên kết trong văn bản hoặc nhiệm vụ.
+Dữ liệu liên quan users, departments, positions, system_settings, audit_logs.
+3.2.2. Biểu đồ hoạt động
+Biểu đồ hoạt động được đặc tả theo từng tác nhân và từng chức năng, phù hợp với
+luồng nghiệp vụ đã xác định ở các Use Case tổng quát. Mỗi biểu đồ sử dụng các
+swimlane thể hiện tác nhân thực hiện thao tác và Hệ thống xử lý (bổ sung swimlane
+Gemini AI đối với các chức năng có gọi dịch vụ AI), cùng các nhánh điều kiện và kết
+quả cuối cùng. Đối với các chức năng quản lý dữ liệu, luồng được tổ chức theo các thao
+tác Create, Read, Update, Delete (CRUD) tương ứng với các Use Case con Thêm, Sửa,
+
+-- 40 of 134 --
+
+28
+Xóa, Tra cứu; đối với các chức năng nghiệp vụ đặc thù, biểu đồ giữ nguyên trình tự xử
+lý riêng của từng vai trò.
+Bộ biểu đồ gồm 34 biểu đồ hoạt động (từ Hình 3.11 đến Hình 3.44), mỗi biểu đồ
+tương ứng với một Use Case con hoặc một luồng nghiệp vụ chính của tác nhân trong 9
+Use Case. Tên hình được đặt theo quy ước “Biểu đồ hoạt động – [Tác nhân –] Use Case
+con”.
+Biểu đồ hoạt động 1: Đăng nhập & Xác thực
+Hình 3.11: Biểu đồ hoạt động – Đăng nhập & Xác thực
+Người dùng nhập thông tin đăng nhập và gửi yêu cầu xác thực. Hệ thống kiểm tra
+tài khoản, mật khẩu và quyền truy cập trước khi cho phép đăng nhập.
+
+-- 41 of 134 --
+
+29
+Hình 3.12: Biểu đồ hoạt động – Quên mật khẩu
+Người dùng chọn chức năng quên mật khẩu và nhập email công vụ đã đăng ký. Hệ
+thống kiểm tra email trong danh sách tài khoản; nếu không hợp lệ, hệ thống yêu cầu
+nhập lại, còn nếu hợp lệ thì tạo và gửi mã đặt lại mật khẩu.
+
+-- 42 of 134 --
+
+30
+Biểu đồ hoạt động 2: Bảng điều khiển & Thống kê
+Hình 3.13: Biểu đồ hoạt động – Tra cứu số liệu thống kê
+Người dùng mở Bảng điều khiển để theo dõi các chỉ số và tình hình xử lý công
+việc. Hệ thống truy vấn, tổng hợp dữ liệu theo phạm vi quyền và hiển thị các KPI cùng
+cảnh báo liên quan.
+Hình 3.14: Biểu đồ hoạt động – Xuất báo cáo
+Cán bộ chọn mốc thời gian và yêu cầu xuất báo cáo. Hệ thống kiểm tra thẩm quyền,
+tổng hợp dữ liệu văn bản và các chỉ số KPI theo điều kiện đã chọn.
+
+-- 43 of 134 --
+
+31
+Biểu đồ hoạt động 3: Quản lý Văn bản đến
+Hình 3.15: Biểu đồ hoạt động – Văn thư – Tiếp nhận và vào sổ văn bản đến
+Văn thư tải văn bản đến lên hệ thống và nhập hoặc kiểm tra các thông tin liên quan.
+Hệ thống đọc nội dung, thực hiện trích xuất và phân loại bằng AI, sau đó trả kết quả để
+Văn thư kiểm tra.
+Hình 3.16: Biểu đồ hoạt động – Văn thư – Sửa thông tin văn bản đến
+Văn thư mở danh sách văn bản đến, chọn văn bản cần chỉnh sửa và hệ thống hiển
+thị biểu mẫu cập nhật dữ liệu.
+
+-- 44 of 134 --
+
+32
+Hình 3.17: Biểu đồ hoạt động – Văn thư – Xóa văn bản đến
+Văn thư chọn văn bản đến cần xóa và hệ thống hiển thị yêu cầu xác nhận. Sau khi
+Văn thư xác nhận, hệ thống kiểm tra các ràng buộc liên quan như nhiệm vụ và văn bản
+đi; nếu còn ràng buộc, hệ thống báo lỗi và giữ lại văn bản.
+Hình 3.18: Biểu đồ hoạt động – Tra cứu văn bản đến
+Người dùng nhập điều kiện tra cứu như số hiệu, trích yếu, thời gian hoặc trạng thái
+xử lý. Hệ thống kiểm tra quyền truy cập, truy vấn dữ liệu văn bản đến và trả về danh
+sách phù hợp.
+
+-- 45 of 134 --
+
+33
+Hình 3.19: Biểu đồ hoạt động – Lãnh đạo – Chỉ đạo và phân công văn bản đến
+Lãnh đạo mở văn bản đang chờ xử lý và xem nội dung cùng kết quả phân tích.
+Lãnh đạo nhập ý kiến chỉ đạo, lựa chọn người xử lý và xác định thời hạn hoàn thành.
+Hình 3.20: Biểu đồ hoạt động – Chuyên viên – Tiếp nhận và xử lý văn bản đến
+Chuyên viên mở văn bản được giao và xem nội dung, chỉ đạo cùng thời hạn xử lý.
+Sau khi thực hiện công việc, Chuyên viên cập nhật kết quả và có thể đính kèm tài liệu
+liên quan.
+
+-- 46 of 134 --
+
+34
+Biểu đồ hoạt động 4: Quản lý Văn bản đi
+Hình 3.21: Biểu đồ hoạt động – Chuyên viên – Thêm văn bản đi (soạn thảo và trình duyệt)
+Chuyên viên tạo dự thảo văn bản đi và nhập các thông tin cần thiết. Hệ thống lưu
+bản nháp để Chuyên viên tiếp tục chỉnh sửa, sau đó chuyển văn bản sang trạng thái trình
+duyệt khi người dùng gửi yêu cầu.
+Hình 3.22: Biểu đồ hoạt động – Chuyên viên – Sửa dự thảo văn bản đi
+Chuyên viên mở danh sách văn bản đi, chọn văn bản ở trạng thái nháp hoặc bị trả
+lại và thực hiện chỉnh sửa.
+
+-- 47 of 134 --
+
+35
+Hình 3.23: Biểu đồ hoạt động – Chuyên viên – Xóa dự thảo văn bản đi
+Chuyên viên chọn dự thảo văn bản đi cần xóa. Hệ thống kiểm tra trạng thái văn
+bản; nếu văn bản đã ký hoặc đã phát hành, hệ thống từ chối xóa và dừng thao tác, còn
+với bản nháp, hệ thống yêu cầu xác nhận.
+Hình 3.24: Biểu đồ hoạt động – Cán bộ – Tra cứu văn bản đi
+Cán bộ mở sổ văn bản đi, nhập từ khóa hoặc chọn bộ lọc tra cứu. Hệ thống kiểm
+tra quyền truy cập và lọc dữ liệu; nếu không có kết quả, hệ thống hiển thị danh sách
+trống để người dùng đổi tiêu chí tìm kiếm.
+
+-- 48 of 134 --
+
+36
+Hình 3.25: Biểu đồ hoạt động – Lãnh đạo – Thẩm định và ký duyệt văn bản đi
+Lãnh đạo mở văn bản đang ở trạng thái chờ thẩm định và kiểm tra nội dung, tệp
+đính kèm. Lãnh đạo đánh giá văn bản và lựa chọn phê duyệt hoặc trả lại để chỉnh sửa.
+Hình 3.26: Biểu đồ hoạt động – Văn thư – Cấp số và phát hành văn bản đi
+Văn thư tiếp nhận văn bản đã được ký duyệt và kiểm tra thể thức trước khi phát
+hành. Văn thư cấp số, xác định ngày ban hành và hoàn tất các thông tin cần thiết.
+
+-- 49 of 134 --
+
+37
+Biểu đồ hoạt động 5: Quản lý Nhiệm vụ
+Hình 3.27: Biểu đồ hoạt động – Lãnh đạo – Thêm nhiệm vụ (phân công và nghiệm thu)
+Lãnh đạo tạo nhiệm vụ, xác định nội dung, người thực hiện và thời hạn rồi gửi giao
+việc. Hệ thống lưu nhiệm vụ và thông báo cho người được giao.
+Hình 3.28: Biểu đồ hoạt động – Lãnh đạo – Xóa nhiệm vụ
+Lãnh đạo mở danh sách công việc hoặc bảng Kanban, chọn nhiệm vụ cần xóa. Hệ
+thống kiểm tra trạng thái nhiệm vụ; nếu nhiệm vụ đã được nghiệm thu, hệ thống từ chối
+xóa và dừng thao tác, còn nếu chưa hoàn tất, hệ thống yêu cầu xác nhận.
+
+-- 50 of 134 --
+
+38
+Hình 3.29: Biểu đồ hoạt động – Chuyên viên/Văn thư – Sửa nhiệm vụ (thực hiện và cập nhật tiến
+độ)
+Chuyên viên hoặc Văn thư mở nhiệm vụ được giao và xem nội dung, checklist
+cùng tiến độ hiện tại. Người thực hiện cập nhật các bước đã hoàn thành, kết quả và tài
+liệu liên quan, sau đó gửi yêu cầu nghiệm thu.
+Hình 3.30: Biểu đồ hoạt động – Cán bộ – Tra cứu nhiệm vụ
+Cán bộ mở danh sách nhiệm vụ, nhập từ khóa và chọn bộ lọc. Hệ thống truy vấn
+cơ sở dữ liệu theo phạm vi phân quyền; nếu không có dữ liệu, hệ thống hiển thị danh
+
+-- 51 of 134 --
+
+39
+sách trống để người dùng điều chỉnh bộ lọc, còn nếu có dữ liệu, hệ thống hiển thị danh
+sách nhiệm vụ.
+Hình 3.31: Biểu đồ hoạt động – Cán bộ – Trao đổi và đính kèm báo cáo
+Người thực hiện trao đổi thông tin trong nhiệm vụ và đính kèm báo cáo hoặc tài
+liệu liên quan. Hệ thống kiểm tra thông tin, lưu nội dung trao đổi và tệp đính kèm vào
+nhiệm vụ tương ứng.
+
+-- 52 of 134 --
+
+40
+Biểu đồ hoạt động 6: Quản lý Hồ sơ & Tài liệu
+Hình 3.32: Biểu đồ hoạt động – Thêm hồ sơ vụ việc
+Người dùng chọn chức năng tạo hồ sơ vụ việc mới, hệ thống hiển thị biểu mẫu
+nhập liệu. Sau khi nhập đầy đủ thông tin và lưu, hệ thống kiểm tra trùng mã hồ sơ và
+các trường bắt buộc; nếu có lỗi, hệ thống thông báo và quay lại biểu mẫu để người dùng
+chỉnh sửa.
+
+-- 53 of 134 --
+
+41
+Hình 3.33: Biểu đồ hoạt động – Sửa hồ sơ công việc
+Chuyên viên rà soát hồ sơ và đề xuất nghiệm thu đóng hồ sơ; hệ thống kiểm tra
+điều kiện kỹ thuật.
+Hình 3.34: Biểu đồ hoạt động – Văn thư/Lãnh đạo – Xóa hồ sơ và tài liệu
+Văn thư hoặc Lãnh đạo mở danh mục hồ sơ vụ việc, chọn hồ sơ hoặc tệp cần xóa.
+Hệ thống kiểm tra trạng thái và liên kết của hồ sơ; nếu hồ sơ đã đóng hoặc có văn bản
+chính thức, hệ thống báo lỗi và từ chối xóa, còn nếu hồ sơ rỗng hoặc tạo nhầm, hệ thống
+yêu cầu xác nhận.
+
+-- 54 of 134 --
+
+42
+Hình 3.35: Biểu đồ hoạt động – Tra cứu hồ sơ và tài liệu
+Người dùng khai thác kho số để tìm kiếm và xem lại các tài liệu đã được lưu trữ.
+Hệ thống kiểm tra quyền truy cập, truy vấn dữ liệu và hiển thị lịch sử cùng các tài liệu
+liên quan.
+Biểu đồ hoạt động 7: Lịch công tác và Nhắc việc
+Hình 3.36: Biểu đồ hoạt động – Tra cứu lịch công tác
+Người dùng mở chức năng lịch công tác để xem các lịch họp, lịch làm việc và các
+mốc hạn liên quan.
+
+-- 55 of 134 --
+
+43
+Hình 3.37: Biểu đồ hoạt động – Lãnh đạo/Văn thư – Đôn đốc công việc
+Lãnh đạo hoặc Văn thư mở chức năng nhắc việc; hệ thống quét hạn xử lý, phân
+loại công việc quá hạn và sắp hết hạn rồi hiển thị danh sách việc chậm.
+Biểu đồ hoạt động 8: Xử lý và Phân tích AI
+Hình 3.38: Biểu đồ hoạt động – Trích xuất thực thể NER và phân loại nội dung văn bản
+Người dùng cung cấp tệp hoặc nội dung văn bản cần phân tích. Hệ thống đọc/OCR
+nội dung, gửi dữ liệu tới Gemini để trích xuất thực thể và đề xuất phân loại; khi dịch vụ
+AI không khả dụng, hệ thống chuyển sang bộ phân loại heuristic nội bộ.
+
+-- 56 of 134 --
+
+44
+Hình 3.39: Biểu đồ hoạt động – Đề xuất luồng điều phối và hạn xử lý
+Người dùng yêu cầu hệ thống đề xuất hướng điều phối và thời hạn xử lý dựa trên
+thông tin văn bản, nhiệm vụ và các dữ liệu liên quan.
+Hình 3.40: Biểu đồ hoạt động – Hỏi đáp trợ lý AI
+Người dùng gửi yêu cầu tới chức năng trợ lý ảo AI. Hệ thống tiếp nhận câu hỏi
+hoặc yêu cầu, xử lý qua dịch vụ AI và trả lại nội dung hỗ trợ phù hợp với dữ liệu/ngữ
+cảnh được cung cấp.
+
+-- 57 of 134 --
+
+45
+Biểu đồ hoạt động 9: Quản trị hệ thống và Nhân sự
+Hình 3.41: Biểu đồ hoạt động – Ghi và xem nhật ký kiểm toán
+Khi người dùng, gồm Lãnh đạo hoặc Quản trị viên, thực hiện một thao tác nghiệp
+vụ, hệ thống xử lý trên cơ sở dữ liệu và kích hoạt cơ chế ghi vết (Audit Hook).
+Hình 3.42: Biểu đồ hoạt động – Quản trị CSDL Hybrid và đồng bộ dữ liệu lên Cloud
+Quản trị viên quản lý dữ liệu trong lớp CSDL Hybrid và theo dõi quá trình đồng
+bộ dữ liệu lên Cloud.
+
+-- 58 of 134 --
+
+46
+Hình 3.43: Biểu đồ hoạt động – Quản lý cán bộ và phân quyền
+Lãnh đạo hoặc Quản trị viên mở chức năng quản lý nhân sự và hệ thống kiểm tra
+quyền RBAC. Khi được phép, hệ thống tải danh sách nhân sự và các thông tin liên quan;
+người dùng có thể thêm, sửa hoặc xóa, đồng thời thiết lập vai trò, phòng ban và chức
+vụ.
+Hình 3.44: Biểu đồ hoạt động – Quản lý danh mục dùng chung
+Lãnh đạo hoặc Quản trị viên mở chức năng danh mục dùng chung và hệ thống
+kiểm tra thẩm quyền. Hệ thống hiển thị các nhóm danh mục để người dùng lựa chọn,
+
+-- 59 of 134 --
+
+47
+thêm hoặc xóa mục; trước khi lưu, hệ thống kiểm tra trùng lặp và tính hợp lệ của dữ
+liệu.
+3.2.3. Biểu đồ tuần tự
+3.2.3.1. Biểu đồ tuần tự Đăng nhập & Xác thực
+Hình 3.45: Biểu đồ tuần tự – Đăng nhập & Xác thực
+Biểu đồ tuần tự mô tả trình tự tương tác khi người dùng thực hiện đăng nhập vào
+hệ thống. Người dùng gửi thông tin tài khoản, hệ thống kiểm tra và xác thực dữ liệu
+trước khi cấp quyền truy cập.
+
+-- 60 of 134 --
+
+48
+Hình 3.46: Biểu đồ tuần tự – Quên mật khẩu
+Biểu đồ thể hiện quy trình xử lý khi người dùng không nhớ mật khẩu và yêu cầu
+khôi phục tài khoản.
+3.2.3.2. Biểu đồ tuần tự Bảng điều khiển & Thống kê
+Hình 3.47: Biểu đồ tuần tự – Tra cứu số liệu thống kê
+Biểu đồ mô tả quá trình hệ thống tổng hợp các chỉ số KPI và kiểm tra tình trạng
+xử lý công việc.
+
+-- 61 of 134 --
+
+49
+Hình 3.48: Biểu đồ tuần tự – Xuất báo cáo
+Biểu đồ thể hiện quá trình theo dõi tiến độ của các công việc đã được phân công.
+Người quản lý yêu cầu thông tin tiến độ, hệ thống truy vấn dữ liệu nhiệm vụ và tổng
+hợp trạng thái thực hiện của từng công việc.
+3.2.3.3. Biểu đồ tuần tự quản lý văn bản đến
+Hình 3.49: Biểu đồ tuần tự – Văn thư – Tiếp nhận và vào sổ văn bản đến
+Biểu đồ mô tả quy trình văn thư tiếp nhận và đăng ký văn bản đến trên hệ thống.
+Văn thư nhập hoặc cập nhật thông tin văn bản, đính kèm tài liệu và gửi yêu cầu lưu trữ.
+
+-- 62 of 134 --
+
+50
+Hình 3.50: Biểu đồ tuần tự – Văn thư – Sửa thông tin văn bản đến
+Biểu đồ mô tả quá trình Văn thư chỉnh sửa thông tin văn bản đến. Sau khi Văn
+thư nhập thay đổi và cập nhật, Backend API kiểm tra các thông tin bắt buộc; nếu thiếu
+dữ liệu, hệ thống báo lỗi và yêu cầu nhập lại.
+Hình 3.51: Biểu đồ tuần tự – Văn thư – Xóa văn bản đến
+Biểu đồ thể hiện quá trình Văn thư xóa văn bản đến sau khi xác nhận trên hộp
+thoại. Backend API kiểm tra các nhiệm vụ liên quan; nếu văn bản đã phát sinh nhiệm
+vụ, hệ thống báo lỗi vi phạm ràng buộc và giữ lại văn bản.
+
+-- 63 of 134 --
+
+51
+Hình 3.52: Biểu đồ tuần tự – Lãnh đạo – Chỉ đạo và phân công xử lý văn bản
+Biểu đồ thể hiện quá trình lãnh đạo xem xét văn bản đến và đưa ra chỉ đạo xử lý.
+Sau khi lựa chọn văn bản, lãnh đạo nhập nội dung chỉ đạo, xác định người thực hiện và
+các thông tin liên quan như thời hạn hoặc mức ưu tiên.
+Hình 3.53: Biểu đồ tuần tự – Chuyên viên – Tra cứu và xử lý văn bản được giao
+Biểu đồ mô tả quá trình chuyên viên tra cứu các văn bản được phân công và thực
+hiện nhiệm vụ liên quan.
+
+-- 64 of 134 --
+
+52
+3.2.3.4. Biểu đồ tuần tự quản lý văn bản đi
+Hình 3.54: Biểu đồ tuần tự – Chuyên viên – Soạn thảo & Trình duyệt văn bản đi
+Biểu đồ thể hiện quy trình chuyên viên soạn thảo văn bản đi và gửi trình duyệt.
+Người dùng nhập nội dung, thông tin phát hành và có thể đính kèm tài liệu trước khi gửi
+yêu cầu.
+Hình 3.55: Biểu đồ tuần tự – Chuyên viên – Sửa dự thảo văn bản đi
+
+-- 65 of 134 --
+
+53
+Biểu đồ mô tả quá trình Chuyên viên chỉnh sửa dự thảo văn bản đi. Hệ thống
+kiểm tra trạng thái hiện tại của văn bản; nếu văn bản đã được ký duyệt thì từ chối chỉnh
+sửa.
+Hình 3.56: Biểu đồ tuần tự – Chuyên viên – Xóa dự thảo văn bản đi
+Biểu đồ thể hiện quá trình Chuyên viên xóa dự thảo văn bản đi sau khi xác nhận.
+Backend API kiểm tra người tạo và trạng thái văn bản; nếu không đúng quyền hoặc văn
+bản đã được phê duyệt thì từ chối xóa.
+Hình 3.57: Biểu đồ tuần tự – Cán bộ – Tra cứu văn bản đi
+
+-- 66 of 134 --
+
+54
+Biểu đồ mô tả quá trình Cán bộ tra cứu văn bản đi theo từ khóa hoặc bộ lọc.
+Backend API kiểm tra phân quyền truy cập, truy vấn dữ liệu văn bản đi và trả về danh
+sách phù hợp để hiển thị lên bảng.
+Hình 3.58: Biểu đồ tuần tự – Lãnh đạo – Thẩm định & Phê duyệt dự thảo
+Biểu đồ mô tả quá trình lãnh đạo tiếp nhận dự thảo văn bản để thẩm định và đưa
+ra quyết định.
+Hình 3.59: Biểu đồ tuần tự – Văn thư – Cấp số & Phát hành chính thức
+
+-- 67 of 134 --
+
+55
+Biểu đồ thể hiện các bước văn thư thực hiện sau khi văn bản đi đã được phê duyệt.
+Văn thư kiểm tra thông tin, cấp số văn bản và xác nhận các dữ liệu phát hành trước khi
+hệ thống ghi nhận trạng thái chính thức.
+3.2.3.5. Biểu đồ tuần tự quản lý nhiệm vụ
+Hình 3.60: Biểu đồ tuần tự – Lãnh đạo – Khởi tạo & Phân công nhiệm vụ
+Biểu đồ mô tả quá trình lãnh đạo khởi tạo một nhiệm vụ và phân công cho cán bộ
+thực hiện. Lãnh đạo nhập nội dung công việc, xác định người phụ trách, thời hạn, mức
+ưu tiên và các yêu cầu liên quan.
+
+-- 68 of 134 --
+
+56
+Hình 3.61: Biểu đồ tuần tự – Lãnh đạo – Xóa nhiệm vụ
+Biểu đồ thể hiện quá trình Lãnh đạo xóa nhiệm vụ sau khi xác nhận trên hộp
+thoại. Backend API kiểm tra thẩm quyền; nếu không đủ quyền, hệ thống từ chối thao
+tác.
+Hình 3.62: Biểu đồ tuần tự – Chuyên viên – Thực hiện, Cập nhật tiến độ & Trình nghiệm
+thu
+
+-- 69 of 134 --
+
+57
+Biểu đồ thể hiện quá trình chuyên viên tiếp nhận và thực hiện nhiệm vụ được phân
+công. Trong quá trình xử lý, chuyên viên cập nhật tiến độ, nội dung thực hiện và có thể
+đính kèm tài liệu minh chứng.
+Hình 3.63: Biểu đồ tuần tự – Lãnh đạo – Thẩm định & Nghiệm thu đóng việc
+Biểu đồ mô tả quá trình lãnh đạo thẩm định kết quả công việc do chuyên viên trình
+lên. Lãnh đạo kiểm tra nội dung, tài liệu minh chứng và đối chiếu với yêu cầu ban đầu
+trước khi đưa ra quyết định.
+Hình 3.64: Biểu đồ tuần tự – Văn thư – Theo dõi nhiệm vụ liên quan đến văn bản
+
+-- 70 of 134 --
+
+58
+Biểu đồ thể hiện cách văn thư theo dõi các nhiệm vụ có liên quan đến văn bản. Hệ
+thống liên kết văn bản với nhiệm vụ tương ứng, truy xuất tiến độ và thời hạn để cung
+cấp thông tin theo dõi.
+Hình 3.65: Biểu đồ tuần tự – Quản trị viên – Giám sát nhiệm vụ toàn hệ thống
+Biểu đồ mô tả quá trình quản trị viên giám sát các nhiệm vụ trên toàn hệ thống. Hệ
+thống kiểm tra quyền truy cập, tổng hợp dữ liệu theo trạng thái, người phụ trách và thời
+hạn rồi trả về kết quả theo dõi.
+Hình 3.66: Biểu đồ tuần tự – Cán bộ – Trao đổi & Đính kèm báo cáo
+
+-- 71 of 134 --
+
+59
+Biểu đồ thể hiện quá trình cán bộ trao đổi thông tin trong khi thực hiện nhiệm vụ
+và gửi các tài liệu báo cáo liên quan.
+Hình 3.67: Biểu đồ tuần tự – Theo dõi tiến độ Kanban & Cảnh báo quá hạn
+Biểu đồ mô tả cách hệ thống cập nhật tiến độ công việc trên giao diện Kanban và
+đồng thời kiểm tra thời hạn.
+3.2.3.6. Biểu đồ tuần tự quản lý hồ sơ & Tài liệu
+Hình 3.68: Biểu đồ tuần tự – Văn thư – Tạo lập & Gom tài liệu vào hồ sơ
+
+-- 72 of 134 --
+
+60
+Biểu đồ thể hiện quá trình văn thư tạo lập hồ sơ và gom các tài liệu liên quan vào
+cùng một hồ sơ công việc.
+Hình 3.69: Biểu đồ tuần tự – Văn thư/Lãnh đạo – Xóa hồ sơ công việc
+Biểu đồ mô tả quá trình Văn thư hoặc Lãnh đạo xóa hồ sơ công việc. Backend
+API kiểm tra số lượng tài liệu trong hồ sơ; nếu hồ sơ đã chứa văn bản hoặc tài liệu, hệ
+thống từ chối xóa do còn ràng buộc.
+Hình 3.70: Biểu đồ tuần tự – Người dùng – Khai thác kho tài liệu & Bổ sung hồ sơ
+
+-- 73 of 134 --
+
+61
+Biểu đồ mô tả quá trình người dùng khai thác kho tài liệu và bổ sung các tài liệu
+phù hợp vào hồ sơ.
+Hình 3.71: Biểu đồ tuần tự – Lãnh đạo – Nghiệm thu & Đóng hồ sơ công việc
+Biểu đồ thể hiện quá trình lãnh đạo kiểm tra kết quả của hồ sơ công việc và thực
+hiện nghiệm thu, đóng hồ sơ.
+3.2.3.7. Biểu đồ tuần tự Quản lý lịch công tác và nhắc việc
+Hình 3.72: Biểu đồ tuần tự – Điều hành & Theo dõi lịch công tác
+
+-- 74 of 134 --
+
+62
+Biểu đồ mô tả quá trình quản lý và theo dõi lịch công tác trên hệ thống. Người
+dùng nhập các thông tin về thời gian, nội dung và thành phần liên quan, sau đó hệ thống
+kiểm tra và lưu lịch.
+Hình 3.73: Biểu đồ tuần tự – Đồng bộ hạn xử lý từ VB & Task
+Biểu đồ thể hiện quá trình hệ thống đồng bộ thông tin hạn xử lý từ văn bản và
+nhiệm vụ. Hệ thống xác định các đối tượng có thời hạn, kiểm tra dữ liệu và cập nhật các
+mốc thời gian tương ứng vào thông tin theo dõi.
+Hình 3.74: Biểu đồ tuần tự – Cảnh báo sắp hạn/quá hạn
+
+-- 75 of 134 --
+
+63
+Biểu đồ mô tả quá trình hệ thống tự động kiểm tra các mốc thời gian của văn bản
+và nhiệm vụ.
+3.2.3.8. Biểu đồ tuần tự Phân tích và hỗ trợ AI
+Hình 3.75: Biểu đồ tuần tự – Trích xuất thực thể NER & Phân loại văn bản
+Biểu đồ thể hiện quy trình AI hỗ trợ trích xuất thực thể NER và phân loại văn bản.
+Hệ thống tiếp nhận nội dung, phân tích và xác định các thông tin như người, đơn vị, thời
+gian hoặc đối tượng liên quan, đồng thời đưa ra kết quả phân loại.
+Hình 3.76: Biểu đồ tuần tự – Đề xuất luồng điều phối và hạn xử lý
+Biểu đồ mô tả quá trình AI phân tích dữ liệu để đề xuất luồng điều phối và hạn xử
+lý phù hợp.
+
+-- 76 of 134 --
+
+64
+Hình 3.77: Biểu đồ tuần tự – Trợ lý ảo AI – Hỏi đáp & Hỗ trợ soạn thảo
+Biểu đồ thể hiện quá trình người dùng tương tác với trợ lý ảo AI để hỏi đáp và hỗ
+trợ soạn thảo.
+3.2.3.9. Biểu đồ tuần tự Quản trị hệ thống và Nhân sự
+Hình 3.78: Biểu đồ tuần tự – Quản lý nhân sự & Phân quyền RBAC
+Biểu đồ mô tả quá trình quản trị viên quản lý thông tin nhân sự và phân quyền truy
+cập theo mô hình RBAC.
+
+-- 77 of 134 --
+
+65
+Hình 3.79: Biểu đồ tuần tự – Cấu hình danh mục dùng chung (Master Data)
+Biểu đồ thể hiện quy trình quản trị viên cấu hình các danh mục dùng chung được
+sử dụng trong nhiều chức năng.
+Hình 3.80: Biểu đồ tuần tự – Quản trị CSDL Hybrid & Đồng bộ dữ liệu
+Biểu đồ mô tả quá trình quản trị viên theo dõi cơ sở dữ liệu Hybrid và thực hiện
+đồng bộ dữ liệu.
+
+-- 78 of 134 --
+
+66
+Hình 3.81: Biểu đồ tuần tự – Ghi nhật ký kiểm toán (Audit Trail Logging)
+Biểu đồ thể hiện cách hệ thống ghi nhận nhật ký kiểm toán đối với các thao tác
+quan trọng của người dùng.
+3.2.4. Biểu đồ trạng thái
+Mục này mô tả vòng đời trạng thái của bốn đối tượng có luồng trạng thái rõ ràng
+trong hệ thống gồm Nhiệm vụ, Văn bản đến, Văn bản đi và Hồ sơ công việc. Các biểu
+đồ thể hiện trạng thái khởi đầu, trạng thái xử lý, điều kiện chuyển trạng thái, các nhánh
+quá hạn hoặc điều chỉnh và trạng thái kết thúc, giúp làm rõ cách dữ liệu nghiệp vụ thay
+đổi trong suốt quá trình xử lý.
+Hình 3.82: Biểu đồ trạng thái vòng đời của Nhiệm vụ (Task)
+Nhiệm vụ bắt đầu ở trạng thái Chưa bắt đầu (NOT_STARTED) và chuyển sang
+Đang thực hiện (IN_PROGRESS) khi bắt đầu xử lý. Khi hoàn thành 100% và gửi duyệt,
+nhiệm vụ chuyển sang Chờ duyệt (WAITING_APPROVAL); nếu bị từ chối duyệt,
+
+-- 79 of 134 --
+
+67
+nhiệm vụ quay lại Đang thực hiện. Nếu hết hạn khi chưa hoàn thành, nhiệm vụ chuyển
+sang Quá hạn (OVERDUE) nhưng vẫn có thể tiếp tục xử lý để nộp kết quả; khi được
+duyệt nghiệm thu, nhiệm vụ chuyển sang Hoàn thành (COMPLETED). Tại các giai đoạn
+xử lý, nhiệm vụ có thể bị hủy và chuyển sang Hủy (CANCELLED).
+Trong bốn biểu đồ trạng thái, Nhiệm vụ có luồng chuyển trạng thái phức tạp nhất:
+ngoài các trạng thái xử lý và chờ duyệt còn có nhánh quá hạn, từ chối duyệt và hủy. Văn
+bản đến và Văn bản đi lần lượt thể hiện vòng đời tiếp nhận/xử lý và dự thảo/trình
+duyệt/ký/phát hành, trong khi Hồ sơ công việc đi từ mở đến xử lý, đóng và lưu trữ. Các
+trạng thái này phù hợp với các quy trình nghiệp vụ được mô tả trong báo cáo.
+Hình 3.83: Biểu đồ trạng thái vòng đời của Văn bản đến
+Văn bản đến bắt đầu khi được tiếp nhận và vào sổ, chuyển sang trạng thái Chờ
+phân công (PENDING_ASSIGN). Sau khi được phân công, văn bản chuyển sang Đang
+xử lý (PROCESSING) và khi xử lý xong sẽ chuyển sang Hoàn thành (COMPLETED).
+Nếu vượt quá hạn xử lý trong khi chưa hoàn thành, văn bản chuyển sang Quá hạn
+(OVERDUE); sau khi xử lý xong, kể cả xử lý bù sau hạn, văn bản trở về Hoàn thành.
+Hình 3.84: Biểu đồ trạng thái vòng đời của Văn bản đi
+Văn bản đi bắt đầu ở trạng thái Dự thảo (DRAFT), sau đó được chuyển sang Trình
+duyệt (REVIEWING). Nếu Lãnh đạo đồng ý, hệ thống ghi nhận người phê duyệt, thời
+gian và thông tin phê duyệt nội bộ, đồng thời chuyển trạng thái sang SIGNED (Đã phê
+duyệt nội bộ/Đã ký duyệt). Trạng thái SIGNED trong hệ thống chỉ phản ánh kết quả phê
+duyệt nội bộ, không phải chữ ký số mật mã học theo hạ tầng PKI/CA. Sau đó Văn thư
+thực hiện cấp số và phát hành để chuyển sang ISSUED (Đã phát hành), rồi SENT (Đã
+gửi). Nếu nội dung cần chỉnh sửa, văn bản từ REVIEWING quay lại DRAFT kèm ý
+kiến để Chuyên viên hoàn thiện trước khi trình duyệt lại.
+
+-- 80 of 134 --
+
+68
+Hình 3.85: Biểu đồ trạng thái vòng đời của Hồ sơ công việc
+Hồ sơ được tạo ở trạng thái Mở (OPEN), sau đó chuyển sang Đang xử lý
+(IN_PROGRESS) khi bắt đầu giải quyết công việc. Khi công việc hoàn tất, hồ sơ được
+đóng (CLOSED); sau bước nghiệm thu và lưu trữ, hồ sơ chuyển sang Lưu trữ
+(ARCHIVED), kết thúc vòng đời xử lý trực tiếp của hồ sơ.
+3.2.5. Biểu đồ thành phần
+Hình 3.86: Biểu đồ thành phần kiến trúc hệ thống
+Biểu đồ thành phần thể hiện kiến trúc cấu trúc phân rã của hệ thống gồm hai nhóm
+giao diện chính: Giao diện quản trị (dành cho Lãnh đạo và Quản trị viên để phân công,
+duyệt văn bản, quản lý nhân sự, danh mục và thống kê) và Giao diện người dùng (dành
+cho Chuyên viên và Văn thư thực hiện tiếp nhận văn bản, phân loại AI, cập nhật tiến độ
+và quản lý hồ sơ). Toàn bộ các thành phần chức năng ở hai phía đều được liên kết tập
+trung qua khối Bảo mật & Phân quyền (kiểm soát phiên làm việc, phân quyền vai trò
+RBAC và ghi vết kiểm toán) trước khi thực hiện truy xuất, đồng bộ dữ liệu với khối Cơ
+sở dữ liệu (CSDL).
+
+-- 81 of 134 --
+
+69
+3.2.6. Biểu đồ lớp
+Hình 3.87: Biểu đồ lớp của hệ thống
+
+-- 82 of 134 --
+
+70
+Phần tiếp theo của biểu đồ lớp mở rộng các quan hệ giữa nhiệm vụ, hồ sơ, tệp đính
+kèm và các thực thể quản lý liên quan. Hai phần của biểu đồ được đọc liên tục để thể
+hiện đầy đủ cấu trúc lớp và các quan hệ dữ liệu nghiệp vụ của hệ thống.
+Hình 3.88: Sơ đồ thực thể – liên kết (ERD) của cơ sở dữ liệu
+ERD tiếp tục thể hiện mô hình dữ liệu quan hệ làm nền tảng logic nghiệp vụ gồm
+các bảng người dùng, phòng ban, hồ sơ, văn bản đến/đi, nhiệm vụ, tệp đính kèm, nhật
+ký thao tác và thông báo. Các khóa chính, khóa ngoại và quan hệ giữa bảng được duy
+trì trong lớp MySQL để bảo đảm tính toàn vẹn tham chiếu; các bản ghi tương ứng được
+ánh xạ sang Cloud Firestore dưới dạng document/collection để phục vụ vận hành trực
+tuyến và đồng bộ.
+3.2.7. Thiết kế cơ sở dữ liệu
+Cơ sở dữ liệu của hệ thống được thiết kế theo kiến trúc lưu trữ ba tầng (Tri-layer
+Storage Architecture), trong đó MySQL và Cloud Firestore là hai lớp dữ liệu bền
+
+-- 83 of 134 --
+
+71
+vững, kết hợp với cơ chế lưu trữ tạm phía client và cache phía server nhằm tăng khả
+năng tiếp tục vận hành khi một lớp dữ liệu không khả dụng.
+Tầng 1 là bộ nhớ tạm phía client, kết hợp LocalStorage và cơ chế xử lý khi vượt
+quota; hệ thống có thể nén dữ liệu ảnh dạng base64 và dọn dẹp các bản ghi audit cũ
+khi cần. Tầng 2 là cơ chế lưu trữ file phía server thông qua cache
+.db_store_cache.json, cho phép ứng dụng tiếp tục khởi động và phục vụ dữ liệu khi
+MySQL chưa sẵn sàng. Tầng 3 gồm MySQL quan hệ và Cloud Firestore trực tuyến.
+Ở tầng MySQL, hệ thống có cơ chế kiểm tra và bảo đảm schema thông qua
+ensureAllTableSchemas, dựa trên information_schema để phát hiện cấu trúc thiếu và
+bổ sung khi cần. Ở phía Firestore, module đồng bộ hỗ trợ listener onSnapshot và cơ
+chế đồng bộ một lần, giúp dữ liệu có thể được cập nhật giữa các môi trường.
+Mô hình dữ liệu logic gồm 11 bảng, bao phủ các nhóm dữ liệu danh mục, người
+dùng, nghiệp vụ văn bản – công việc, tài liệu số và quản trị hệ thống. Các bảng quan
+hệ trong MySQL được ánh xạ sang các collection/document tương ứng trên Cloud
+Firestore để phục vụ cùng một nghiệp vụ.
+Bảng 3.12: Danh mục các bảng trong cơ sở dữ liệu
+Bảng Chức năng lưu trữ
+departments Quản lý cơ cấu phòng ban, đơn vị: mã, tên,
+mô tả và người phụ trách.
+positions Danh mục chức vụ và cấp bậc tương ứng.
+users Thông tin cán bộ/người dùng: tài khoản, họ
+tên, liên hệ, phòng ban, chức vụ, vai trò và
+trạng thái.
+dossiers Hồ sơ vụ việc/công việc: mã hồ sơ, tiêu đề,
+đơn vị phụ trách, người chủ trì, trạng thái và
+thời gian.
+incoming_documents Văn bản đến: số hiệu, ngày tiếp nhận, cơ
+quan gửi, trích yếu, độ khẩn/mật, người xử
+lý, hạn và trạng thái.
+outgoing_documents Văn bản đi: số hiệu, ngày phát hành, nơi
+nhận, người soạn/ký, trạng thái và liên kết
+văn bản phúc đáp.
+tasks Nhiệm vụ/công việc: mã, tiêu đề, người
+giao/thực hiện, mức ưu tiên, tiến độ, hạn,
+trạng thái, việc con và bình luận.
+attachments Tệp đính kèm gắn với văn bản, nhiệm vụ
+hoặc hồ sơ, kèm thông tin phân loại và thẻ
+từ khóa.
+
+-- 84 of 134 --
+
+72
+audit_logs Nhật ký thao tác: người thực hiện, hành
+động, đối tượng bị tác động, thời điểm và
+chi tiết thay đổi.
+notifications Thông báo hệ thống gửi tới người dùng, bao
+gồm loại thông báo, đối tượng liên quan và
+trạng thái đã đọc/chưa đọc.
+system_settings Cấu hình và tham số dùng chung của hệ
+thống, bao gồm danh mục dùng chung và
+tham số phục vụ xử lý AI.
+3.2.7.1. Từ điển dữ liệu chi tiết
+Từ điển dữ liệu dưới đây mô tả tên trường, kiểu dữ liệu, khóa, ràng buộc và ý
+nghĩa nghiệp vụ của 11 bảng trong hệ thống. Các tên bảng và tên trường được giữ theo
+quy ước triển khai, đồng thời được sử dụng làm cơ sở đối chiếu giữa mô hình quan hệ
+MySQL và các document/collection tương ứng trên Cloud Firestore.
+3.2.7.2. Bảng departments
+Bảng 3.13: Từ điển dữ liệu bảng departments
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh phòng
+ban (VD: dept-01)
+code VARCHAR(50) UNIQUE, NOT
+NULL
+Mã viết tắt phòng
+ban (VD: BGD, VP,
+TCKT)
+name VARCHAR(255) NOT NULL Tên đầy đủ của
+phòng ban
+description TEXT NULL Chức năng, nhiệm
+vụ của phòng ban
+manager_id VARCHAR(50) FK (users.id) ID cán bộ phụ trách /
+Trưởng phòng
+3.2.7.3. Bảng positions
+Bảng 3.14: Từ điển dữ liệu bảng positions
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh chức
+vụ (VD: pos-01)
+name VARCHAR(255) NOT NULL Tên chức vụ (Giám
+đốc, Trưởng phòng,
+Chuyên viên...)
+level INT DEFAULT 5 Phân cấp bậc quản lý
+(1: Cao nhất → 6:
+Chuyên viên)
+3.2.7.4. Bảng users
+Bảng 3.15: Từ điển dữ liệu bảng users
+
+-- 85 of 134 --
+
+73
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh cán
+bộ (VD: usr-01)
+username VARCHAR(100) UNIQUE, NOT
+NULL
+Tên đăng nhập hệ
+thống
+password VARCHAR(255) NOT NULL Mật khẩu tài khoản
+(mã hóa / mặc định
+123)
+full_name VARCHAR(255) NOT NULL Họ và tên đầy đủ
+của cán bộ
+email VARCHAR(255) UNIQUE, NOT
+NULL
+Email công vụ của
+cán bộ
+phone VARCHAR(50) NULL Số điện thoại liên
+hệ
+avatar LONGTEXT NULL Đường dẫn ảnh đại
+diện / Base64
+department VARCHAR(255) NULL Tên phòng ban trực
+thuộc (lưu nhanh)
+department_id VARCHAR(50) FK (departments.id) Liên kết tới phòng
+ban trực thuộc
+position VARCHAR(255) NULL Tên chức danh công
+tác
+position_id VARCHAR(50) FK (positions.id) Liên kết tới danh
+mục chức vụ
+role VARCHAR(50) NOT NULL Phân quyền:
+ADMIN, LEADER,
+CLERK, STAFF
+status VARCHAR(50) DEFAULT
+'ACTIVE'
+Trạng thái:
+ACTIVE,
+ON_LEAVE,
+INACTIVE
+join_date DATE NULL Ngày tiếp nhận
+công tác
+bio TEXT NULL Ghi chú / Trách
+nhiệm chính được
+phân công
+3.2.7.5. Bảng dossiers
+Bảng 3.16: Từ điển dữ liệu bảng dossiers
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh hồ sơ
+(VD: dos-01)
+
+-- 86 of 134 --
+
+74
+code VARCHAR(100) UNIQUE, NOT
+NULL
+Mã hồ sơ nghiệp vụ
+(VD: HS-2025-CDS-
+01)
+title VARCHAR(500) NOT NULL Tiêu đề hồ sơ vụ
+việc
+department VARCHAR(255) NULL Tên đơn vị chủ trì hồ
+sơ
+department_id VARCHAR(50) FK (departments.id) Phòng ban phụ trách
+quản lý hồ sơ
+leader_id VARCHAR(50) FK (users.id) Lãnh đạo phụ trách
+theo dõi, chỉ đạo
+manager_id VARCHAR(50) FK (users.id) Chuyên viên /
+Trưởng bộ phận trực
+tiếp quản lý
+status VARCHAR(50) NOT NULL OPEN,
+IN_PROGRESS,
+CLOSED,
+ARCHIVED
+start_date DATE NULL Ngày mở hồ sơ
+end_date DATE NULL Hạn đóng hồ sơ
+description TEXT NULL Tóm tắt mục tiêu và
+nội dung vụ việc
+created_at TIMESTAMP DEFAULT NOW() Thời điểm tạo hồ sơ
+updated_at TIMESTAMP DEFAULT NOW() Thời điểm cập nhật
+trạng thái gần nhất
+3.2.7.6. Bảng incoming_documents
+Bảng 3.17: Từ điển dữ liệu bảng incoming_documents
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh văn
+bản đến (VD: vbd-
+01)
+document_number VARCHAR(100) NOT NULL Số đến nội bộ của
+văn thư (VD:
+142/UBND-VP)
+official_number VARCHAR(100) NULL Số ký hiệu gốc của
+cơ quan gửi (VD:
+289/QĐ-UBND)
+received_date DATE NOT NULL Ngày cơ quan tiếp
+nhận văn bản
+issue_date DATE NULL Ngày ký ban hành
+của đơn vị gửi
+
+-- 87 of 134 --
+
+75
+issuing_authority VARCHAR(255) NOT NULL Đơn vị ban hành
+(UBND Tỉnh, Bộ,
+Sở...)
+signer VARCHAR(100) NULL Họ tên người ký ở
+văn bản gốc
+signer_position VARCHAR(100) NULL Chức danh người ký
+bên ngoài
+summary TEXT NOT NULL Trích yếu nội dung
+văn bản đến
+doc_type VARCHAR(100) DEFAULT 'Công
+văn'
+Thể loại: Quyết định,
+Công văn, Thông
+báo, Tờ trình...
+urgency VARCHAR(50) DEFAULT
+'THUONG'
+Mức độ khẩn:
+THUONG, KHAN,
+THUONG_KHAN,
+HOA_TOC
+security_level VARCHAR(50) DEFAULT
+'THUONG'
+Mức độ mật:
+THUONG, MAT,
+TOI_MAT,
+TUYET_MAT
+assignee_id VARCHAR(50) FK (users.id) Cán bộ chủ trì nghiên
+cứu, tham mưu xử lý
+co_assignee_ids LONGTEXT NULL (JSON) Danh sách ID các cán
+bộ phối hợp thực
+hiện
+due_date DATE NULL Hạn chót phải hoàn
+thành xử lý
+status VARCHAR(50) NOT NULL PENDING_ASSIGN,
+PROCESSING,
+COMPLETED,
+OVERDUE
+result_summary TEXT NULL Tóm tắt kết quả xử lý
+của cán bộ
+dossier_id VARCHAR(50) FK (dossiers.id) Liên kết vào hồ sơ vụ
+việc tương ứng
+leader_directive TEXT NULL Ý kiến bút phê / chỉ
+đạo phân công của
+Lãnh đạo
+linked_task_ids LONGTEXT NULL (JSON) Danh sách ID nhiệm
+vụ phát sinh từ văn
+bản này
+created_by_id VARCHAR(50) FK (users.id) Văn thư tiếp nhận và
+vào sổ văn bản
+created_at TIMESTAMP DEFAULT NOW() Thời điểm tiếp nhận
+
+-- 88 of 134 --
+
+76
+updated_at TIMESTAMP DEFAULT NOW() Thời điểm cập nhật
+cuối
+3.2.7.7. Bảng outgoing_documents
+Bảng 3.18: Từ điển dữ liệu bảng outgoing_documents
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý
+nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh văn
+bản đi (VD: vbdi-
+01)
+document_number VARCHAR(100) NOT NULL Số văn bản đi
+chính thức (VD:
+89/TTr-DV)
+release_date DATE NOT NULL Ngày ban hành /
+phát hành
+doc_type VARCHAR(100) DEFAULT 'Công văn' Thể loại văn bản
+(Tờ trình, Báo
+cáo, Công văn...)
+recipient VARCHAR(255) NOT NULL Nơi nhận văn bản
+summary TEXT NOT NULL Trích yếu nội
+dung văn bản đi
+content LONGTEXT NULL Toàn văn nội dung
+dự thảo
+drafter_id VARCHAR(50) FK (users.id) Chuyên viên soạn
+thảo dự thảo
+signer_id VARCHAR(50) FK (users.id) Lãnh đạo phê
+duyệt và ký số
+signer_note TEXT NULL Ý kiến phê duyệt /
+lưu ý của Lãnh
+đạo
+signed_at TIMESTAMP NULL Thời điểm ký số
+điện tử
+issued_at TIMESTAMP NULL Thời điểm văn thư
+đóng dấu, phát
+hành
+status VARCHAR(50) NOT NULL DRAFT,
+REVIEWING,
+SIGNED,
+ISSUED, SENT
+dossier_id VARCHAR(50) FK (dossiers.id) Hồ sơ vụ việc liên
+kết lưu trữ
+reply_to_doc_id VARCHAR(50) FK
+(incoming_documents.id)
+ID văn bản đến
+cần phúc đáp (nếu
+có)
+
+-- 89 of 134 --
+
+77
+created_by_id VARCHAR(50) FK (users.id) Người khởi tạo
+bản dự thảo
+created_at TIMESTAMP DEFAULT NOW() Thời điểm tạo bản
+dự thảo
+updated_at TIMESTAMP DEFAULT NOW() Thời điểm cập
+nhật cuối
+3.2.7.8. Bảng tasks
+Bảng 3.19: Từ điển dữ liệu bảng tasks
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh công việc
+(VD: task-01)
+code VARCHAR(10
+0)
+UNIQUE, NOT NULL Mã công việc nghiệp vụ
+(VD: CV-2025-01)
+title VARCHAR(50
+0)
+NOT NULL Tiêu đề tên công việc
+description TEXT NULL Hướng dẫn chi tiết / yêu
+cầu cần đạt
+dossier_id VARCHAR(50) FK (dossiers.id) Hồ sơ liên kết quản lý
+công việc
+incoming_doc_id VARCHAR(50) FK
+(incoming_documents.i
+d)
+Văn bản đến phát sinh
+nhiệm vụ này
+linked_doc_id VARCHAR(50) NULL ID văn bản đi/đến có
+liên quan
+creator_id VARCHAR(50) FK (users.id) Lãnh đạo giao việc
+assignee_id VARCHAR(50) FK (users.id), NOT
+NULL
+Chuyên viên chủ trì
+thực hiện
+co_assignee_ids LONGTEXT NULL (JSON) Danh sách cán bộ phối
+hợp thực hiện
+priority VARCHAR(50) DEFAULT 'MEDIUM' Mức ưu tiên: LOW,
+MEDIUM, HIGH,
+URGENT
+start_date DATE NOT NULL Ngày bắt đầu thực hiện
+due_date DATE NOT NULL Hạn chót phải hoàn
+thành
+progress INT DEFAULT 0 Tiến độ hoàn thành (0%
+→ 100%)
+status VARCHAR(50) NOT NULL NOT_STARTED,
+IN_PROGRESS,
+WAITING_APPROVA
+L, COMPLETED,
+OVERDUE
+
+-- 90 of 134 --
+
+78
+completed_date DATE NULL Ngày thực tế hoàn thành
+công việc
+result_notes TEXT NULL Ghi chú tóm tắt kết quả
+submission_note LONGTEXT NULL Báo cáo giải trình của
+chuyên viên khi trình
+duyệt
+leader_feedback LONGTEXT NULL Đánh giá / phản hồi của
+Lãnh đạo khi nghiệm
+thu
+sub_tasks LONGTEXT NULL (JSON) Danh sách đầu việc con
+(checklist)
+comments LONGTEXT NULL (JSON) Ý kiến trao đổi thảo
+luận chuyên môn
+remind_days_befo
+re
+INT DEFAULT 1 Số ngày cảnh báo trước
+hạn chót
+created_at TIMESTAMP DEFAULT NOW() Thời điểm giao việc
+updated_at TIMESTAMP DEFAULT NOW() Thời điểm cập nhật tiến
+độ
+3.2.7.9. Bảng attachments
+Bảng 3.20: Từ điển dữ liệu bảng attachments
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh tệp
+(VD: att-01)
+file_name VARCHAR(255) NOT NULL Tên gốc của tệp tin
+đính kèm
+file_size BIGINT NOT NULL Kích thước tệp
+(bytes)
+file_type VARCHAR(50) NOT NULL Định dạng tệp: pdf,
+docx, xlsx, jpg,
+png...
+file_url LONGTEXT NOT NULL Đường dẫn lưu trữ
+tệp (Storage / Cloud
+URL)
+category VARCHAR(50) NOT NULL Phân loại:
+VAN_BAN_DEN,
+VAN_BAN_DI,
+CONG_VIEC,
+HO_SO
+related_id VARCHAR(50) NULL ID của đối tượng
+liên quan (ID văn
+bản hoặc task)
+dossier_id VARCHAR(50) FK (dossiers.id) ID hồ sơ chứa tệp tin
+
+-- 91 of 134 --
+
+79
+uploaded_by_id VARCHAR(50) FK (users.id), NOT
+NULL
+Cán bộ tải tệp tin lên
+hệ thống
+uploaded_by_name VARCHAR(255) NOT NULL Họ tên cán bộ tải lên
+(lưu dự phòng hiển
+thị)
+uploaded_at TIMESTAMP DEFAULT NOW() Thời điểm tải tệp lên
+tags LONGTEXT NULL (JSON) Các nhãn từ khóa hỗ
+trợ tìm kiếm nhanh
+3.2.7.10. Bảng audit_logs
+Bảng 3.21: Từ điển dữ liệu bảng audit_logs
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã bản ghi nhật ký
+(VD: log-01)
+timestamp TIMESTAMP DEFAULT NOW() Thời gian chính xác
+xảy ra hành động
+user_id VARCHAR(50) FK (users.id), NOT
+NULL
+Cán bộ thực hiện hành
+vi
+user_name VARCHAR(255) NOT NULL Họ tên cán bộ thực
+hiện
+user_avatar LONGTEXT NULL Ảnh đại diện cán bộ
+tại thời điểm đó
+action VARCHAR(50) NOT NULL CREATE, UPDATE,
+DELETE,
+STATUS_CHANGE...
+entity_type VARCHAR(50) NOT NULL Đối tượng bị tác động:
+TASK,
+INCOMING_DOC,
+USER...
+entity_id VARCHAR(50) NOT NULL ID bản ghi bị tác động
+entity_title VARCHAR(500) NOT NULL Tiêu đề/Trích yếu đối
+tượng tác động
+details TEXT NULL Diễn giải chi tiết nội
+dung thay đổi
+3.2.7.11. Bảng notifications
+Bảng 3.22: Từ điển dữ liệu bảng notifications
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) PK, NOT NULL Mã định danh thông
+báo (VD: notif-01)
+user_id VARCHAR(50) FK (users.id), NOT
+NULL
+Cán bộ đích nhận
+thông báo
+title VARCHAR(255) NOT NULL Tiêu đề thông báo
+ngắn gọn
+
+-- 92 of 134 --
+
+80
+message TEXT NOT NULL Nội dung chi tiết của
+thông báo
+type VARCHAR(50) NOT NULL DEADLINE_TODAY,
+DOC_ASSIGNED,
+TASK_APPROVED...
+link_type VARCHAR(50) NULL Điều hướng: TASK,
+INCOMING_DOC,
+OUTGOING_DOC
+target_id VARCHAR(50) NULL ID bản ghi để điều
+hướng mở chi tiết khi
+bấm
+is_read TINYINT(1) DEFAULT 0 Trạng thái đọc (0:
+Chưa đọc, 1: Đã đọc)
+created_at TIMESTAMP DEFAULT NOW() Thời điểm phát sinh
+thông báo
+3.2.7.12. Bảng system_settings
+Bảng 3.23: Từ điển dữ liệu bảng system_settings
+Tên trường Kiểu dữ liệu Khóa / Ràng buộc Diễn giải / Ý nghĩa
+id VARCHAR(50) NOT NULL Mã định danh tham
+số
+key_name VARCHAR(100) PK, UNIQUE Khóa cấu hình (VD:
+master_data,
+system_config)
+data_value LONGTEXT NOT NULL Dữ liệu cấu hình lưu
+dưới định dạng
+JSON
+updated_at TIMESTAMP DEFAULT NOW() Thời điểm cập nhật
+cấu hình lần cuối
+3.2.7.13. Các mối quan hệ và cardinality
+Các mối quan hệ giữa các bảng được xác định chủ yếu theo cardinality 1–N,
+trong đó một bản ghi ở bảng cha có thể liên kết với nhiều bản ghi ở bảng con. Một số
+quan hệ đặc thù sử dụng nhiều khóa ngoại từ bảng users để thể hiện các vai trò nghiệp
+vụ như trưởng phòng, lãnh đạo phụ trách, cán bộ xử lý, người giao việc, người soạn
+thảo hoặc người ký duyệt.
+Bảng 3.24: Tổng hợp các mối quan hệ giữa các thực thể
+STT Mối quan hệ Cardinality Mô tả
+1 departments – users 1 – N Một phòng ban có nhiều
+cán bộ;
+users.department_id
+tham chiếu
+departments.id.
+
+-- 93 of 134 --
+
+81
+2 departments – users
+(manager)
+1 – 1 Một phòng ban có
+người phụ trách/trưởng
+phòng thông qua
+departments.manager_id
+→ users.id.
+3 positions – users 1 – N Một chức vụ có thể
+được gán cho nhiều cán
+bộ thông qua
+users.position_id.
+4 departments –
+dossiers
+1 – N Một phòng ban có thể
+quản lý nhiều hồ sơ
+thông qua
+dossiers.department_id.
+5 users – dossiers 1 – N Một cán bộ có thể phụ
+trách nhiều hồ sơ;
+dossiers.leader_id và
+manager_id tham chiếu
+users.id.
+6 dossiers –
+incoming_documents
+1 – N Một hồ sơ có thể chứa
+nhiều văn bản đến.
+7 dossiers –
+outgoing_documents
+1 – N Một hồ sơ có thể chứa
+nhiều văn bản đi.
+8 dossiers – tasks 1 – N Một hồ sơ có thể theo
+dõi nhiều nhiệm
+vụ/công việc.
+9 dossiers –
+attachments
+1 – N Một hồ sơ có thể lưu trữ
+nhiều tệp tài liệu số hóa.
+10 incoming_documents
+– tasks
+1 – N Một văn bản đến có thể
+làm căn cứ phát sinh
+một hoặc nhiều nhiệm
+vụ.
+11 incoming_documents
+–
+outgoing_documents
+1 – N Một văn bản đến có thể
+được phúc đáp bởi một
+hoặc nhiều văn bản đi
+qua reply_to_doc_id.
+12 users –
+incoming_documents
+1 – N Một cán bộ có thể xử lý
+nhiều văn bản đến qua
+assignee_id.
+13 users –
+outgoing_documents
+1 – N Một cán bộ có thể soạn
+thảo hoặc ký nhiều văn
+bản đi qua
+drafter_id/signer_id.
+14 users – tasks 1 – N Một cán bộ có thể giao
+hoặc nhận nhiều nhiệm
+
+-- 94 of 134 --
+
+82
+vụ qua
+creator_id/assignee_id.
+15 users – attachments 1 – N Một cán bộ có thể tải
+lên nhiều tệp qua
+uploaded_by_id.
+16 users – audit_logs 1 – N Một cán bộ có thể tạo
+nhiều bản ghi nhật ký
+thao tác.
+17 users – notifications 1 – N Một người dùng có thể
+nhận nhiều thông báo hệ
+thống.
+Bên cạnh các quan hệ bằng khóa ngoại trực tiếp, bảng attachments hỗ trợ liên kết
+linh hoạt với nhiều loại đối tượng thông qua cặp category và related_id. Các trường
+dạng JSON như co_assignee_ids, sub_tasks, comments, linked_task_ids và tags được
+sử dụng để lưu các dữ liệu danh sách hoặc cấu trúc linh hoạt, phục vụ yêu cầu nghiệp
+vụ mà không cần mở rộng quá nhiều bảng phụ.
+3.2.7.14. Nhận xét về thiết kế cơ sở dữ liệu
+Thiết kế cơ sở dữ liệu bảo đảm phân tách rõ các nhóm dữ liệu: dữ liệu danh mục
+(departments, positions, system_settings), dữ liệu người dùng (users), dữ liệu nghiệp
+vụ chính (dossiers, incoming_documents, outgoing_documents, tasks), dữ liệu tài liệu
+số (attachments) và dữ liệu phục vụ quản trị – giám sát (audit_logs, notifications).
+Việc sử dụng khóa chính và khóa ngoại giúp duy trì tính nhất quán giữa các bảng,
+đồng thời hỗ trợ truy vấn liên kết phục vụ các chức năng quản lý hồ sơ, văn bản,
+nhiệm vụ và thông báo.
+Mô hình dữ liệu cũng tạo khả năng mở rộng cho hệ thống trong các giai đoạn tiếp
+theo. Các trường trạng thái, mức độ ưu tiên, độ khẩn và độ mật cho phép chuẩn hóa
+quy trình xử lý; trong khi audit_logs hỗ trợ truy vết thao tác, notifications hỗ trợ cơ
+chế cảnh báo và nhắc hạn, còn system_settings cho phép quản lý tập trung các tham số
+và danh mục cấu hình dùng chung.
+Với việc bổ sung bảng system_settings, mô hình dữ liệu bao quát đầy đủ hơn
+nhóm chức năng quản trị danh mục dùng chung và cấu hình hệ thống. Toàn bộ 11
+bảng có thể được duy trì ở lớp MySQL và ánh xạ sang Cloud Firestore, qua đó hỗ trợ
+kiến trúc lưu trữ Hybrid và khả năng đồng bộ dữ liệu giữa môi trường cục bộ và trực
+tuyến.
+
+-- 95 of 134 --
+
+83
+3.3. Lập kế hoạch quản lý dự án
+Mục 3.3 chuyển các kết quả khảo sát, yêu cầu chức năng/phi chức năng và thiết kế
+ở mục 3.1–3.2 thành một kế hoạch có thể theo dõi và kiểm soát trong suốt vòng đời dự
+án. Do đồ án được thực hiện bởi một sinh viên trong thời gian 6 tuần, kế hoạch áp dụng
+Scrum rút gọn theo tinh thần Agile, đồng thời sử dụng WBS và Gantt làm đường cơ sở
+quản lý. Phạm vi kế hoạch bao gồm: phân rã phạm vi thành các gói công việc có đầu ra
+kiểm chứng được; xác lập quan hệ phụ thuộc và lịch thực hiện; phân định trách nhiệm;
+nhận diện, đánh giá và ứng phó rủi ro; ước lượng nguồn lực và chi phí; thiết lập tiêu chí
+kiểm soát tiến độ, chất lượng và thay đổi. Các nội dung này được liên kết trực tiếp với
+các yêu cầu FR-01 đến FR-10 và các yêu cầu phi chức năng đã xác định ở mục 3.1.6–
+3.1.7.
+Nguyên tắc lập kế hoạch: (1) ưu tiên các chức năng lõi của hệ thống quản lý văn
+bản và điều hành; (2) thiết kế trước các thành phần có tính phụ thuộc cao như mô hình
+dữ liệu, xác thực và API; (3) cho phép Frontend và Backend chồng gối sau khi hợp
+đồng API cơ bản được xác định; (4) dành thời gian kiểm thử và sửa lỗi trước mốc
+nghiệm thu; (5) duy trì một khoảng đệm ngắn trước khi bàn giao; và (6) mọi thay đổi
+có ảnh hưởng đến phạm vi, tiến độ hoặc chi phí phải được ghi nhận, đánh giá tác động
+và thống nhất trước khi đưa vào sprint tiếp theo.
+3.3.1. Cơ cấu phân rã công việc (WBS)
+Toàn bộ phạm vi công việc của dự án được phân rã thành 5 gói công việc cấp 1
+(giai đoạn) và 17 gói công việc cấp 2. Mỗi work package được xác định theo ba thành
+phần quản lý: đầu vào cần có, hoạt động chính và đầu ra có thể kiểm tra. Cách phân rã
+này giúp liên kết phạm vi với lịch trình, trách nhiệm và chi phí; đồng thời hạn chế tình
+trạng một chức năng được phát triển nhưng không có tiêu chí xác nhận hoàn thành.
+Việc phân rã dừng ở cấp độ 2 là lựa chọn phù hợp với quy mô một sinh viên thực
+hiện. Để tránh WBS chỉ mang tính liệt kê, mỗi gói công việc được gắn với sản phẩm
+bàn giao và điều kiện hoàn thành. Trong quá trình thực hiện, các gói cấp 2 có thể tiếp
+tục được chia thành task/sprint backlog nhỏ hơn để theo dõi hằng ngày, nhưng cấu trúc
+WBS và đường cơ sở phạm vi chỉ thay đổi khi có quyết định kiểm soát thay đổi.
+Mã Gói công việc Đầu vào/hoạt động
+chính
+Đầu ra & tiêu chí
+hoàn thành
+1.1 Khởi tạo & xác định
+phạm vi
+Đề cương, mục tiêu,
+phạm vi, giả định
+Đề cương được rà
+soát
+
+-- 96 of 134 --
+
+84
+1.2 Lập kế hoạch dự án WBS, Gantt, RACI,
+rủi ro, chi phí
+Kế hoạch được
+thống nhất
+1.3 Chuẩn bị môi trường Repository, môi
+trường dev/test, cấu
+hình
+Có môi trường chạy
+thử
+2.1 Khảo sát & yêu cầu Actor, FR/NFR, quy
+trình nghiệp vụ
+Bộ yêu cầu FR-01–
+FR-10
+2.2 Phân tích nghiệp vụ Use case, activity,
+sequence, state
+Các luồng nghiệp vụ
+được đặc tả
+2.3 Thiết kế hệ thống Component, class,
+kiến trúc, API
+Thiết kế kỹ thuật
+được rà soát
+2.4 Thiết kế CSDL ERD, bảng, khóa và
+quan hệ
+Schema đáp ứng
+nghiệp vụ
+3.1 Backend/API API nghiệp vụ, xác
+thực, dữ liệu
+API lõi chạy được
+3.2 Frontend Màn hình và
+component nghiệp
+vụ
+Các màn hình chính
+chạy được
+3.3 Văn bản đến/đi Tiếp nhận, xử lý,
+trình duyệt, phát
+hành
+Luồng văn bản hoàn
+chỉnh
+3.4 Nhiệm vụ & hồ sơ Giao việc, tiến độ,
+hồ sơ, tệp
+Luồng điều hành
+hoàn chỉnh
+3.5 AI & thông báo Gemini, heuristic
+fallback, nhắc việc
+AI và thông báo
+hoạt động
+4.1 Kiểm thử chức năng Test case, kiểm thử
+tích hợp
+Không còn lỗi
+Critical/Blocker
+4.2 UAT & sửa lỗi Kịch bản UAT, ghi
+nhận/sửa lỗi
+UAT đạt tiêu chí
+5.1 Triển khai Build, cấu hình,
+deploy production
+Hệ thống truy cập
+được
+5.2 Tài liệu & bàn giao Báo cáo, hướng dẫn,
+mã nguồn
+Bộ hồ sơ bàn giao
+hoàn chỉnh
+5.3 Tổng kết Đối chiếu kế hoạch,
+bài học kinh nghiệm
+Ghi nhận kết thúc
+Bảng 3.24: Danh mục work package và tiêu chí hoàn thành
+
+-- 97 of 134 --
+
+85
+Hình 3.89: Cơ cấu phân rã công việc (WBS) của dự án
+WBS phân rã phạm vi dự án thành các giai đoạn và gói công việc ở mức có thể
+giao nhiệm vụ, ước lượng thời gian và kiểm tra đầu ra. Các mã công việc trong WBS
+được dùng làm cơ sở liên kết với lịch trình Gantt và các hoạt động quản lý dự án tiếp
+theo.
+3.3.2. Lập lịch trình dự án (sơ đồ Gantt)
+Trên cơ sở WBS, thời gian thực hiện của từng gói công việc được ước lượng và
+sắp xếp thành lịch trình tổng thể 6 tuần, từ 20/08/2026 đến 30/09/2026. Việc lập lịch
+không chỉ xác định ngày bắt đầu/kết thúc mà còn xác định quan hệ phụ thuộc giữa các
+công việc. Các công việc có phụ thuộc chặt như yêu cầu → UML → CSDL được bố trí
+theo trình tự; các công việc có thể độc lập như Backend và Frontend được chồng gối sau
+khi có thiết kế/API tối thiểu. Cách bố trí này phù hợp với Scrum rút gọn và giúp giảm
+thời gian chờ.
+
+-- 98 of 134 --
+
+86
+Hình 3.90: Sơ đồ Gantt lịch trình triển khai dự án
+Sơ đồ Gantt là đường cơ sở tiến độ của dự án. Việc kiểm soát được thực hiện theo
+tuần và theo milestone. Cuối mỗi tuần, khối lượng hoàn thành thực tế được đối chiếu
+với WBS; nếu một công việc trễ, ưu tiên được điều chỉnh theo MoSCoW, giảm phạm vi
+chức năng ít quan trọng hoặc chuyển công việc sang sprint sau thay vì làm ảnh hưởng
+các mốc nghiệm thu. Vùng đệm được giữ trước M4–M5 để xử lý lỗi và sự cố triển khai.
+Milestone được dùng như các điểm kiểm soát chính thay vì chỉ là mốc thời gian.
+Mỗi milestone được gắn với điều kiện nghiệm thu cụ thể; chỉ khi điều kiện đạt thì giai
+đoạn tiếp theo mới được xem là có đủ cơ sở tiếp tục. Nếu chưa đạt, phần việc liên quan
+được đưa vào danh sách tồn đọng và ưu tiên xử lý trong buffer hoặc sprint kế tiếp.
+Bảng 3.25: Kế hoạch thực hiện và điểm kiểm soát theo tuần
+Thời gian Trọng tâm Mốc kiểm soát Đầu ra
+Tuần 1
+20–26/08
+Khởi tạo, phạm vi,
+WBS, Gantt, yêu cầu
+ban đầu
+M1 Kế hoạch được
+duyệt
+Tuần 2
+27/08–02/09
+Phân tích nghiệp vụ,
+Use Case, Activity,
+— Đặc tả nghiệp vụ
+chính
+
+-- 99 of 134 --
+
+87
+Sequence; bắt đầu
+CSDL
+Tuần 3
+03–09/09
+Hoàn thiện
+UML/CSDL;
+Backend + Frontend
+lõi
+M2 Thiết kế hoàn chỉnh
+Tuần 4
+10–16/09
+Module văn bản,
+nhiệm vụ, hồ sơ; tích
+hợp dữ liệu
+— Module lõi chạy
+được
+Tuần 5
+17–23/09
+AI, thông báo, tích
+hợp và kiểm thử nội
+bộ
+M3 Bản phát hành thử
+nghiệm
+Tuần 6
+24–30/09
+UAT, sửa lỗi, triển
+khai, tài liệu và
+nghiệm thu
+M4, M5 Bản bàn giao hoàn
+chỉnh
+Bảng 3.26: Các mốc quan trọng (milestone) của dự án
+Mốc Thời điểm Tiêu chí hoàn thành Tín hiệu
+kích hoạt
+Chủ
+sở hữu
+M1 - Duyệt đề
+cương & kế hoạch
+Cuối tuần 1
+(26/08/2026)
+Đề cương, WBS, lịch
+trình được giảng viên
+hướng dẫn thông qua
+Yêu cầu mới
+xuất hiện
+hoặc thay đổi
+FR/NFR
+QLDA
+M2 - Hoàn thành
+phân tích thiết kế
+Cuối tuần 2,5
+(05/09/2026)
+Bộ biểu đồ UML và thiết
+kế CSDL hoàn chỉnh,
+được rà soát
+Gemini lỗi,
+timeout,
+quota gần đạt
+giới hạn
+Lập
+trình
+M3 - Hoàn thành
+phát triển hệ thống
+Cuối tuần 4,5
+(19/09/2026)
+Các module chính chạy
+được, tích hợp AI, CSDL
+Hybrid và đồng bộ Cloud
+thành công
+Lỗi tích
+hợp/thời gian
+xử lý tăng bất
+thường
+Lập
+trình
+M4 - Hoàn thành
+kiểm thử
+Cuối tuần 5,5
+(26/09/2026)
+Không còn lỗi nghiêm
+trọng (critical/blocker)
+sau kiểm thử UAT
+Công việc
+lệch kế hoạch
+tuần hoặc
+backlog tăng
+QLDA
+M5 - Nghiệm thu,
+bàn giao
+Cuối tuần 6
+(30/09/2026)
+Bàn giao mã nguồn, tài
+liệu, báo cáo và kiểm tra
+truy cập production qua
+trg.id.vn
+Dữ liệu lỗi,
+mất bản ghi
+hoặc schema
+bất thường
+Lập
+trình
+3.3.3. Phân công vai trò - trách nhiệm (ma trận RACI)
+Ma trận RACI được xây dựng để tránh tình trạng một công việc có nhiều người
+thực hiện nhưng không có người chịu trách nhiệm cuối cùng. Trong đồ án một sinh viên,
+các vai kỹ thuật được phân biệt theo chức năng quản lý dự án; giảng viên hướng dẫn giữ
+
+-- 100 of 134 --
+
+88
+vai trò tư vấn và phê duyệt ở các mốc cần thiết. RACI được dùng cùng WBS: mỗi gói
+công việc phải có ít nhất một R và một A.
+Bảng 3.27: Ma trận phân công vai trò - trách nhiệm (RACI)
+Giai đoạn Giảng
+viên HD
+Vai trò
+Quản lý dự
+án
+Vai trò
+Phân tích -
+Thiết kế
+Vai
+trò
+Lập
+trình
+Vai trò
+Kiểm thử
+1. Khởi tạo &
+Lập kế hoạch
+C A/R C I I
+2. Phân tích &
+Thiết kế
+C A R C I
+3. Phát triển hệ
+thống
+I A C R C
+4. Kiểm thử I A I C R
+5. Triển khai &
+Nghiệm thu
+A R I C C
+Ghi chú: R - Responsible (trực tiếp thực hiện); A - Accountable (chịu trách nhiệm
+cuối cùng/phê duyệt); C - Consulted (được tham vấn); I - Informed (được thông báo).
+Khi có thay đổi lớn về phạm vi hoặc tiến độ, vai trò A phải xác nhận tác động trước khi
+công việc được đưa vào kế hoạch mới.
+Quy tắc phối hợp: công việc được cập nhật ít nhất một lần trong mỗi chu kỳ theo
+dõi; vấn đề chặn tiến độ được báo ngay khi phát hiện; giảng viên được cập nhật tại các
+milestone M1–M5. Cách tổ chức này biến RACI từ bảng phân công tĩnh thành cơ chế
+điều phối và kiểm soát.
+3.3.4. Quản lý rủi ro dự án
+Các rủi ro được nhận diện theo bốn nhóm chính: phạm vi/yêu cầu, kỹ thuật - tích
+hợp, tiến độ - nguồn lực và dữ liệu/bảo mật. Mỗi rủi ro được đánh giá theo khả năng xảy
+ra và mức ảnh hưởng. Đối với rủi ro có ảnh hưởng cao, kế hoạch ưu tiên biện pháp
+phòng ngừa từ sớm và chuẩn bị phương án dự phòng để không làm gián đoạn các chức
+năng lõi.
+Việc theo dõi rủi ro được thực hiện theo chu kỳ tuần. Khi một rủi ro chuyển từ khả
+năng thấp sang trung bình/cao hoặc xuất hiện tín hiệu kích hoạt, biện pháp ứng phó được
+chuyển từ theo dõi sang hành động cụ thể. Rủi ro đã xảy ra được ghi nhận như issue và
+cập nhật vào backlog; rủi ro đã xử lý tiếp tục được theo dõi đến khi mức ảnh hưởng
+giảm về mức chấp nhận được.
+
+-- 101 of 134 --
+
+89
+Bảng 3.28: Bảng nhận diện và ứng phó rủi ro dự án
+Rủi ro Khả năng Ảnh hưởng Biện pháp ứng phó
+Yêu cầu nghiệp vụ thay đổi
+trong quá trình phát triển
+Cao Trung bình Áp dụng mô hình phát triển
+lặp (Scrum rút gọn), chốt
+backlog theo từng sprint
+Gián đoạn/giới hạn hạn mức
+Google Gemini API
+Trung bình Cao Xây dựng sẵn bộ phân loại
+quy tắc cục bộ (heuristic)
+hoạt động dự phòng, không
+phụ thuộc hoàn toàn vào dịch
+vụ ngoài
+Người thực hiện chưa có kinh
+nghiệm với công nghệ mới
+(React 19, TypeScript)
+Trung bình Trung bình Bố trí thời gian tự nghiên cứu
+tài liệu chính thức ở giai
+đoạn đầu; trao đổi, xin ý kiến
+giảng viên hướng dẫn
+Trễ tiến độ do trùng lịch
+thi/học các môn khác
+Cao Trung bình Lập lịch trình có vùng đệm
+(buffer); ưu tiên hoàn thành
+nhóm chức năng lõi trước
+(nguyên tắc MoSCoW)
+Sự cố/mất dữ liệu khi thao
+tác trên cơ sở dữ liệu
+Thấp Cao Sao lưu (backup) định kỳ;
+tách biệt môi trường phát
+triển và môi trường thử
+nghiệm
+Lộ thông tin nhạy cảm (khóa
+API, mật khẩu CSDL)
+Thấp Cao Quản lý cấu hình qua biến
+môi trường (.env); không đưa
+khóa bí mật lên kho mã
+nguồn công khai
+Mất kết nối Cloud
+Firestore / lỗi đồng bộ
+Trung
+bình
+Cao Duy trì MySQL nội bộ,
+kiểm tra kết nối trước đồng
+bộ, có cơ chế retry và sao lưu
+JSON/SQL
+Vượt hạn mức dịch vụ
+Firebase/Vercel
+Thấp Trung
+bình
+Theo dõi dung lượng,
+lượt đọc/ghi và lưu lượng; tối
+ưu truy vấn và sử dụng Free
+Tier trong phạm vi phù hợp
+Mất kết nối hoặc cấu hình sai
+Cloudflare Tunnel/Zero Trust
+Thấp Cao Duy trì quyền truy cập
+nội bộ dự phòng; kiểm tra
+trạng thái cloudflared, chính
+sách Access và firewall;
+không mở trực tiếp 3306 ra
+Internet; ghi nhận cấu hình
+và phương án khôi phục kết
+nối.
+
+-- 102 of 134 --
+
+90
+3.3.5. Ước lượng chi phí dự án
+Chi phí dự án được khái toán theo phương pháp ước lượng từ dưới lên (bottom-
+up): khối lượng của từng giai đoạn được quy đổi thành person-day rồi nhân với đơn giá
+quy đổi giả định. Phương pháp này phù hợp với đồ án quy mô nhỏ vì các công việc đã
+được phân rã từ WBS và có thể ước lượng riêng. Tổng khối lượng kế hoạch là 65 công,
+tương ứng 22.750.000 đồng theo đơn giá 350.000 đồng/công. Đây là chi phí quy đổi
+phục vụ đánh giá nguồn lực, không phải khoản chi thực tế mà sinh viên phải thanh toán.
+Về cơ cấu nguồn lực, phát triển hệ thống chiếm tỷ trọng lớn nhất do bao gồm
+Backend, Frontend, các module nghiệp vụ, tích hợp AI và đồng bộ dữ liệu. Kiểm thử
+được giữ một quỹ thời gian riêng thay vì xem là phần việc phụ của lập trình, nhằm giảm
+rủi ro phát hiện lỗi quá muộn. Hạ tầng thực nghiệm được kiểm soát bằng cách ưu tiên
+các gói miễn phí/chi phí thấp; nếu lưu lượng hoặc yêu cầu triển khai tăng, chi phí phát
+sinh phải được xem xét như một thay đổi ngân sách.
+Bảng 3.29: Khái toán chi phí dự án theo phương pháp ước lượng từ dưới lên
+Giai đoạn Số công (person-
+day)
+Đơn giá quy đổi
+(đồng/công)
+Thành tiền
+(đồng)
+1. Khởi tạo & Lập kế hoạch 6 350.000 2.100.000
+2. Phân tích & Thiết kế 12 350.000 4.200.000
+3. Phát triển hệ thống 30 350.000 10.500.000
+4. Kiểm thử 10 350.000 3.500.000
+5. Triển khai & Nghiệm thu 7 350.000 2.450.000
+Tổng cộng 65 — 22.750.000
+Ngoài chi phí nhân công quy đổi, chi phí hạ tầng của phiên bản thực nghiệm được
+kiểm soát ở mức phù hợp với quy mô đồ án bằng cách tận dụng các dịch vụ có gói miễn
+phí hoặc chi phí thấp như Cloud Firestore và hạ tầng triển khai phù hợp. Chi phí thực tế
+có thể thay đổi theo phương án triển khai tên miền và lưu lượng sử dụng.
+So với các phương pháp ước lượng chi phí phức tạp hơn như COCOMO II (dựa
+trên số dòng lệnh ước tính và các hệ số hiệu chỉnh về năng lực nhóm, độ phức tạp) hay
+Function Point Analysis (dựa trên số điểm chức năng quy đổi), phương pháp ước lượng
+từ dưới lên áp dụng trong đồ án đơn giản hơn nhưng đòi hỏi WBS phải đủ chi tiết và
+người ước lượng phải có kinh nghiệm thực tế với từng loại công việc — đây cũng là lý
+do phương pháp này phù hợp với dự án quy mô nhỏ, còn với dự án lớn hơn thường cần
+kết hợp thêm các phương pháp ước lượng định lượng để tăng độ tin cậy, như đã đề cập
+trong hướng phát triển ở phần Kết luận.
+
+-- 103 of 134 --
+
+91
+Như vậy, kế hoạch 3.3 tạo thành một chuỗi liên kết: WBS xác định phải làm gì;
+Gantt xác định khi nào làm; RACI xác định ai chịu trách nhiệm; kế hoạch rủi ro xác
+định điều gì có thể làm lệch kế hoạch và cách ứng phó; còn khái toán chi phí xác định
+nguồn lực cần thiết. Các milestone và quy tắc theo dõi là lớp kiểm soát giúp đối chiếu
+kế hoạch với thực tế trong quá trình triển khai.
+Kiểm soát chi phí được thực hiện bằng cách đối chiếu person-day thực tế với
+person-day kế hoạch ở cuối mỗi tuần. Nếu một giai đoạn có xu hướng vượt dự toán, ưu
+tiên được điều chỉnh theo giá trị nghiệp vụ; các chức năng không thiết yếu có thể chuyển
+sang hướng phát triển tiếp theo. Do dự án cá nhân không phát sinh mua sắm lớn, trọng
+tâm kiểm soát chi phí là thời gian lao động và mức sử dụng dịch vụ Cloud/API.
+Tóm tắt chương: Chương 3 đã trình bày kết quả khảo sát, xác định 10 yêu cầu chức
+năng và các nhóm yêu cầu phi chức năng; thiết kế hệ thống bằng UML và mô hình dữ
+liệu Hybrid; đồng thời hoàn thiện kế hoạch quản lý dự án gồm WBS có tiêu chí đầu ra,
+lịch trình Gantt và kế hoạch theo tuần, milestone, RACI, quản lý rủi ro có tín hiệu kích
+hoạt/chủ sở hữu, cùng khái toán chi phí và cơ chế kiểm soát. Bộ kế hoạch này là đường
+cơ sở để triển khai, kiểm thử, triển khai và nghiệm thu sản phẩm ở Chương 4.
+
+-- 104 of 134 --
+
+92
+CHƯƠNG 4: TRIỂN KHAI ỨNG DỤNG
+Sau khi hoàn thành quá trình khảo sát, phân tích yêu cầu và thiết kế hệ thống, bước
+tiếp theo của dự án là hiện thực hóa các chức năng đã được xác định thành sản phẩm
+phần mềm có khả năng vận hành trên môi trường web. Việc xây dựng hệ thống được
+thực hiện theo hướng module hóa, kết hợp lớp dữ liệu Hybrid và hạ tầng Serverless. Các
+chức năng có cùng phạm vi nghiệp vụ được tổ chức thành những nhóm xử lý tương đối
+độc lập nhưng vẫn có khả năng trao đổi dữ liệu thông qua API, MySQL và Cloud
+Firestore.
+Theo kết quả phân tích tại Chương 3, hệ thống tập trung vào các nghiệp vụ chính
+gồm đăng nhập và phân quyền, quản lý văn bản đến, quản lý văn bản đi, quản lý nhiệm
+vụ, quản lý hồ sơ công việc, thông báo và hỗ trợ phân loại văn bản bằng trí tuệ nhân tạo.
+Đây cũng là cơ sở để tổ chức các module chương trình trong quá trình xây dựng. Việc
+đánh mã các yêu cầu chức năng từ FR-01 đến FR-10 được sử dụng để đối chiếu giữa
+yêu cầu, thiết kế và kết quả triển khai trong Chương 4.
+Về kiến trúc kỹ thuật, hệ thống được triển khai theo mô hình ứng dụng web gồm
+lớp giao diện phía người dùng, lớp máy chủ/API Node.js/Express, tầng AI và kiến trúc
+lưu trữ ba tầng. Ứng dụng được đóng gói theo mô hình Full-stack/Monolithic Node.js
+và sẵn sàng triển khai trên Google Cloud Run, Firebase Hosting hoặc hạ tầng máy chủ
+tương thích tùy môi trường.
+4.1. Xây dựng các module hệ thống
+4.1.1. Module Backend — API nghiệp vụ và tích hợp trí tuệ nhân tạo
+Phần máy chủ của hệ thống được xây dựng trên nền tảng Node.js với framework
+Express và ngôn ngữ TypeScript. Trong môi trường phát triển, mã nguồn TypeScript
+được thực thi trực tiếp thông qua công cụ tsx, giúp rút ngắn thời gian kiểm tra và phát
+triển chương trình. Khi đóng gói hệ thống, phần giao diện được biên dịch bằng Vite,
+trong khi mã nguồn máy chủ được đóng gói bằng esbuild để tạo phiên bản phục vụ triển
+khai. [10]
+Về tổ chức chương trình, backend được phân chia theo các nhóm nghiệp vụ gồm
+xác thực và phân quyền, quản lý văn bản đến, quản lý văn bản đi, quản lý nhiệm vụ,
+quản lý hồ sơ công việc, thông báo và xử lý trí tuệ nhân tạo. Cách phân chia này tương
+
+-- 105 of 134 --
+
+93
+ứng với các nhóm chức năng đã được xác định trong quá trình phân tích hệ thống, đồng
+thời giúp hạn chế sự phụ thuộc giữa các thành phần.
+Backend cung cấp các API theo kiến trúc REST để giao tiếp với giao diện người
+dùng. API thực tế tập trung vào các nhóm người dùng, văn bản đến, văn bản đi, nhiệm
+vụ, thông báo, AI và quản trị dữ liệu. Một số endpoint tiêu biểu được trình bày tại Bảng
+4.1. Tên endpoint trong bảng được giữ theo cấu trúc triển khai thực tế của server.ts để
+thuận tiện đối chiếu với mã nguồn.
+Bảng 4.1: Một số API REST tiêu biểu được xây dựng
+Phương thức Endpoint Chức năng
+GET/POST/PUT/DELETE /api/users[/:id] Quản lý người dùng và
+tài khoản
+GET/POST /api/incoming-docs Tra cứu và tạo mới văn
+bản đến
+PUT/DELETE /api/incoming-docs/:id Cập nhật hoặc xóa văn
+bản đến
+GET/POST /api/outgoing-docs Tra cứu và tạo mới văn
+bản đi
+PUT/DELETE /api/outgoing-docs/:id Cập nhật hoặc xóa văn
+bản đi
+PUT /api/tasks/:id Cập nhật thông tin và
+trạng thái nhiệm vụ
+POST /api/tasks/:id/submit-
+approval
+Chuyên viên trình báo
+cáo nghiệm thu nhiệm
+vụ
+POST /api/tasks/:id/approve Lãnh đạo nghiệm thu
+và phê duyệt nhiệm vụ
+POST /api/notifications/mark-read Đánh dấu thông báo đã
+đọc
+POST /api/notifications/mark-all-
+read
+Đánh dấu toàn bộ
+thông báo đã đọc
+GET /api/db-status Kiểm tra trạng thái kết
+nối MySQL
+POST /api/db-config Cập nhật cấu hình kết
+nối CSDL
+POST /api/init-db Khởi tạo schema và
+nạp dữ liệu mẫu
+MySQL
+
+-- 106 of 134 --
+
+94
+GET /api/sync-all Đồng bộ dữ liệu từ
+CSDL vào bộ nhớ hệ
+thống
+POST /api/ai/draft-outgoing-doc Hỗ trợ sinh dự thảo văn
+bản đi bằng AI
+POST /api/ai/suggest-task-
+breakdown
+Đề xuất phân rã nhiệm
+vụ thành các việc con
+POST /api/ai/ask-assistant Trợ lý ảo điều hành
+dựa trên dữ liệu hệ
+thống
+POST /api/auth/forgot-password Kiểm tra email công
+vụ, tạo mã OTP và gửi
+email đặt lại mật khẩu
+qua Resend
+POST /api/auth/reset-password Xác thực OTP, kiểm
+tra mật khẩu mới và cập
+nhật mật khẩu tài khoản
+Các API trên tạo thành lớp trung gian giữa giao diện và cơ sở dữ liệu. Đối với
+những thao tác yêu cầu quyền truy cập, hệ thống thực hiện kiểm tra phiên đăng nhập và
+vai trò của người dùng trước khi xử lý yêu cầu. Cơ chế này phù hợp với yêu cầu phân
+quyền được xác định trong quá trình phân tích, trong đó hệ thống có các vai trò chính
+gồm Quản trị viên, Lãnh đạo, Văn thư và Chuyên viên.
+Một điểm đáng chú ý trong quá trình xây dựng backend là module tích hợp trí tuệ
+nhân tạo. Hệ thống sử dụng SDK @google/genai làm lớp kết nối tới Gemini. Khi người
+dùng tải lên tài liệu, hệ thống thực hiện trích xuất nội dung trước khi đưa dữ liệu vào
+lớp xử lý AI. Các chức năng thực tế gồm Studio Phân loại nội dung văn bản, nhận
+diện/trích xuất nội dung từ PDF, Word và tài liệu ảnh, hỗ trợ soạn thảo văn bản đi, đề
+xuất phân rã nhiệm vụ và Trợ lý ảo điều hành.
+Cơ chế AI được xây dựng theo hai lớp dự phòng. Trước hết, hàm
+generateGeminiContent sử dụng cơ chế Cascade Model Failover: hệ thống lần lượt thử
+các model được cấu hình và tự chuyển sang model tiếp theo khi model hiện tại gặp lỗi,
+quá tải hoặc giới hạn quota. Khi toàn bộ dịch vụ Gemini không khả dụng hoặc không có
+API Key, bộ xử lý cục bộ classifyDocumentHeuristic/localClassifier.ts được kích hoạt.
+Bộ heuristic sử dụng từ khóa và biểu thức chính quy để nhận diện thông tin văn bản,
+tính điểm cho các lĩnh vực chuyên môn, đề xuất đơn vị xử lý và hạn xử lý theo mức độ
+
+-- 107 of 134 --
+
+95
+khẩn. Cách thiết kế này giúp luồng nghiệp vụ vẫn có thể tiếp tục ở mức cơ bản thay vì
+phụ thuộc hoàn toàn vào dịch vụ AI bên ngoài.
+Như vậy, module Backend không chỉ đảm nhiệm việc cung cấp API mà còn đóng
+vai trò trung tâm xử lý nghiệp vụ và kết nối giữa các thành phần của hệ thống. Việc tổ
+chức thành các module chức năng kết hợp với cơ chế xác thực, phân quyền và AI
+Fallback tạo nền tảng cho quá trình triển khai các nghiệp vụ ở những module tiếp theo.
+4.1.2. Module Frontend — giao diện và quản lý trạng thái
+Phần giao diện người dùng được xây dựng bằng React kết hợp TypeScript theo
+hướng component. Mỗi nhóm nghiệp vụ được tổ chức thành một màn hình hoặc nhóm
+màn hình tương ứng, giúp người dùng tiếp cận chức năng theo đúng quy trình nghiệp
+vụ. Các nhóm giao diện chính bao gồm Bảng điều khiển, Văn bản đến, Văn bản đi,
+Nhiệm vụ, Hồ sơ công việc và Quản trị hệ thống. [9]
+Bảng 4.2: Các nhóm giao diện chính của hệ thống
+Nhóm giao diện Chức năng chính Người sử dụng
+Dashboard Tổng hợp số liệu, KPI và
+tình hình xử lý Lãnh đạo, cán bộ
+Văn bản đến Tiếp nhận, tra cứu, phân loại
+và xử lý văn bản
+Văn thư, Lãnh đạo, Chuyên
+viên
+Văn bản đi Soạn thảo, trình duyệt và
+phát hành văn bản
+Chuyên viên, Lãnh đạo, Văn
+thư
+Nhiệm vụ Giao việc, nhận việc và cập
+nhật tiến độ Lãnh đạo, Chuyên viên
+Hồ sơ công việc Quản lý hồ sơ và tài liệu liên
+quan
+Người dùng được phân
+quyền
+Quản trị hệ thống Quản lý tài khoản và dữ liệu
+cấu hình Quản trị viên, Lãnh đạo
+Trong quá trình xây dựng, các màn hình cấp cao tiếp tục được chia thành những
+component nhỏ có khả năng tái sử dụng. Chẳng hạn, bảng dữ liệu, hộp thoại nhập thông
+tin, thẻ thống kê, thanh tiến độ và thông báo trạng thái có thể được sử dụng ở nhiều màn
+hình khác nhau. Việc tổ chức này giúp giảm sự lặp lại trong mã nguồn và thuận lợi hơn
+khi cần thay đổi giao diện.
+
+-- 108 of 134 --
+
+96
+TypeScript được sử dụng để định nghĩa các kiểu dữ liệu dùng chung giữa các
+component và giữa giao diện với API. Điều này giúp kiểm soát dữ liệu trong quá trình
+phát triển và hạn chế các lỗi liên quan đến việc truyền sai kiểu dữ liệu.
+Đối với trạng thái giao diện, hệ thống sử dụng cơ chế quản lý trạng thái kết hợp
+Event Bus. Khi một thao tác làm thay đổi dữ liệu, sự kiện tương ứng được phát tới các
+thành phần có liên quan để cập nhật lại giao diện. Cơ chế này đặc biệt phù hợp với các
+nghiệp vụ có sự thay đổi thường xuyên như cập nhật tiến độ nhiệm vụ, thay đổi trạng
+thái văn bản hoặc xuất hiện thông báo mới.
+Tailwind CSS được sử dụng để xây dựng bố cục giao diện theo hướng utility-first.
+Ngoài ra, các thư viện hỗ trợ được sử dụng nhằm thống nhất hệ thống biểu tượng, tạo
+hiệu ứng giao diện và hỗ trợ xử lý tài liệu. Các công nghệ này nằm trong nhóm công
+nghệ triển khai giao diện và xử lý tài liệu được lựa chọn cho hệ thống.
+4.1.3. Module xác thực và phân quyền
+Module xác thực được xây dựng nhằm bảo đảm chỉ những người dùng hợp lệ mới
+có thể truy cập vào hệ thống. Khi truy cập ứng dụng, người dùng được chuyển tới màn
+hình đăng nhập và cung cấp thông tin tài khoản. Backend tiếp nhận yêu cầu, kiểm tra
+thông tin xác thực và trả về thông tin phiên làm việc cùng vai trò tương ứng. Ngoài
+luồng đăng nhập, module còn cung cấp chức năng quên mật khẩu bằng email công vụ
+và mã OTP thông qua dịch vụ Resend.
+Sau khi đăng nhập thành công, giao diện căn cứ vào vai trò của tài khoản để tổ
+chức các nhóm chức năng được phép truy cập. Đồng thời, backend tiếp tục kiểm tra
+quyền đối với từng yêu cầu nghiệp vụ. Như vậy, phân quyền không chỉ được thực hiện
+ở mức hiển thị giao diện mà còn được kiểm soát ở lớp xử lý phía máy chủ.
+Bảng 4.3: Phân quyền chức năng theo vai trò
+Chức năng Quản trị viên Lãnh đạo Văn thư Chuyên viên
+Đăng nhập hệ
+thống ✓ ✓ ✓ ✓
+Quản lý tài
+khoản ✓ – – –
+Tiếp nhận văn
+bản đến ✓ Xem/Chỉ đạo ✓ Xử lý văn bản
+được giao
+
+-- 109 of 134 --
+
+97
+Giao và theo dõi
+nhiệm vụ ✓ ✓ Theo dõi Nhận và cập
+nhật
+Soạn thảo văn
+bản đi ✓ Duyệt Phát hành ✓
+Quản lý hồ sơ ✓ ✓ ✓ ✓ theo phạm vi
+Dashboard Toàn hệ thống Toàn đơn vị Theo nghiệp vụ Theo phạm vi cá
+nhân
+Việc phân quyền theo vai trò giúp hệ thống phù hợp với cơ cấu tổ chức và trách
+nhiệm của từng nhóm người sử dụng. Trong đó, bốn vai trò chính LEADER, STAFF,
+CLERK và ADMIN đã được xác định ngay từ yêu cầu chức năng FR-01.
+Bên cạnh chức năng đăng nhập, module xác thực được mở rộng với quy trình khôi
+phục mật khẩu dành cho người dùng đã có tài khoản và email công vụ được đăng ký
+trong hệ thống. Chức năng này giúp người dùng tự khôi phục quyền truy cập mà không
+cần Quản trị viên can thiệp thủ công, đồng thời bảo đảm chỉ người có quyền truy cập
+email đăng ký mới có thể đặt lại mật khẩu.
+Quy trình thực hiện gồm: (1) người dùng chọn “Quên mật khẩu?” trên
+LoginView; (2) nhập email công vụ; (3) backend kiểm tra email trong bảng users; (4)
+nếu hợp lệ, hệ thống tạo mã OTP đặt lại mật khẩu có thời hạn và gửi mã tới email
+thông qua dịch vụ Resend; (5) người dùng nhập OTP; (6) hệ thống kiểm tra mã và thời
+hạn; (7) người dùng nhập và xác nhận mật khẩu mới; (8) backend cập nhật mật khẩu
+và thông báo hoàn tất.
+Trong kiến trúc triển khai, Resend đóng vai trò là dịch vụ gửi email bên ngoài.
+Backend vẫn chịu trách nhiệm kiểm tra tài khoản, quản lý quy trình OTP và cập nhật
+mật khẩu. Khóa API Resend được khai báo qua biến môi trường thay vì ghi trực tiếp
+trong mã nguồn, nhằm bảo đảm an toàn thông tin cấu hình.
+Thành phần Nội dung triển khai Vai trò
+Email công vụ Đối chiếu với trường
+users.email
+Xác định tài khoản cần khôi
+phục
+Mã OTP Mã xác thực có thời hạn, gửi
+qua Resend
+Xác minh quyền sở hữu
+email
+Resend Dịch vụ gửi email xác thực Gửi OTP tới người dùng
+Mật khẩu mới Được kiểm tra và cập nhật
+sau khi OTP hợp lệ
+Khôi phục quyền truy cập
+
+-- 110 of 134 --
+
+98
+4.1.4. Module quản lý văn bản đến
+Module quản lý văn bản đến được xây dựng để số hóa quá trình tiếp nhận và xử lý
+văn bản được gửi tới cơ quan. Đây là một trong những nghiệp vụ trọng tâm của hệ thống
+và được xác định trong yêu cầu FR-02, bao gồm tiếp nhận, trích xuất và phân loại bằng
+AI, vào sổ, gán người xử lý và xác định thời hạn hoàn thành.
+Khi văn bản được tiếp nhận, người dùng có thể nhập thông tin hoặc tải lên tệp tài
+liệu. Hệ thống lưu trữ thông tin văn bản và cho phép người có thẩm quyền xem xét, phân
+công cán bộ xử lý. Trong trường hợp sử dụng chức năng AI, hệ thống thực hiện trích
+xuất nội dung và đưa ra kết quả đề xuất để người dùng kiểm tra trước khi xác nhận.
+Sau khi được phân công, văn bản có thể được liên kết với nhiệm vụ tương ứng.
+Nhờ đó, người dùng không chỉ quản lý được bản thân văn bản mà còn theo dõi được
+quá trình xử lý phát sinh từ văn bản.
+Bảng 4.4: Các chức năng chính của module văn bản đến
+Chức năng Nội dung triển khai
+Tiếp nhận văn bản Nhập thông tin và tải tệp văn bản
+Trích xuất nội dung Đọc nội dung tài liệu để phục vụ xử lý
+Phân loại Hỗ trợ phân loại bằng AI hoặc bộ xử lý dự
+phòng
+Vào sổ Ghi nhận văn bản trong hệ thống
+Phân công Xác định người hoặc đơn vị xử lý
+Theo dõi Quản lý trạng thái và thời hạn xử lý
+Liên kết nhiệm vụ Chuyển nội dung xử lý thành công việc cần
+thực hiện
+Việc tổ chức các chức năng trên thành một quy trình thống nhất giúp khắc phục
+hạn chế của phương thức xử lý thủ công đã được khảo sát ở Chương 3, trong đó văn thư
+phải tiếp nhận, ghi sổ, trình lãnh đạo và chuyển văn bản cho các đơn vị liên quan bằng
+nhiều phương thức rời rạc.
+4.1.5. Module quản lý văn bản đi
+Module văn bản đi được xây dựng để hỗ trợ quá trình hình thành và phát hành văn
+bản từ phía cơ quan. Chức năng này bao gồm tạo và cập nhật dự thảo, trình duyệt, phát
+hành và liên kết văn bản trả lời. Ngoài việc tạo dự thảo thủ công, hệ thống còn hỗ trợ
+tạo dự thảo trực tiếp từ nhiệm vụ hoặc từ văn bản đến.
+
+-- 111 of 134 --
+
+99
+Khi tạo văn bản đi từ nhiệm vụ, hàm handleDraftOutgoingDocFromTask trong
+App.tsx sử dụng thông tin của nhiệm vụ để khởi tạo dự thảo, tự động điền các dữ liệu
+liên quan như số hiệu dự thảo, trích yếu, cơ quan nhận và mã hồ sơ khi có thể xác định.
+Khi tạo văn bản đi để phúc đáp văn bản đến, hàm
+handleDraftOutgoingDocFromIncomingDoc tạo liên kết replyToDocId để duy trì quan
+hệ giữa văn bản nguồn và văn bản trả lời. Nhờ đó, kết quả xử lý có thể đi từ nhiệm vụ
+hoặc văn bản đến sang văn bản đi mà không phải nhập lại toàn bộ thông tin.
+Bảng 4.5: Quy trình xử lý văn bản đi
+Bước Nội dung
+1 Tạo và nhập thông tin dự thảo
+2 Hoàn thiện nội dung văn bản
+3 Trình người có thẩm quyền xem xét
+4 Phê duyệt hoặc yêu cầu chỉnh sửa
+5 Hoàn thiện thủ tục phát hành
+6 Cập nhật trạng thái văn bản và lưu trữ
+Quy trình này tạo thành mối liên kết giữa văn bản đến và văn bản đi, qua đó giúp
+hệ thống theo dõi được quá trình xử lý từ khi tiếp nhận yêu cầu cho tới khi có kết quả
+phản hồi.
+4.1.6. Module quản lý nhiệm vụ và điều hành công việc
+Module quản lý nhiệm vụ được xây dựng nhằm chuyển các nội dung chỉ đạo hoặc
+yêu cầu xử lý thành các công việc cụ thể. Đây là thành phần kết nối trực tiếp giữa quá
+trình xử lý văn bản và quá trình thực hiện công việc của cán bộ.
+Người có quyền giao việc có thể tạo nhiệm vụ, xác định nội dung, người thực hiện,
+thời hạn và mức độ ưu tiên. Sau khi nhiệm vụ được tạo, người thực hiện có thể theo dõi
+danh sách công việc và cập nhật tiến độ. Tuy nhiên, hoàn thành 100% chưa đồng nghĩa
+với việc nhiệm vụ được đóng ngay. Chuyên viên phải thực hiện bước “Trình báo cáo
+nghiệm thu”, có thể đính kèm tệp kết quả và giải trình; hệ thống chuyển nhiệm vụ sang
+trạng thái WAITING_APPROVAL. Lãnh đạo kiểm tra kết quả, ghi nhận xét và thực
+hiện phê duyệt; khi được chấp thuận, nhiệm vụ mới chuyển sang COMPLETED. Đây
+là quy trình nghiệm thu hai bước, giúp tách biệt việc hoàn thành công việc của người
+thực hiện với việc xác nhận kết quả của người có thẩm quyền.
+Bảng 4.6: Các chức năng chính của module quản lý nhiệm vụ
+
+-- 112 of 134 --
+
+100
+Chức năng Nội dung triển khai
+Tạo nhiệm vụ Khởi tạo công việc từ yêu cầu hoặc văn bản
+Giao việc Xác định người chủ trì và người phối hợp
+Thiết lập thời hạn Xác định thời gian bắt đầu và hạn hoàn thành
+Cập nhật tiến độ Ghi nhận mức độ hoàn thành công việc
+Quản lý việc con Chia nhiệm vụ thành các đầu việc nhỏ
+Trao đổi Bình luận và trao đổi trực tiếp trên nhiệm vụ
+Theo dõi trạng thái Theo dõi quá trình từ khi nhận việc đến hoàn
+thành
+Cách tổ chức này tạo thành luồng nghiệp vụ liên kết từ “văn bản đến → phân
+loại/trích xuất → giao nhiệm vụ → thực hiện → trình nghiệm thu → phê duyệt → hình
+thành văn bản đi → lưu hồ sơ”. Trong trường hợp nhiệm vụ cần phát hành kết quả bằng
+văn bản, hệ thống có thể tạo dự thảo văn bản đi trực tiếp từ nhiệm vụ; trong trường hợp
+cần phúc đáp một văn bản đến, văn bản đi có thể giữ liên kết replyToDocId với văn bản
+nguồn.
+4.1.7. Module quản lý hồ sơ công việc và tài liệu
+Module hồ sơ công việc được xây dựng nhằm tập hợp các đối tượng dữ liệu có liên
+quan đến cùng một vụ việc hoặc nội dung công tác. Một hồ sơ có thể liên kết với văn
+bản đến, văn bản đi, nhiệm vụ và các tài liệu đính kèm.
+Việc tập trung dữ liệu theo hồ sơ giúp người dùng có thể tra cứu toàn bộ quá trình
+xử lý của một vụ việc tại một vị trí thống nhất. Thay vì phải tìm kiếm từng văn bản hoặc
+nhiệm vụ riêng lẻ, người dùng có thể truy cập hồ sơ và xem các thông tin liên quan.
+Bảng 4.7: Các loại dữ liệu được liên kết trong hồ sơ công việc
+Đối tượng Vai trò trong hồ sơ
+Văn bản đến Cơ sở phát sinh hoặc nội dung liên quan đến
+vụ việc
+Văn bản đi Kết quả phản hồi hoặc văn bản được phát
+hành
+Nhiệm vụ Công việc được giao để giải quyết vụ việc
+Tài liệu Các tệp tin phục vụ quá trình xử lý
+Người phụ trách Cá nhân hoặc đơn vị chịu trách nhiệm xử lý
+Module này góp phần giải quyết hạn chế của phương thức lưu trữ phân tán được
+xác định trong khảo sát, khi hồ sơ liên quan trước đây có thể tồn tại dưới dạng tủ hồ sơ
+giấy hoặc các thư mục máy tính cá nhân và không có sự liên kết tập trung.
+
+-- 113 of 134 --
+
+101
+4.1.8. Module thông báo, Dashboard và tra cứu
+Module thông báo được xây dựng nhằm cung cấp thông tin kịp thời cho người
+dùng khi có sự kiện liên quan tới công việc. Các thông báo có thể phát sinh khi người
+dùng được giao nhiệm vụ, có thay đổi về trạng thái công việc hoặc xuất hiện yêu cầu
+cần xử lý.
+Bảng 4.8: Một số sự kiện tạo thông báo
+Sự kiện Nội dung thông báo
+Giao nhiệm vụ mới Thông báo công việc mới được phân công
+Cập nhật nhiệm vụ Thông báo thay đổi liên quan đến nhiệm vụ
+Sắp đến hạn Nhắc người dùng về công việc cần hoàn
+thành
+Quá hạn Cảnh báo công việc chưa hoàn thành đúng
+thời gian
+Văn bản mới Thông báo khi có văn bản cần người dùng xử
+lý
+Bên cạnh thông báo, Dashboard được xây dựng để tổng hợp các thông tin quan
+trọng của hệ thống. Giao diện này cung cấp các chỉ số về văn bản, nhiệm vụ và tình
+trạng xử lý, giúp người dùng có thể nhanh chóng đánh giá khối lượng công việc hiện
+tại.
+Chức năng tra cứu được xây dựng nhằm hỗ trợ tìm kiếm văn bản, nhiệm vụ và hồ
+sơ trong hệ thống. Việc kết hợp Dashboard, thông báo và tìm kiếm giúp người dùng
+không chỉ thực hiện nghiệp vụ mà còn có khả năng theo dõi và giám sát tình trạng xử
+lý.
+4.1.9. Tổng hợp kết quả xây dựng các module
+Sau quá trình hiện thực hóa, các nhóm chức năng chính của hệ thống đã được tổ
+chức thành các module có sự liên kết với nhau. Bảng 4.9 tổng hợp mối quan hệ giữa
+nhóm nghiệp vụ, module chương trình và kết quả triển khai.
+Bảng 4.9: Tổng hợp các module chương trình chính
+STT Module Chức năng trọng tâm Công nghệ/thành
+phần chính
+1 Backend Xử lý nghiệp vụ và cung
+cấp API
+Node.js, Express,
+TypeScript, tsx
+
+-- 114 of 134 --
+
+102
+2 Frontend Cung cấp giao diện và quản
+lý trạng thái
+React 19,
+TypeScript, Tailwind
+CSS, Vite
+3 Xác thực và phân
+quyền
+Đăng nhập, kiểm soát
+quyền truy cập
+REST API, RBAC,
+Resend Email
+4 Văn bản đến Tiếp nhận, phân loại, vào
+sổ, phân công
+React, Express,
+MySQL, Firestore,
+Gemini
+5 Văn bản đi Soạn thảo, liên kết, trình
+duyệt và phát hành
+React, Express,
+MySQL, Firestore,
+AI
+6 Nhiệm vụ
+Giao việc, cập nhật tiến độ,
+trình nghiệm thu và phê
+duyệt
+React, Express,
+MySQL, Firestore
+7 Hồ sơ công việc Liên kết văn bản, nhiệm vụ
+và tài liệu
+React, Express,
+MySQL, Firestore
+8 AI Phân tích, trích xuất, soạn
+thảo và trợ lý
+@google/genai,
+Gemini, heuristic
+fallback
+9 Thông báo và
+Dashboard
+Cảnh báo, thống kê và giám
+sát React, REST API
+10 Lưu trữ & đồng bộ Cache client, cache server,
+MySQL, Firestore
+LocalStorage,
+.db_store_cache.json,
+MySQL, Firestore,
+Cloudflare Tunnel
+11 Triển khai Đóng gói và phát hành ứng
+dụng
+Node.js/Express,
+Firebase
+Hosting/Cloud Run,
+Cloudflare
+Tunnel/Zero Trust,
+DNS/SSL
+Các module trên không hoạt động tách biệt mà được liên kết theo chuỗi nghiệp vụ
+thống nhất. Văn bản sau khi được tiếp nhận có thể được AI hỗ trợ phân tích, sau đó được
+phân công thành nhiệm vụ cho cán bộ xử lý. Nhiệm vụ được thực hiện và phải qua bước
+trình báo cáo nghiệm thu, sau đó lãnh đạo phê duyệt trước khi kết thúc. Kết quả xử lý
+có thể tiếp tục hình thành văn bản đi; văn bản đi có thể được tạo trực tiếp từ nhiệm vụ
+hoặc dùng để phúc đáp văn bản đến thông qua replyToDocId. Toàn bộ quá trình có thể
+được tập hợp trong hồ sơ công việc, tạo thành liên kết khép kín giữa văn bản đến, nhiệm
+vụ và văn bản đi.
+
+-- 115 of 134 --
+
+103
+Như vậy, việc xây dựng các module chương trình đã chuyển hóa các yêu cầu chức
+năng và thiết kế được xác định ở Chương 3 thành các thành phần phần mềm có khả năng
+vận hành trên môi trường web. Đồng thời, kiến trúc module hóa tạo cơ sở để hệ thống
+có thể tiếp tục được kiểm thử, đánh giá và mở rộng trong các giai đoạn tiếp theo của dự
+án.
+Dữ liệu mẫu và tính toàn vẹn nghiệp vụ: Hệ thống đã được làm giàu dữ liệu với
+10 bản ghi nghiệp vụ bổ sung cho từng bảng. Cơ cấu tổ chức bổ sung 4 đơn vị chuyên
+trách gồm Ban Quản Lý Dự Án Đầu Tư Xây Dựng, Phòng Quản Lý Đô Thị & Tài
+Nguyên, Phòng Pháp Chế & Kiểm Soát TTHC và Trung Tâm Dịch Vụ Công Trực
+Tuyến. Nhân sự bổ sung 10 cán bộ từ usr-09 đến usr-18, bao gồm các vai trò
+LEADER, STAFF và CLERK. Dữ liệu văn bản đến vbd-13 đến vbd-22, văn bản đi
+vbdi-05 đến vbdi-14, nhiệm vụ task-08 đến task-17 và hồ sơ dos-05 đến dos-14 được
+liên kết theo quan hệ nghiệp vụ; văn bản đi có thể tham chiếu văn bản đến qua
+replyToDocId. Các liên kết này được duy trì bằng khóa ngoại trong MySQL và ID
+tham chiếu logic trong Firestore.
+4.2. Xây dựng giao diện
+Giao diện của hệ thống được xây dựng theo nguyên tắc tối giản, trực quan và phân
+cấp thông tin, nhằm hỗ trợ người dùng nhanh chóng tiếp cận các chức năng phù hợp với
+vai trò được phân quyền. Các nhóm chức năng chính được tổ chức thành các màn hình
+tương ứng gồm Bảng điều khiển (Dashboard), Văn bản đến, Văn bản đi, Nhiệm vụ, Hồ
+sơ công việc và Quản trị hệ thống. Trong quá trình xây dựng, các màn hình cấp cao được
+chia thành những component nhỏ có khả năng tái sử dụng, giúp thống nhất cách hiển thị
+dữ liệu và giảm sự lặp lại trong mã nguồn.
+Bên cạnh việc tổ chức bố cục, giao diện sử dụng màu sắc để mã hóa trạng thái xử
+lý. Trong Dashboard, các chỉ số KPI được đặt ở khu vực dễ quan sát, tiếp theo là danh
+sách công việc cần xử lý và các biểu đồ tổng hợp. Cách bố trí này giúp người dùng, đặc
+biệt là lãnh đạo, nhanh chóng nắm bắt tình hình xử lý mà không phải đọc chi tiết từng
+dòng dữ liệu.
+
+-- 116 of 134 --
+
+104
+Hình 4.1: Giao diện đăng nhập hệ thống
+Giao diện đăng nhập là điểm truy cập đầu tiên của người dùng vào hệ thống. Màn
+hình cung cấp các trường thông tin cần thiết để xác thực tài khoản. Sau khi thông tin
+hợp lệ, người dùng được chuyển vào giao diện chính và các chức năng được hiển thị
+theo vai trò tương ứng. Việc xác thực được thực hiện ở cả giao diện và phía máy chủ,
+bảo đảm người dùng chỉ có thể truy cập các nghiệp vụ được cấp quyền.
+Hình 4.2: Giao diện Bảng điều khiển (Dashboard)
+
+-- 117 of 134 --
+
+105
+Dashboard tập trung các chỉ số KPI, danh sách công việc và biểu đồ tổng hợp để
+người dùng nhanh chóng nắm được tình hình xử lý. Bố cục được tổ chức theo thứ tự từ
+thông tin tổng quan đến nội dung cần hành động. Các trạng thái như chờ xử lý, đúng
+hạn và quá hạn được biểu diễn trực quan bằng màu sắc, giúp việc theo dõi và nhận biết
+vấn đề được thực hiện nhanh hơn.
+Hình 4.3: Giao diện quản lý văn bản đến
+Màn hình Văn bản đến hỗ trợ tiếp nhận, tra cứu, phân loại và xử lý văn bản. Danh
+sách văn bản được tổ chức theo dạng bảng kết hợp với các bộ lọc, giúp người dùng tìm
+kiếm và theo dõi tình trạng xử lý. Giao diện được thiết kế để văn thư, lãnh đạo và chuyên
+viên có thể tiếp cận các thông tin phù hợp với nghiệp vụ được phân quyền.
+
+-- 118 of 134 --
+
+106
+Hình 4.4: Giao diện phân loại nội dung văn bản và điều phối tự động
+Hình 4.5: Giao diện tiếp nhận văn bản đến và đề xuất thông tin bằng AI
+Form tiếp nhận văn bản đến được kết hợp với khu vực hiển thị kết quả đề xuất từ
+module AI. Kết quả do AI đề xuất được sử dụng như thông tin hỗ trợ để người dùng đối
+chiếu và xác nhận trước khi lưu. Cách tổ chức này giúp giảm thao tác nhập liệu thủ công
+
+-- 119 of 134 --
+
+107
+nhưng vẫn duy trì bước kiểm tra của người sử dụng trước khi dữ liệu được ghi nhận
+chính thức.
+Hình 4.6: Giao diện quản lý văn bản đi
+Màn hình Văn bản đi quản lý các văn bản do đơn vị soạn thảo và phát hành. Danh
+sách được tổ chức theo các trạng thái nghiệp vụ như Dự thảo, Trình duyệt, Đã phê duyệt
+nội bộ và Đã phát hành. Form soạn thảo có thể liên kết nhanh tới văn bản đến được trả
+lời nếu có, qua đó hỗ trợ theo dõi mối liên hệ giữa văn bản đến và văn bản đi trong quá
+trình xử lý.
+
+-- 120 of 134 --
+
+108
+Hình 4.7: Giao diện quản lý nhiệm vụ
+Màn hình Nhiệm vụ của tôi hiển thị các nhiệm vụ được giao cho người dùng dưới
+dạng thẻ hoặc bảng. Thông tin về nhiệm vụ, trạng thái và tiến độ được trình bày tập
+trung, giúp chuyên viên theo dõi công việc cần thực hiện và giúp lãnh đạo có cơ sở theo
+dõi tình hình thực hiện nhiệm vụ đã giao.
+
+-- 121 of 134 --
+
+109
+Hình 4.8: Giao diện cập nhật tiến độ và xử lý nhiệm vụ
+Giao diện chi tiết nhiệm vụ cung cấp khu vực cập nhật tiến độ, việc con và trao đổi
+bình luận. Các thành phần này hỗ trợ quá trình phối hợp giữa người giao việc và người
+thực hiện. Khi trạng thái hoặc tiến độ được thay đổi, giao diện có cơ chế cập nhật trạng
+thái và phản hồi trực quan để người dùng nhận biết kết quả thao tác.
+
+-- 122 of 134 --
+
+110
+Hình 4.9: Giao diện quản lý Hồ sơ công việc
+Màn hình Hồ sơ công việc được tổ chức theo cây danh mục hồ sơ. Mỗi hồ sơ là
+nơi tập hợp các tài liệu và nhiệm vụ có liên quan, giúp người dùng quản lý nội dung
+công việc theo từng nhóm hồ sơ thay vì phải tra cứu rời rạc ở nhiều màn hình khác nhau.
+Hình 4.10: Giao diện chi tiết Hồ sơ công việc
+
+-- 123 of 134 --
+
+111
+Khi mở một hồ sơ cụ thể, hệ thống hiển thị các văn bản đến, văn bản đi và nhiệm
+vụ liên quan đã được gom theo hồ sơ. Giao diện này tạo một điểm tập trung để người
+dùng theo dõi toàn bộ quá trình xử lý của một nhóm công việc, đồng thời hỗ trợ tra cứu
+các tài liệu liên quan.
+Hình 4.11: Giao diện Quản lý nhân sự
+Hình 4.12: Giao diện Quản lý Danh mục hệ thống
+
+-- 124 of 134 --
+
+112
+Hình 4.13: Giao diện Nhật ký hệ thống
+Giao diện Quản trị hệ thống dành cho tài khoản có vai trò ADMIN, cung cấp các
+chức năng quản lý người dùng, phòng ban, chức vụ và phân quyền. Các chức năng quản
+trị được tách khỏi nhóm nghiệp vụ thông thường nhằm hạn chế việc truy cập trái phép
+và giúp người quản trị tập trung vào công tác cấu hình, quản lý tài khoản và dữ liệu hệ
+thống.
+Toàn bộ giao diện được xây dựng theo hướng đáp ứng (responsive) nhờ hệ thống
+lớp tiện ích của Tailwind CSS. Bố cục có khả năng điều chỉnh giữa các kích thước màn
+hình khác nhau; các thẻ KPI và bảng dữ liệu có thể chuyển từ bố cục nhiều cột sang xếp
+chồng khi chiều rộng màn hình thu hẹp. Ngoài yếu tố bố cục, hệ thống cũng chú trọng
+khả dụng thông qua độ tương phản giữa chữ và nền, kích thước vùng bấm phù hợp và
+phản hồi trực quan sau thao tác như thông báo toast hoặc hiệu ứng tải.
+Nhìn chung, giao diện được tổ chức theo các nhóm nghiệp vụ chính và liên kết với
+nhau theo chuỗi xử lý thống nhất. Văn bản sau khi được tiếp nhận có thể được AI hỗ trợ
+phân tích, sau đó được phân công thành nhiệm vụ cho cán bộ xử lý; kết quả xử lý có thể
+tiếp tục hình thành văn bản đi và toàn bộ quá trình được tập hợp trong hồ sơ công việc.
+Dashboard và thông báo cung cấp thông tin tổng hợp giúp người dùng theo dõi tình hình
+xử lý.
+
+-- 125 of 134 --
+
+113
+4.3. Cài đặt và triển khai chương trình
+Chương trình yêu cầu Node.js để xây dựng và chạy backend cùng các công cụ
+build. Trong kiến trúc thực tế, ứng dụng là hệ thống Full-stack Node.js/Express tích hợp
+Vite middleware, được đóng gói thành một tiến trình Node.js duy nhất; trong môi trường
+phát triển có thể chạy bằng tsx server.ts và khi build có thể chạy phiên bản máy chủ đã
+đóng gói. Hệ thống kết nối MySQL và có thể sử dụng Cloud Firestore khi vận hành trực
+tuyến. Đối với tên miền trg.id.vn, phương án triển khai được định hướng theo hạ tầng
+Google Firebase Hosting/Cloud Firestore hoặc Google Cloud Run/máy chủ tương thích,
+thay vì mô tả hệ thống như một ứng dụng Serverless Vercel thuần túy.
+Bổ sung: Truy cập MySQL từ xa qua Cloudflare Tunnel
+Để phục vụ quản trị, kiểm tra dữ liệu và kết nối từ các máy trạm ngoài mạng nội
+bộ, hệ thống triển khai Cloudflare Tunnel thông qua dịch vụ cloudflared trên máy chủ
+có thể truy cập MySQL. Cloudflare Tunnel tạo kết nối đi ra (outbound) từ máy chủ tới
+mạng Cloudflare, nhờ đó không cần mở trực tiếp cổng 3306 trên Internet. Người dùng
+từ xa được kiểm soát bằng Cloudflare Zero Trust/Access; với mô hình TCP, máy trạm
+có thể sử dụng cloudflared để tạo một cổng cục bộ và ứng dụng quản trị CSDL kết nối
+tới cổng này như một kết nối MySQL thông thường.
+Luồng kết nối được tổ chức theo trình tự: (1) máy chủ MySQL lắng nghe trên
+mạng riêng; (2) cloudflared trên máy chủ tạo Tunnel tới Cloudflare; (3) chính sách
+Zero Trust/Access xác thực và giới hạn người dùng được phép truy cập; (4) máy trạm
+chạy cloudflared để thiết lập kết nối TCP tới MySQL; và (5) ứng dụng quản trị như
+MySQL Workbench hoặc backend Node.js sử dụng host/port cục bộ do cloudflared
+cung cấp. Tài khoản MySQL được giới hạn quyền theo nguyên tắc tối thiểu cần thiết
+và thông tin xác thực được lưu trong biến môi trường, không đưa vào mã nguồn.
+Cách triển khai này phù hợp với kiến trúc hiện tại của đề tài: Cloud Firestore tiếp
+tục đảm nhiệm lớp dữ liệu trực tuyến, trong khi MySQL giữ vai trò dữ liệu quan hệ và
+có thể được quản trị từ xa an toàn qua Cloudflare. Trong trường hợp chỉ cần backend
+truy cập MySQL, có thể giữ MySQL hoàn toàn trong mạng riêng và chỉ cho phép máy
+chủ ứng dụng kết nối; Cloudflare được sử dụng chủ yếu cho nhu cầu quản trị/truy cập
+từ xa có kiểm soát.
+Bảng 4.10: Các bước cài đặt và khởi chạy hệ thống
+Bước Thao tác Mô tả
+
+-- 126 of 134 --
+
+114
+1 Cài đặt gói phụ thuộc Chạy npm install tại thư mục gốc để cài đặt các
+thư viện trong package.json.
+2 Cấu hình cơ sở dữ liệu Cấu hình MySQL và tài khoản CSDL; nếu
+vận hành trực tuyến thì cấu hình thêm Cloud
+Firestore và kiểm tra kết nối.
+3 Cấu hình biến môi trường Khai báo thông tin kết nối MySQL,
+Firebase/Firestore, GEMINI_API_KEY và các
+tham số Cloudflare nếu sử dụng truy cập MySQL
+từ xa.
+4 Chạy môi trường phát triển Chạy ứng dụng Full-stack Node.js/Express, có thể
+dùng tsx server.ts để kiểm tra nghiệp vụ, đồng bộ
+và AI fallback.
+5 Build ứng dụng Build frontend bằng Vite và đóng gói server
+Node.js/Express theo cấu hình dự án.
+6 Triển khai Đóng gói dạng Monolithic
+Node.js/Container và triển khai trên Google
+Cloud Run, Firebase Hosting kết hợp hoặc hạ
+tầng máy chủ tương thích; cấu hình DNS/HTTPS
+cho trg.id.vn và duy trì Cloudflare Tunnel nếu
+cần truy cập MySQL từ xa.
+3b Cấu hình Cloudflare
+Tunnel
+Cài đặt cloudflared trên máy chủ có quyền
+truy cập MySQL; tạo Tunnel tới dịch vụ MySQL
+TCP 3306 và áp dụng Cloudflare Zero
+Trust/Access. Máy trạm từ xa kết nối qua
+cloudflared tới cổng cục bộ được cấp, thay vì mở
+trực tiếp cổng 3306 trên Internet.
+3a Cấu hình dịch vụ email Khai báo RESEND_API_KEY và thông tin email
+gửi trong biến môi trường để backend gửi mã
+OTP qua Resend.
+Khi không có kết nối Cloud Firestore hoặc MySQL chưa sẵn sàng, các lớp lưu trữ
+tạm và cache của hệ thống cho phép ứng dụng tiếp tục khởi động trong phạm vi dữ liệu
+đã được lưu. Khi dịch vụ đám mây sẵn sàng, cơ chế đồng bộ được thực hiện để cập nhật
+dữ liệu. Chức năng AI cũng có bộ xử lý heuristic cục bộ làm phương án dự phòng khi
+Gemini không khả dụng.
+Đối với môi trường triển khai chính thức, mã nguồn có thể được đóng gói theo mô
+hình Monolithic Container/Node.js và triển khai trên Google Cloud Run hoặc hạ tầng
+máy chủ tương thích. Tên miền trg.id.vn được cấu hình DNS bằng bản ghi A/CNAME
+theo nhà cung cấp hạ tầng và sử dụng chứng chỉ SSL/TLS. Firebase Hosting có thể được
+sử dụng ở lớp hosting phù hợp với kiến trúc triển khai; Cloud Firestore tiếp tục đảm
+nhiệm vai trò dữ liệu trực tuyến. Vì server.ts là một ứng dụng Express có trạng thái bộ
+nhớ và kết nối MySQL, báo cáo không mô tả đây là “thuần Serverless Vercel” để tránh
+
+-- 127 of 134 --
+
+115
+sai lệch với kiến trúc thực tế. Nếu cần quản trị MySQL từ xa, Cloudflare Tunnel được
+duy trì trên máy chủ CSDL hoặc máy chủ có khả năng kết nối tới CSDL; quyền truy cập
+TCP được giới hạn bằng Cloudflare Zero Trust/Access, tránh công khai trực tiếp cổng
+3306. Đây là lớp truy cập quản trị từ xa, không thay thế vai trò của Cloud Firestore trong
+vận hành dữ liệu trực tuyến.
+4.4. Kiểm thử hệ thống
+Hoạt động kiểm thử được thực hiện theo các mức đã hoạch định tại mục 3.3.2, tập
+trung xác minh lại các yêu cầu chức năng và phi chức năng. Đối với kiến trúc lưu trữ
+thực tế, bổ sung kiểm tra cache phía client, cache file phía server, kết nối MySQL, đồng
+bộ Firestore và khả năng khôi phục khi một lớp dữ liệu tạm thời không khả dụng. Đối
+với AI, kiểm tra cả trường hợp Gemini hoạt động, chuyển model khi lỗi/quota và chuyển
+sang heuristic cục bộ. Đối với triển khai, kiểm tra build/chạy tiến trình Node.js và cấu
+hình tên miền/HTTPS theo hạ tầng triển khai thực tế. Bổ sung kiểm thử truy cập MySQL
+từ xa qua Cloudflare: kiểm tra Tunnel hoạt động, xác thực/Access policy đúng người
+dùng, kết nối TCP tới MySQL thành công, tài khoản không đủ quyền bị từ chối và
+trường hợp Tunnel ngắt thì MySQL không bị phơi trực tiếp ra Internet.
+Bảng 4.11: Một số kịch bản kiểm thử tiêu biểu
+Mã TC Nhóm Kịch bản kiểm thử
+TC-01 FR-01 Đăng nhập bằng tài khoản và mật khẩu hợp lệ của
+LEADER
+TC-02 FR-01 Đăng nhập bằng mật khẩu không đúng
+TC-03 FR-01 STAFF truy cập chức năng Quản trị người dùng
+TC-04 FR-01 Đăng xuất khỏi hệ thống sau khi đăng nhập
+TC-05 FR-02 Tải lên văn bản đến hợp lệ định dạng PDF khi
+Gemini khả dụng
+TC-06 FR-02 Tải lên tệp không thuộc định dạng được hỗ trợ
+hoặc tệp rỗng
+TC-07 FR-02 Phân tích văn bản khi Gemini API khả dụng
+TC-08 FR-02 Phân tích văn bản khi mất kết nối hoặc API Key
+không hợp lệ
+TC-09 FR-02 Văn thư tạo văn bản đến và phân công người xử
+lý
+TC-10 FR-02 Cập nhật thông tin văn bản đến đã tồn tại
+TC-11 FR-03 Tạo dự thảo văn bản đi với thông tin hợp lệ
+TC-12 FR-03 Trình duyệt văn bản đi cho lãnh đạo
+TC-13 FR-03 Lãnh đạo duyệt và phát hành văn bản đi
+
+-- 128 of 134 --
+
+116
+TC-14 FR-03 Liên kết văn bản đi với văn bản đến làm căn
+cứ/trả lời
+TC-15 FR-04 Lãnh đạo tạo nhiệm vụ và giao cho STAFF
+TC-16 FR-04 Tạo nhiệm vụ có hạn hoàn thành sớm hơn ngày
+bắt đầu
+TC-17 FR-04 Cập nhật tiến độ nhiệm vụ từ 30% lên 60%
+TC-18 FR-04 Nhập tiến độ nhỏ hơn 0% hoặc lớn hơn 100%
+TC-19 FR-04 Cập nhật tiến độ nhiệm vụ đạt 100% nhưng
+chưa nghiệm thu
+TC-20 FR-04 Trình báo cáo nghiệm thu, đính kèm kết quả
+và giải trình
+TC-21 FR-05 Tạo hồ sơ công việc và liên kết văn bản đến, văn
+bản đi, nhiệm vụ
+TC-22 FR-05 Đóng hồ sơ khi còn nhiệm vụ chưa hoàn thành
+TC-23 FR-05 Đóng hồ sơ khi các nhiệm vụ đã hoàn thành
+TC-24 FR-06 Tải tệp đính kèm và gắn tag cho tài liệu
+TC-25 FR-06 Tải tệp có thông tin liên kết không tồn tại
+TC-26 FR-07 Giao nhiệm vụ mới cho STAFF
+TC-27 FR-07 Nhiệm vụ đến hạn hoặc quá hạn
+TC-28 FR-08 Tạo mới hoặc cập nhật văn bản, nhiệm vụ, hồ sơ
+TC-29 FR-09 Lãnh đạo mở Dashboard và báo cáo thống kê
+TC-30 FR-10 Tìm kiếm theo số hiệu, trích yếu, người xử lý và
+khoảng thời gian
+TC-31 Hybrid Đồng bộ dữ liệu giữa lớp lưu trữ hệ thống
+và Cloud Firestore khi có kết nối
+TC-32 Hybrid Mất kết nối Firestore trong khi thao tác và
+kiểm tra khả năng tiếp tục vận hành
+TC-33 Hybrid/Backup Thực hiện sao lưu và khôi phục dữ liệu
+JSON/SQL
+TC-34 Serverless Build và chạy phiên bản Node.js/Express
+trên hạ tầng triển khai thực tế
+TC-35 NFR Truy cập hệ thống bằng Chrome, Edge và Firefox
+TC-36 NFR Mở hệ thống trên màn hình máy tính bảng hoặc
+điện thoại
+TC-37 NFR/Security Người dùng chưa đăng nhập truy cập trực tiếp
+URL chức năng nội bộ
+TC-38 NFR/Usability Bấm vào thông báo có deep-link tới nhiệm vụ/văn
+bản
+TC-39 NFR/Integrity Cập nhật dữ liệu quan trọng và kiểm tra audit log
+sau thao tác
+TC-40 FR-01 Chọn “Quên mật khẩu”, nhập email công vụ tồn
+tại và nhận mã OTP qua email
+
+-- 129 of 134 --
+
+117
+TC-41 FR-01 Nhập OTP hợp lệ trong thời hạn và đặt mật khẩu
+mới thành công
+TC-42 FR-01 Email không tồn tại hoặc OTP sai/hết hạn thì hệ
+thống từ chối yêu cầu
+TC-
+15
+NFR-02 Kết nối MySQL từ xa qua Cloudflare Tunnel; xác
+minh người dùng được cấp quyền kết nối thành
+công và người dùng không được cấp quyền bị từ
+chối.
+Kết quả kiểm thử ở các kịch bản trên là cơ sở để đối chiếu với tiêu chí hoàn thành
+tại mốc M4 (Bảng 3.24): hệ thống chỉ được chuyển sang giai đoạn triển khai - nghiệm
+thu khi không còn lỗi ở mức nghiêm trọng (critical/blocker) ảnh hưởng tới luồng nghiệp
+vụ chính.
+Tóm tắt chương: Chương 4 đã trình bày quá trình xây dựng các module chính,
+nguyên tắc thiết kế giao diện, cài đặt và triển khai hệ thống theo kiến trúc Full-stack
+Node.js/Express với lưu trữ ba tầng, MySQL – Cloud Firestore, cơ chế AI
+cascade/fallback và các quy trình nghiệp vụ liên kết giữa văn bản đến, nhiệm vụ và văn
+bản đi.
+
+-- 130 of 134 --
+
+118
+KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN
+Sau quá trình thực hiện, báo cáo môn học "XÂY DỰNG HỆ THỐNG PHÂN LOẠI
+NỘI DUNG VĂN BẢN ỨNG DỤNG TRONG QUẢN LÝ VĂN THƯ" đã cơ bản đạt
+được các mục tiêu đề ra tại mục 1.2: về mặt quản lý dự án, đồ án đã xây dựng được đầy
+đủ bộ hồ sơ lập kế hoạch gồm cơ cấu phân rã công việc (WBS) với 5 giai đoạn và 17
+gói công việc, lịch trình chi tiết theo sơ đồ Gantt trong 6 tuần (từ 20/08/2026 đến
+30/09/2026), ma trận phân công vai trò - trách nhiệm (RACI), bảng nhận diện và ứng
+phó 6 nhóm rủi ro chính, cùng bảng khái toán chi phí theo phương pháp ước lượng từ
+dưới lên; về mặt kỹ thuật, đồ án đã khảo sát, phân tích và thiết kế hệ thống với 10 yêu
+cầu chức năng, 7 nhóm yêu cầu phi chức năng, 6 loại biểu đồ UML và mô hình dữ liệu
+Hybrid gồm 10 bảng logic; sản phẩm đã được mở rộng dữ liệu mẫu với 10 bản ghi
+nghiệp vụ bổ sung cho từng bảng, bổ sung 4 đơn vị chuyên trách và 10 cán bộ mới (usr-
+09 đến usr-18), đồng thời liên kết dữ liệu giữa văn bản, nhiệm vụ, hồ sơ và nhân sự. Hệ
+thống hỗ trợ vận hành MySQL nội bộ, đồng bộ Cloud Firestore, sao lưu JSON/SQL và
+triển khai Full-stack/Monolithic Node.js trên Vercel qua GitHub với tên miền trg.id.vn.
+Quá trình thực hiện đồ án cũng giúp rút ra một số bài học kinh nghiệm thực tiễn
+về quản lý dự án phần mềm: việc lập kế hoạch chi tiết ngay từ đầu (WBS, lịch trình, rủi
+ro) giúp chủ động hơn trong việc phân bổ thời gian giữa khối lượng học tập và khối
+lượng công việc dự án; việc áp dụng mô hình phát triển lặp (Scrum rút gọn) giúp linh
+hoạt điều chỉnh khi phát sinh yêu cầu mới mà không làm xáo trộn toàn bộ kế hoạch; và
+việc chủ động xây dựng phương án dự phòng (như bộ phân loại quy tắc cục bộ thay thế
+AI) là minh chứng cụ thể cho tầm quan trọng của công tác quản lý rủi ro trong dự án
+phần mềm.
+Bên cạnh những kết quả đạt được, đồ án vẫn còn một số hạn chế. Dữ liệu nghiệp
+vụ và số liệu khảo sát trong báo cáo mang tính mô phỏng, minh họa cho mục đích học
+thuật, chưa được triển khai và kiểm nghiệm tại một đơn vị hành chính thật với quy mô
+dữ liệu lớn. Việc đồng bộ Hybrid phụ thuộc vào cấu hình và khả năng kết nối dịch vụ
+Cloud Firestore; giới hạn của các gói miễn phí Firebase/Vercel/GitHub cần được theo
+dõi khi quy mô người dùng và dữ liệu tăng. Hệ thống chưa tích hợp chữ ký số theo hạ
+tầng khóa công khai (PKI/CA) được pháp luật công nhận, mới dừng ở mức mô phỏng
+thao tác "ký duyệt" trong quy trình nội bộ. Đồ án cũng chưa thực hiện kiểm thử hiệu
+năng (performance testing) với khối lượng người dùng và dữ liệu lớn để đánh giá khả
+năng chịu tải thực tế của hệ thống. Ngoài ra, việc ước lượng chi phí, thời gian trong kế
+hoạch quản lý dự án còn ở mức khái toán đơn giản, chưa vận dụng các kỹ thuật ước
+
+-- 131 of 134 --
+
+119
+lượng nâng cao hơn (như COCOMO II, Function Point) do giới hạn thời gian của môn
+học.
+Từ những hạn chế trên, một số hướng phát triển được đề xuất cho giai đoạn tiếp
+theo gồm: tích hợp chữ ký số công cộng (PKI/CA) và kết nối trục liên thông văn bản
+quốc gia (VDXP) để có thể trao đổi văn bản điện tử với các cơ quan, đơn vị khác theo
+đúng quy định hiện hành; phát triển ứng dụng di động (mobile app) đi kèm, giúp lãnh
+đạo và cán bộ có thể duyệt văn bản, giao việc và nhận thông báo mọi lúc, mọi nơi; mở
+rộng tầng AI theo hướng phân tích dữ liệu nâng cao như tự động tổng hợp báo cáo định
+kỳ, phát hiện bất thường về tiến độ, gợi ý phân bổ nguồn lực dựa trên lịch sử xử lý công
+việc; bổ sung khả năng đa đơn vị (multi-tenant) để một hệ thống có thể phục vụ đồng
+thời nhiều cơ quan/doanh nghiệp độc lập với dữ liệu tách biệt; và áp dụng các kỹ thuật
+ước lượng chi phí, thời gian nâng cao hơn (COCOMO II, Function Point Analysis) cùng
+mở rộng bộ chỉ số theo dõi hiệu suất dự án (EVM - Earned Value Management) khi triển
+khai ở quy mô lớn hơn.
+
+-- 132 of 134 --
+
+120
+TÀI LIỆU THAM KHẢO
+A. Tiếng Việt
+[1] Trường Đại học Công nghệ Giao thông Vận tải, Khoa Công nghệ Thông tin, Quy
+định về trình bày Báo cáo môn học, Hà Nội.
+[2] Bộ Thông tin và Truyền thông, Cẩm nang Chuyển đổi số, Nhà xuất bản Thông tin
+và Truyền thông, Hà Nội, 2021.
+B. Tiếng Anh
+[3] Project Management Institute, A Guide to the Project Management Body of
+Knowledge (PMBOK Guide), 7th Edition, Project Management Institute,
+Newtown Square, 2021.
+[4] Ian Sommerville, Software Engineering, 10th Edition, Pearson Education, 2015.
+[5] Roger S. Pressman, Bruce R. Maxim, Software Engineering: A Practitioner's
+Approach, 8th Edition, McGraw-Hill Education, 2014.
+[6] Martin Fowler, UML Distilled: A Brief Guide to the Standard Object Modeling
+Language, 3rd Edition, Addison-Wesley, 2003.
+[7] Ken Schwaber, Jeff Sutherland, The Scrum Guide, Scrum.org, 2020.
+[8] Kent Beck et al., "Manifesto for Agile Software Development", agilemanifesto.org,
+2001.
+[9] React, "React Documentation", https://react.dev, truy cập tháng 8/2026.
+[10] OpenJS Foundation, "Express — Node.js web application framework",
+https://expressjs.com, truy cập tháng 8/2026.
+[11] Oracle Corporation, "MySQL 8.0 Reference Manual", https://dev.mysql.com/doc/,
+truy cập tháng 8/2026.
+[12] Google, "Gemini API Documentation", https://ai.google.dev/gemini-api/docs,
+truy cập tháng 8/2026.
+[13] Google Firebase, "Cloud Firestore Documentation",
+https://firebase.google.com/docs/firestore, truy cập tháng 9/2026.
+[14] Vercel, "Vercel Documentation", https://vercel.com/docs, truy cập tháng
+9/2026.
+
+-- 133 of 134 --
+
+121
+[15] GitHub, "GitHub Documentation", https://docs.github.com, truy cập tháng
+9/2026.
+[16] [Cloudflare Docs] Access and secure a MySQL database using Cloudflare
+Tunnel and network policies, 2026.
+[17] [Cloudflare Docs] Arbitrary TCP – Cloudflare Access, 2026.
+
+-- 134 of 134 --
+

@@ -32,9 +32,10 @@ import {
   FileCode,
   File,
   Image as ImageIcon,
+  AlertTriangle,
 } from 'lucide-react';
 import { FilePreviewModal } from '../components/FilePreviewModal';
-import { canAccessDossier, isLeaderOrAdmin, canCloseDossier, canDeleteDossier } from '../utils/permission';
+import { canAccessDossier, isLeaderOrAdmin, canDeleteDossierRecord, canDeleteAttachmentRecord } from '../utils/permission';
 
 interface DossiersViewProps {
   dossiers: Dossier[];
@@ -82,6 +83,8 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedDossier, setSelectedDossier] = useState<Dossier | null>(null);
+  const [deleteTargetDossier, setDeleteTargetDossier] = useState<Dossier | null>(null);
+  const [deleteToastMessage, setDeleteToastMessage] = useState<string | null>(null);
 
   // Departments from masterData + existing users & dossiers
   const departmentList = useMemo(() => {
@@ -198,10 +201,7 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
     e.target.value = '';
   };
 
-  const [formError, setFormError] = useState<string | null>(null);
-
   const handleOpenAddModal = () => {
-    setFormError(null);
     setEditingDossier({
       id: 'hs-' + Date.now(),
       code: `HS-2025-${String(dossiers.length + 1).padStart(3, '0')}`,
@@ -218,7 +218,6 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   };
 
   const handleOpenEditModal = (d: Dossier) => {
-    setFormError(null);
     setEditingDossier({ ...d });
     setIsModalOpen(true);
   };
@@ -227,16 +226,6 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
     e.preventDefault();
     if (!editingDossier || !editingDossier.code || !editingDossier.title) return;
 
-    // Kiểm tra điều kiện nghiệm thu đóng hồ sơ theo Hình 3.33 & Bảng 3.9
-    if (editingDossier.status === 'CLOSED' || editingDossier.status === 'ARCHIVED') {
-      const check = canCloseDossier(editingDossier as Dossier, currentUser, tasks);
-      if (!check.allowed) {
-        setFormError(check.reason || 'Không thể đóng hồ sơ khi còn nhiệm vụ chưa hoàn thành');
-        return;
-      }
-    }
-
-    setFormError(null);
     onSaveDossier(editingDossier as Dossier);
     setIsModalOpen(false);
     setEditingDossier(null);
@@ -662,12 +651,17 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  const val = canDeleteAttachmentRecord(att, currentUser, dossiers);
+                                  if (!val.allowed) {
+                                    alert(val.reason);
+                                    return;
+                                  }
                                   if (confirm(`Bạn có chắc chắn muốn xóa tệp "${att.fileName}" khỏi hồ sơ này?`)) {
                                     onDeleteAttachment(att.id);
                                   }
                                 }}
                                 className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
-                                title="Xóa tài liệu"
+                                title="Xóa tài liệu (Hình 3.34)"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -683,69 +677,28 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
 
             {/* Footer Actions */}
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
-              <div>
-                {canDeleteDossier(selectedDossier, currentUser, incomingDocs, outgoingDocs, tasks, attachments).allowed && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const check = canDeleteDossier(selectedDossier, currentUser, incomingDocs, outgoingDocs, tasks, attachments);
-                      if (!check.allowed) {
-                        alert(check.reason);
-                        return;
-                      }
-                      if (confirm(`Bạn có chắc muốn xóa hồ sơ ${selectedDossier.code} - ${selectedDossier.title}?`)) {
-                        onDeleteDossier(selectedDossier.id);
-                        setSelectedDossier(null);
-                      }
-                    }}
-                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                    title="Xóa hồ sơ rỗng / tạo nhầm (Hình 3.34)"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Xóa hồ sơ rỗng</span>
-                  </button>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteTargetDossier(selectedDossier);
+                }}
+                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors border border-rose-200"
+                title="Xóa hồ sơ vụ việc (Văn thư/Lãnh đạo - Hình 3.34 & Bảng 3.9)"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xóa hồ sơ</span>
+              </button>
 
-              <div className="flex items-center gap-2">
-                {selectedDossier.status === 'OPEN' && isLeaderOrAdmin(currentUser) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const check = canCloseDossier(selectedDossier, currentUser, tasks);
-                      if (!check.allowed) {
-                        alert(check.reason);
-                        return;
-                      }
-                      if (confirm(`Xác nhận Nghiệm thu & Đóng hồ sơ vụ việc [${selectedDossier.code}]? Hồ sơ sẽ được chuyển sang trạng thái ĐÃ ĐÓNG và lưu trữ lịch sử theo quy định (Hình 3.33).`)) {
-                        const closedDossier: Dossier = {
-                          ...selectedDossier,
-                          status: 'CLOSED',
-                          endDate: new Date().toISOString().split('T')[0],
-                        };
-                        onSaveDossier(closedDossier);
-                        setSelectedDossier(closedDossier);
-                      }
-                    }}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                    title="Lãnh đạo nghiệm thu và đóng hồ sơ vụ việc (Hình 3.33)"
-                  >
-                    <CheckSquare className="w-3.5 h-3.5" />
-                    <span>Nghiệm thu & Đóng hồ sơ</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => {
-                    const d = selectedDossier;
-                    setSelectedDossier(null);
-                    handleOpenEditModal(d);
-                  }}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
-                >
-                  Chỉnh sửa thông tin hồ sơ
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  const d = selectedDossier;
+                  setSelectedDossier(null);
+                  handleOpenEditModal(d);
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Chỉnh sửa thông tin hồ sơ
+              </button>
             </div>
           </div>
         </div>
@@ -773,15 +726,6 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
             </div>
 
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
-              {formError && (
-                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-800 font-medium flex items-start gap-2">
-                  <Lock className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="block font-bold text-rose-950">Không thể đóng hồ sơ</strong>
-                    <p className="mt-0.5">{formError}</p>
-                  </div>
-                </div>
-              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
@@ -918,6 +862,107 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
           setPreviewFile(null);
         }}
       />
+
+      {/* Delete Dossier Modal (Hình 3.34 & Bảng 3.9 & Hình 3.69) */}
+      {deleteTargetDossier && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">Xác nhận xóa hồ sơ công việc</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Hình 3.34 & Bảng 3.9: Văn thư hoặc Lãnh đạo xóa hồ sơ tạo sai / rỗng.
+                </p>
+              </div>
+            </div>
+
+            {(() => {
+              const deleteValidation = canDeleteDossierRecord(
+                deleteTargetDossier,
+                currentUser,
+                attachments,
+                incomingDocs,
+                outgoingDocs,
+                tasks
+              );
+              return (
+                <>
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5 font-medium">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Mã hồ sơ:</span>
+                      <span className="font-bold text-indigo-700 font-mono">{deleteTargetDossier.code}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Trạng thái:</span>
+                      <span className="font-bold text-slate-800">
+                        {deleteTargetDossier.status === 'CLOSED'
+                          ? 'Đã đóng'
+                          : deleteTargetDossier.status === 'ARCHIVED'
+                          ? 'Lưu trữ vĩnh viễn'
+                          : 'Đang mở/xử lý'}
+                      </span>
+                    </div>
+                    <div className="pt-1 border-t border-slate-200/80">
+                      <span className="text-slate-400 block text-[11px] mb-0.5">Tiêu đề hồ sơ:</span>
+                      <p className="text-slate-800 line-clamp-2 text-[11px]">{deleteTargetDossier.title}</p>
+                    </div>
+                  </div>
+
+                  {!deleteValidation.allowed && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block mb-0.5">Quy tắc nghiệp vụ từ chối xóa (Hình 3.34 & Bảng 3.9):</span>
+                        <p className="text-[11px] leading-relaxed text-amber-800">{deleteValidation.reason}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTargetDossier(null)}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      {deleteValidation.allowed ? 'Hủy bỏ' : 'Đã hiểu & Đóng'}
+                    </button>
+                    {deleteValidation.allowed && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetId = deleteTargetDossier.id;
+                          const targetCode = deleteTargetDossier.code;
+                          onDeleteDossier(targetId);
+                          if (selectedDossier?.id === targetId) {
+                            setSelectedDossier(null);
+                          }
+                          setDeleteTargetDossier(null);
+                          setDeleteToastMessage(`Đã xóa thành công hồ sơ vụ việc [${targetCode}].`);
+                          setTimeout(() => setDeleteToastMessage(null), 3500);
+                        }}
+                        className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Xác nhận xóa</span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {deleteToastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+          <span>{deleteToastMessage}</span>
+        </div>
+      )}
     </div>
   );
 };

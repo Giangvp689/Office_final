@@ -420,6 +420,7 @@ export const App: React.FC = () => {
             <IncomingDocsView
               docs={incomingDocs}
               tasks={tasks}
+              outgoingDocs={outgoingDocs}
               users={users}
               dossiers={dossiers}
               masterData={masterData}

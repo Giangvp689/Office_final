@@ -73,6 +73,7 @@ import {
   isClerk,
   canEditTask,
   canDeleteTask,
+  canDeleteTaskRecord,
 } from '../utils/permission';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { generateTaskResultReportPdf } from '../utils/samplePdfGenerator';
@@ -1244,19 +1245,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {canDeleteTask(t, currentUser).allowed && (
+                            {canDeleteTaskRecord(t, currentUser).allowed && (
                               <button
                                 onClick={() => {
-                                  const check = canDeleteTask(t, currentUser);
-                                  if (!check.allowed) {
-                                    alert(check.reason);
+                                  const val = canDeleteTaskRecord(t, currentUser);
+                                  if (!val.allowed) {
+                                    alert(val.reason);
                                     return;
                                   }
-                                  if (confirm(`Bạn có chắc muốn xóa công việc ${t.title}?`)) {
+                                  if (confirm(`Xác nhận xóa nhiệm vụ [${t.code}] "${t.title}"? Thao tác này sẽ xóa vĩnh viễn trên toàn hệ thống.`)) {
                                     onDeleteTask(t.id);
                                   }
                                 }}
-                                title="Xóa công việc (Chỉ dành cho Lãnh đạo/Admin khi việc chưa hoàn thành)"
+                                title="Xóa nhiệm vụ (Lãnh đạo/Admin - Hình 3.28)"
                                 className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg cursor-pointer transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1377,22 +1378,22 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {canDeleteTask(selectedTask, currentUser).allowed && (
+                {canDeleteTaskRecord(selectedTask, currentUser).allowed && (
                   <button
                     type="button"
                     onClick={() => {
                       const taskToDelete = selectedTask;
-                      const check = canDeleteTask(taskToDelete, currentUser);
-                      if (!check.allowed) {
-                        alert(check.reason);
+                      const val = canDeleteTaskRecord(taskToDelete, currentUser);
+                      if (!val.allowed) {
+                        alert(val.reason);
                         return;
                       }
-                      if (confirm(`Bạn có chắc muốn xóa công việc ${taskToDelete.title}? Thao tác này sẽ xóa vĩnh viễn trên toàn hệ thống.`)) {
+                      if (confirm(`Xác nhận xóa nhiệm vụ [${taskToDelete.code}] "${taskToDelete.title}"? Thao tác này sẽ xóa vĩnh viễn trên toàn hệ thống.`)) {
                         setSelectedTask(null);
                         onDeleteTask(taskToDelete.id);
                       }
                     }}
-                    title="Xóa công việc này (Chỉ dành cho Lãnh đạo khi việc chưa nghiệm thu)"
+                    title="Xóa nhiệm vụ (Lãnh đạo/Admin - Hình 3.28)"
                     className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

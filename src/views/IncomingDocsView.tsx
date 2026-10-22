@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   IncomingDocument,
+  OutgoingDocument,
   User,
   Dossier,
   AttachmentFile,
@@ -47,18 +48,30 @@ import {
   Send,
   ShieldAlert,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { summarizeDocumentWithAI, classifyDocumentWithAI } from '../services/aiService';
 import { extractTextFromFile, extractTextFromDataUrl } from '../utils/fileExtractor';
 import { FilePreviewModal } from '../components/FilePreviewModal';
 import { SamplePdfModal } from '../components/SamplePdfModal';
 import { EmailReceiverModal } from '../components/EmailReceiverModal';
-import { canAccessIncomingDoc, isLeaderOrAdmin, isClerk, canRegisterIncomingDoc, canDirectIncomingDoc, getAssignableStaffUsers, getLeaderUsers, canDeleteIncomingDoc } from '../utils/permission';
+import {
+  canAccessIncomingDoc,
+  isLeaderOrAdmin,
+  isClerk,
+  canRegisterIncomingDoc,
+  canDirectIncomingDoc,
+  getAssignableStaffUsers,
+  getLeaderUsers,
+  canEditIncomingDoc,
+  canDeleteIncomingDoc,
+} from '../utils/permission';
 import { dbService } from '../services/db';
 
 interface IncomingDocsViewProps {
   docs: IncomingDocument[];
   tasks?: Task[];
+  outgoingDocs?: OutgoingDocument[];
   users: User[];
   dossiers: Dossier[];
   onSaveDoc: (doc: IncomingDocument) => void;
@@ -75,6 +88,7 @@ interface IncomingDocsViewProps {
 export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
   docs,
   tasks = [],
+  outgoingDocs = [],
   users,
   dossiers,
   onSaveDoc,
@@ -1195,16 +1209,16 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                               <ExternalLink className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {(isLeaderOrAdmin(currentUser) || isClerk(currentUser)) && (
+                          {canEditIncomingDoc(doc, currentUser) && (
                             <button
                               onClick={() => handleOpenEditModal(doc)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                              title="Sửa thông tin văn bản & tệp scan"
+                              title="Sửa thông tin văn bản đến (Văn thư/Admin - Hình 3.16)"
                             >
                               <Edit className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {(isClerk(currentUser) || currentUser?.role === 'ADMIN') && (
+                          {(isClerk(currentUser) || currentUser.role === 'ADMIN') && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1212,7 +1226,7 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                                 setDeleteTargetDoc(doc);
                               }}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                              title="Xóa văn bản đến (Chỉ Văn thư / Admin)"
+                              title="Xóa văn bản đến (Văn thư/Admin - Hình 3.17)"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -2204,8 +2218,8 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </button>
               )}
 
-              {/* Edit incoming doc metadata (Clerk or Leader) */}
-              {(canRegisterIncomingDoc(currentUser) || isLeaderOrAdmin(currentUser)) && (
+              {/* Edit incoming doc metadata (Clerk or Admin - Hình 3.16) */}
+              {canEditIncomingDoc(selectedDoc, currentUser) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -2219,14 +2233,15 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
                 </button>
               )}
 
-              {(canRegisterIncomingDoc(currentUser) || isLeaderOrAdmin(currentUser)) && (
+              {/* Delete incoming doc (Clerk or Admin - Hình 3.17) */}
+              {(isClerk(currentUser) || currentUser.role === 'ADMIN') && (
                 <button
                   type="button"
                   onClick={() => {
                     setDeleteTargetDoc(selectedDoc);
                   }}
                   className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors border border-rose-200"
-                  title="Xóa văn bản này"
+                  title="Xóa văn bản đến (Văn thư/Admin - Hình 3.17)"
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>Xóa VB</span>
@@ -2901,80 +2916,71 @@ export const IncomingDocsView: React.FC<IncomingDocsViewProps> = ({
               </div>
             </div>
 
-            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5 font-medium">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Số đến nội bộ:</span>
-                <span className="font-bold text-indigo-700 font-mono">{deleteTargetDoc.documentNumber}</span>
-              </div>
-              {deleteTargetDoc.officialNumber && (
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Số hiệu gốc:</span>
-                  <span className="font-bold text-slate-700 font-mono">{deleteTargetDoc.officialNumber}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">Cơ quan gửi:</span>
-                <span className="font-bold text-slate-800">{deleteTargetDoc.issuingAuthority}</span>
-              </div>
-              <div className="pt-1 border-t border-slate-200/80">
-                <span className="text-slate-400 block text-[11px] mb-0.5">Trích yếu:</span>
-                <p className="text-slate-800 line-clamp-2 text-[11px]">{deleteTargetDoc.summary}</p>
-              </div>
-            </div>
-
             {(() => {
-              const deleteCheck = canDeleteIncomingDoc(deleteTargetDoc, currentUser, tasks, []);
-              if (!deleteCheck.allowed) {
-                return (
-                  <div className="space-y-3">
-                    <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2">
-                      <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <div>
-                        <strong className="block font-bold text-amber-950">Vi Phạm Ràng Buộc Dữ Liệu (Hình 3.17)</strong>
-                        <p className="mt-0.5">{deleteCheck.reason}</p>
-                      </div>
+              const deleteValidation = canDeleteIncomingDoc(deleteTargetDoc, currentUser, tasks, outgoingDocs);
+              return (
+                <>
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5 font-medium">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Số đến nội bộ:</span>
+                      <span className="font-bold text-indigo-700 font-mono">{deleteTargetDoc.documentNumber}</span>
                     </div>
-                    <div className="flex items-center justify-end pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTargetDoc(null)}
-                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
-                      >
-                        Đã hiểu & Đóng
-                      </button>
+                    {deleteTargetDoc.officialNumber && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Số hiệu gốc:</span>
+                        <span className="font-bold text-slate-700 font-mono">{deleteTargetDoc.officialNumber}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Cơ quan gửi:</span>
+                      <span className="font-bold text-slate-800">{deleteTargetDoc.issuingAuthority}</span>
+                    </div>
+                    <div className="pt-1 border-t border-slate-200/80">
+                      <span className="text-slate-400 block text-[11px] mb-0.5">Trích yếu:</span>
+                      <p className="text-slate-800 line-clamp-2 text-[11px]">{deleteTargetDoc.summary}</p>
                     </div>
                   </div>
-                );
-              }
 
-              return (
-                <div className="flex items-center justify-end gap-2.5 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTargetDoc(null)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const targetId = deleteTargetDoc.id;
-                      const targetNum = deleteTargetDoc.documentNumber;
-                      onDeleteDoc(targetId);
-                      if (selectedDoc?.id === targetId) {
-                        setSelectedDoc(null);
-                      }
-                      setDeleteTargetDoc(null);
-                      setDeleteToastMessage(`Đã xóa thành công văn bản đến số [${targetNum}].`);
-                      setTimeout(() => setDeleteToastMessage(null), 3500);
-                    }}
-                    className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Xác nhận xóa</span>
-                  </button>
-                </div>
+                  {!deleteValidation.allowed && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block mb-0.5">Quy tắc nghiệp vụ ngăn chặn xóa (Hình 3.17 & Bảng 3.6):</span>
+                        <p className="text-[11px] leading-relaxed text-amber-800">{deleteValidation.reason}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTargetDoc(null)}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      {deleteValidation.allowed ? 'Hủy bỏ' : 'Đã hiểu & Đóng'}
+                    </button>
+                    {deleteValidation.allowed && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetId = deleteTargetDoc.id;
+                          const targetNum = deleteTargetDoc.documentNumber;
+                          onDeleteDoc(targetId);
+                          if (selectedDoc?.id === targetId) {
+                            setSelectedDoc(null);
+                          }
+                          setDeleteTargetDoc(null);
+                          setDeleteToastMessage(`Đã xóa thành công văn bản đến số [${targetNum}].`);
+                          setTimeout(() => setDeleteToastMessage(null), 3500);
+                        }}
+                        className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Xác nhận xóa</span>
+                      </button>
+                    )}
+                  </div>
+                </>
               );
             })()}
           </div>

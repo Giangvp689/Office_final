@@ -1090,24 +1090,46 @@ app.delete('/api/incoming-docs/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const store = loadStore();
+    const target = store.incomingDocs.find((d) => d.id === id);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy văn bản đến.' });
+    }
+
+    // Kiểm tra ràng buộc theo Hình 3.17 & Bảng 3.6:
+    const hasLinkedTask = store.tasks.some(
+      (t) =>
+        t.incomingDocId === id ||
+        t.linkedDocId === id ||
+        (Array.isArray(target.linkedTaskIds) && target.linkedTaskIds.includes(t.id))
+    );
+    if (hasLinkedTask) {
+      return res.status(400).json({
+        success: false,
+        message: 'Hệ thống ngăn chặn xóa: Văn bản đến đang gắn với nhiệm vụ phân công công việc (Hình 3.17 & Bảng 3.6).',
+      });
+    }
+
+    const hasLinkedOutgoing = store.outgoingDocs.some(
+      (o) => o.incomingDocId === id || (o as any).linkedIncomingDocId === id
+    );
+    if (hasLinkedOutgoing) {
+      return res.status(400).json({
+        success: false,
+        message: 'Hệ thống ngăn chặn xóa: Văn bản đến đã phát sinh văn bản đi phúc đáp liên quan.',
+      });
+    }
+
     store.incomingDocs = store.incomingDocs.filter((d) => d.id !== id);
     store.attachments = store.attachments.filter((a) => a.relatedId !== id);
-    store.tasks = store.tasks.map((t) => {
-      if (t.incomingDocId === id || t.linkedDocId === id) {
-        return { ...t, incomingDocId: undefined, linkedDocId: undefined };
-      }
-      return t;
-    });
     saveStore(store);
 
     const dbResult = await safeDbRun(async (pool) => {
       await pool.query('DELETE FROM attachments WHERE related_id=?', [id]);
-      await pool.query('UPDATE tasks SET incoming_doc_id=NULL, linked_doc_id=NULL WHERE incoming_doc_id=? OR linked_doc_id=?', [id, id]);
       await pool.query('DELETE FROM incoming_documents WHERE id=?', [id]);
     });
     res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
-    res.json({ success: true, id: req.params.id });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -1194,15 +1216,30 @@ app.delete('/api/outgoing-docs/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const store = loadStore();
+    const target = store.outgoingDocs.find((d) => d.id === id);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy văn bản đi.' });
+    }
+
+    // Kiểm tra ràng buộc theo Hình 3.23 & Bảng 3.7:
+    if (target.status === 'SIGNED' || target.status === 'ISSUED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Hệ thống từ chối xóa đối với văn bản đã được phê duyệt hoặc cấp số phát hành chính thức (Hình 3.23 & Bảng 3.7).',
+      });
+    }
+
     store.outgoingDocs = store.outgoingDocs.filter((d) => d.id !== id);
+    store.attachments = store.attachments.filter((a) => a.relatedId !== id);
     saveStore(store);
 
     const dbResult = await safeDbRun(async (pool) => {
+      await pool.query('DELETE FROM attachments WHERE related_id=?', [id]);
       await pool.query('DELETE FROM outgoing_documents WHERE id=?', [id]);
     });
     res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
-    res.json({ success: true, id: req.params.id });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -1599,6 +1636,19 @@ app.delete('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const store = loadStore();
+    const target = store.tasks.find((t) => t.id === id);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nhiệm vụ cần xóa.' });
+    }
+
+    // Kiểm tra ràng buộc theo Hình 3.28 & Bảng 3.8:
+    if (target.status === 'COMPLETED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Nhiệm vụ đã được nghiệm thu hoàn thành, hệ thống từ chối xóa để đảm bảo toàn vẹn dữ liệu và lịch sử công tác (Hình 3.28 & Bảng 3.8).',
+      });
+    }
+
     store.tasks = store.tasks.filter((t) => t.id !== id);
     saveStore(store);
 
@@ -1607,7 +1657,7 @@ app.delete('/api/tasks/:id', async (req, res) => {
     });
     res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
-    res.json({ success: true, id: req.params.id });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -1691,6 +1741,32 @@ app.delete('/api/dossiers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const store = loadStore();
+    const target = store.dossiers.find((d) => d.id === id);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ vụ việc.' });
+    }
+
+    // Kiểm tra ràng buộc theo Hình 3.34 & Bảng 3.9 & Hình 3.69:
+    if (target.status === 'CLOSED' || target.status === 'ARCHIVED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Hệ thống báo lỗi và từ chối xóa: Hồ sơ đã được nghiệm thu đóng hoặc chuyển lưu trữ vĩnh viễn (Hình 3.34 & Bảng 3.9).',
+      });
+    }
+
+    const linkedAttCount = store.attachments.filter((a) => a.dossierId === target.id || a.dossierId === target.code).length;
+    const linkedInCount = store.incomingDocs.filter((d) => d.dossierId === target.id || d.dossierId === target.code).length;
+    const linkedOutCount = store.outgoingDocs.filter((d) => d.dossierId === target.id || d.dossierId === target.code).length;
+    const linkedTaskCount = store.tasks.filter((t) => t.dossierId === target.id || t.dossierId === target.code).length;
+    const totalLinked = linkedAttCount + linkedInCount + linkedOutCount + linkedTaskCount;
+
+    if (totalLinked > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Hồ sơ đang chứa tài liệu liên kết (${linkedInCount} VB đến, ${linkedOutCount} VB đi, ${linkedTaskCount} công việc, ${linkedAttCount} tệp đính kèm). Hệ thống từ chối xóa do còn ràng buộc dữ liệu (Hình 3.34 & Hình 3.69).`,
+      });
+    }
+
     store.dossiers = store.dossiers.filter((d) => d.id !== id);
     saveStore(store);
 
@@ -1699,7 +1775,7 @@ app.delete('/api/dossiers/:id', async (req, res) => {
     });
     res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
-    res.json({ success: true, id: req.params.id });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -2514,6 +2590,22 @@ app.delete('/api/attachments/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const store = loadStore();
+    const target = store.attachments.find((a) => a.id === id);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tệp tài liệu.' });
+    }
+
+    // Kiểm tra ràng buộc theo Hình 3.34:
+    if (target.dossierId) {
+      const relDossier = store.dossiers.find((d) => d.id === target.dossierId || d.code === target.dossierId);
+      if (relDossier && (relDossier.status === 'CLOSED' || relDossier.status === 'ARCHIVED')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tài liệu nằm trong hồ sơ vụ việc đã nghiệm thu đóng hoặc lưu trữ, không thể gỡ bỏ (Hình 3.34).',
+        });
+      }
+    }
+
     store.attachments = store.attachments.filter((a) => a.id !== id);
     saveStore(store);
 
@@ -2522,7 +2614,7 @@ app.delete('/api/attachments/:id', async (req, res) => {
     });
     res.json({ success: true, id, fromDb: dbResult.fromDb });
   } catch (error: any) {
-    res.json({ success: true, id: req.params.id });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

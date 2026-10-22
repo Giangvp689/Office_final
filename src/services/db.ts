@@ -1397,15 +1397,44 @@ class DatabaseService {
     firestoreSync.saveDossier(dossier);
   }
 
-  public deleteDossier(id: string, actor?: User) {
+  public deleteDossier(id: string, actor?: User): { success: boolean; reason?: string } {
     const dossiers = this.getDossiers();
     const target = dossiers.find((d) => d.id === id);
-    if (target) {
-      this.setList(DB_STORAGE_KEYS.DOSSIERS, dossiers.filter((d) => d.id !== id));
-      this.logAction('DELETE', 'DOSSIER', id, target.title, `Xóa hồ sơ vụ việc: ${target.code}`, actor);
-      this.apiCall(`/api/dossiers/${id}`, 'DELETE');
-      firestoreSync.deleteDossier(id);
+    if (!target) return { success: false, reason: 'Không tìm thấy hồ sơ vụ việc.' };
+
+    // Kiểm tra ràng buộc theo Hình 3.34 & Bảng 3.9 & Hình 3.69:
+    if (target.status === 'CLOSED' || target.status === 'ARCHIVED') {
+      console.warn('⚠️ [Hình 3.34]: Từ chối xóa hồ sơ đã đóng hoặc lưu trữ.');
+      return {
+        success: false,
+        reason: 'Hệ thống báo lỗi và từ chối xóa: Hồ sơ đã được nghiệm thu đóng hoặc chuyển lưu trữ vĩnh viễn (Hình 3.34 & Bảng 3.9).',
+      };
     }
+
+    const attachments = this.getAttachments();
+    const incomingDocs = this.getIncomingDocs();
+    const outgoingDocs = this.getOutgoingDocs();
+    const tasks = this.getTasks();
+
+    const linkedAttCount = attachments.filter((a) => a.dossierId === target.id || a.dossierId === target.code).length;
+    const linkedInCount = incomingDocs.filter((d) => d.dossierId === target.id || d.dossierId === target.code).length;
+    const linkedOutCount = outgoingDocs.filter((d) => d.dossierId === target.id || d.dossierId === target.code).length;
+    const linkedTaskCount = tasks.filter((t) => t.dossierId === target.id || t.dossierId === target.code).length;
+    const totalLinked = linkedAttCount + linkedInCount + linkedOutCount + linkedTaskCount;
+
+    if (totalLinked > 0) {
+      console.warn('⚠️ [Hình 3.34]: Từ chối xóa hồ sơ đang chứa tài liệu liên kết.');
+      return {
+        success: false,
+        reason: `Hồ sơ đang chứa tài liệu liên kết (${linkedInCount} VB đến, ${linkedOutCount} VB đi, ${linkedTaskCount} công việc, ${linkedAttCount} tệp đính kèm). Hệ thống từ chối xóa do còn ràng buộc dữ liệu (Hình 3.34 & Hình 3.69).`,
+      };
+    }
+
+    this.setList(DB_STORAGE_KEYS.DOSSIERS, dossiers.filter((d) => d.id !== id));
+    this.logAction('DELETE', 'DOSSIER', id, target.title, `Xóa hồ sơ vụ việc: ${target.code}`, actor);
+    this.apiCall(`/api/dossiers/${id}`, 'DELETE');
+    firestoreSync.deleteDossier(id);
+    return { success: true };
   }
 
   // --- Incoming Documents (Văn bản đến) ---
@@ -1486,9 +1515,40 @@ class DatabaseService {
     }
   }
 
-  public deleteIncomingDoc(id: string, actor?: User) {
+  public deleteIncomingDoc(id: string, actor?: User): { success: boolean; reason?: string } {
     const docs = this.getIncomingDocs();
     const target = docs.find((d) => d.id === id);
+    if (!target) return { success: false, reason: 'Không tìm thấy văn bản đến.' };
+
+    // Kiểm tra ràng buộc theo Hình 3.17 & Bảng 3.6:
+    // Nếu còn ràng buộc nhiệm vụ hoặc văn bản đi phúc đáp, hệ thống báo lỗi và giữ lại văn bản
+    const tasks = this.getTasks();
+    const hasLinkedTask = tasks.some(
+      (t) =>
+        t.incomingDocId === id ||
+        t.linkedDocId === id ||
+        (Array.isArray(target.linkedTaskIds) && target.linkedTaskIds.includes(t.id))
+    );
+    if (hasLinkedTask) {
+      console.warn('⚠️ [Hình 3.17]: Ngăn chặn xóa văn bản đến đang gắn với nhiệm vụ xử lý.');
+      return {
+        success: false,
+        reason: 'Hệ thống ngăn chặn xóa: Văn bản đến đang gắn với nhiệm vụ phân công công việc (Hình 3.17 & Bảng 3.6).',
+      };
+    }
+
+    const outgoingDocs = this.getOutgoingDocs();
+    const hasLinkedOutgoing = outgoingDocs.some(
+      (o) => o.replyToDocId === id || (o as any).incomingDocId === id
+    );
+    if (hasLinkedOutgoing) {
+      console.warn('⚠️ [Hình 3.17]: Ngăn chặn xóa văn bản đến đã có văn bản đi phúc đáp.');
+      return {
+        success: false,
+        reason: 'Hệ thống ngăn chặn xóa: Văn bản đến đã phát sinh văn bản đi phúc đáp liên quan.',
+      };
+    }
+
     const updatedDocs = docs.filter((d) => d.id !== id);
     this.setList(DB_STORAGE_KEYS.INCOMING_DOCS, updatedDocs);
 
@@ -1499,28 +1559,17 @@ class DatabaseService {
       attachments.filter((a) => a.relatedId !== id)
     );
 
-    // Also unlink from tasks
-    const tasks = this.getTasks();
-    const updatedTasks = tasks.map((t) => {
-      if (t.incomingDocId === id || t.linkedDocId === id) {
-        return { ...t, incomingDocId: undefined, linkedDocId: undefined };
-      }
-      return t;
-    });
-    this.setList(DB_STORAGE_KEYS.TASKS, updatedTasks);
-
-    if (target) {
-      this.logAction(
-        'DELETE',
-        'INCOMING_DOC',
-        id,
-        target.documentNumber,
-        `Xóa văn bản đến số ${target.documentNumber}`,
-        actor
-      );
-    }
+    this.logAction(
+      'DELETE',
+      'INCOMING_DOC',
+      id,
+      target.documentNumber,
+      `Xóa văn bản đến số ${target.documentNumber}`,
+      actor
+    );
     this.apiCall(`/api/incoming-docs/${id}`, 'DELETE');
     firestoreSync.deleteIncomingDoc(id);
+    return { success: true };
   }
 
   /**
@@ -1792,9 +1841,21 @@ class DatabaseService {
     }
   }
 
-  public deleteOutgoingDoc(id: string, actor?: User) {
+  public deleteOutgoingDoc(id: string, actor?: User): { success: boolean; reason?: string } {
     const docs = this.getOutgoingDocs();
     const target = docs.find((d) => d.id === id);
+    if (!target) return { success: false, reason: 'Không tìm thấy văn bản đi.' };
+
+    // Kiểm tra ràng buộc theo Hình 3.23 & Bảng 3.7:
+    // Nếu văn bản đã ký hoặc đã phát hành, hệ thống từ chối xóa và dừng thao tác
+    if (target.status === 'SIGNED' || target.status === 'ISSUED') {
+      console.warn('⚠️ [Hình 3.23]: Từ chối xóa văn bản đi đã được ký duyệt hoặc phát hành.');
+      return {
+        success: false,
+        reason: 'Hệ thống từ chối xóa đối với văn bản đã được phê duyệt hoặc cấp số phát hành chính thức (Hình 3.23 & Bảng 3.7).',
+      };
+    }
+
     const updatedDocs = docs.filter((d) => d.id !== id);
     this.setList(DB_STORAGE_KEYS.OUTGOING_DOCS, updatedDocs);
 
@@ -1805,18 +1866,17 @@ class DatabaseService {
       attachments.filter((a) => a.relatedId !== id)
     );
 
-    if (target) {
-      this.logAction(
-        'DELETE',
-        'OUTGOING_DOC',
-        id,
-        target.documentNumber,
-        `Xóa văn bản đi số ${target.documentNumber}`,
-        actor
-      );
-    }
+    this.logAction(
+      'DELETE',
+      'OUTGOING_DOC',
+      id,
+      target.documentNumber,
+      `Xóa văn bản đi số ${target.documentNumber}`,
+      actor
+    );
     this.apiCall(`/api/outgoing-docs/${id}`, 'DELETE');
     firestoreSync.deleteOutgoingDoc(id);
+    return { success: true };
   }
 
   // --- Tasks (Công việc) ---
@@ -2516,20 +2576,31 @@ class DatabaseService {
     return updatedDoc;
   }
 
-  public deleteTask(id: string, actor?: User) {
-    this.addDeletedTaskId(id);
+  public deleteTask(id: string, actor?: User): { success: boolean; reason?: string } {
     const tasks = this.getTasks();
     const target = tasks.find((t) => t.id === id);
+    if (!target) return { success: false, reason: 'Không tìm thấy nhiệm vụ cần xóa.' };
+
+    // Kiểm tra ràng buộc theo Hình 3.28 & Bảng 3.8:
+    // Nếu nhiệm vụ đã được nghiệm thu hoàn thành, hệ thống từ chối xóa và dừng thao tác
+    if (target.status === 'COMPLETED') {
+      console.warn('⚠️ [Hình 3.28]: Từ chối xóa nhiệm vụ đã được nghiệm thu hoàn thành.');
+      return {
+        success: false,
+        reason: 'Nhiệm vụ đã được nghiệm thu hoàn thành, hệ thống từ chối xóa để đảm bảo toàn vẹn dữ liệu và lịch sử công tác (Hình 3.28 & Bảng 3.8).',
+      };
+    }
+
+    this.addDeletedTaskId(id);
     const updated = tasks.filter((t) => t.id !== id);
     this.setList(DB_STORAGE_KEYS.TASKS, updated);
-    if (target) {
-      this.logAction('DELETE', 'TASK', id, target.title, `Hủy / Xóa công việc: ${target.title}`, actor);
-    }
+    this.logAction('DELETE', 'TASK', id, target.title, `Hủy / Xóa công việc: ${target.title}`, actor);
     this.apiCall(`/api/tasks/${id}`, 'DELETE');
     try {
       firestoreSync.deleteTask(id);
     } catch {}
     this.notify();
+    return { success: true };
   }
 
   public addTaskComment(taskId: string, comment: TaskComment, actor?: User): Task | undefined {
@@ -2595,15 +2666,29 @@ class DatabaseService {
     this.saveAttachment(file, actor);
   }
 
-  public deleteAttachment(id: string, actor?: User) {
+  public deleteAttachment(id: string, actor?: User): { success: boolean; reason?: string } {
     const list = this.getAttachments();
     const target = list.find((f) => f.id === id);
-    if (target) {
-      this.setList(DB_STORAGE_KEYS.ATTACHMENTS, list.filter((f) => f.id !== id));
-      this.logAction('DELETE', 'FILE', id, target.fileName, `Xóa tài liệu: ${target.fileName}`, actor);
-      this.apiCall(`/api/attachments/${id}`, 'DELETE');
-      firestoreSync.deleteAttachment(id);
+    if (!target) return { success: false, reason: 'Không tìm thấy tệp tài liệu.' };
+
+    // Kiểm tra ràng buộc theo Hình 3.34:
+    if (target.dossierId) {
+      const dossiers = this.getDossiers();
+      const relatedDossier = dossiers.find((d) => d.id === target.dossierId || d.code === target.dossierId);
+      if (relatedDossier && (relatedDossier.status === 'CLOSED' || relatedDossier.status === 'ARCHIVED')) {
+        console.warn('⚠️ [Hình 3.34]: Từ chối xóa tài liệu thuộc hồ sơ đã đóng/lưu trữ.');
+        return {
+          success: false,
+          reason: 'Tài liệu nằm trong hồ sơ vụ việc đã nghiệm thu đóng hoặc lưu trữ, không thể gỡ bỏ (Hình 3.34).',
+        };
+      }
     }
+
+    this.setList(DB_STORAGE_KEYS.ATTACHMENTS, list.filter((f) => f.id !== id));
+    this.logAction('DELETE', 'FILE', id, target.fileName, `Xóa tài liệu: ${target.fileName}`, actor);
+    this.apiCall(`/api/attachments/${id}`, 'DELETE');
+    firestoreSync.deleteAttachment(id);
+    return { success: true };
   }
 
   // --- Master Data ---
