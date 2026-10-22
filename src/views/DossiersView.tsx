@@ -34,7 +34,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { FilePreviewModal } from '../components/FilePreviewModal';
-import { canAccessDossier, isLeaderOrAdmin } from '../utils/permission';
+import { canAccessDossier, isLeaderOrAdmin, canCloseDossier, canDeleteDossier } from '../utils/permission';
 
 interface DossiersViewProps {
   dossiers: Dossier[];
@@ -198,7 +198,10 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
     e.target.value = '';
   };
 
+  const [formError, setFormError] = useState<string | null>(null);
+
   const handleOpenAddModal = () => {
+    setFormError(null);
     setEditingDossier({
       id: 'hs-' + Date.now(),
       code: `HS-2025-${String(dossiers.length + 1).padStart(3, '0')}`,
@@ -215,6 +218,7 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
   };
 
   const handleOpenEditModal = (d: Dossier) => {
+    setFormError(null);
     setEditingDossier({ ...d });
     setIsModalOpen(true);
   };
@@ -223,6 +227,16 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
     e.preventDefault();
     if (!editingDossier || !editingDossier.code || !editingDossier.title) return;
 
+    // Kiểm tra điều kiện nghiệm thu đóng hồ sơ theo Hình 3.33 & Bảng 3.9
+    if (editingDossier.status === 'CLOSED' || editingDossier.status === 'ARCHIVED') {
+      const check = canCloseDossier(editingDossier as Dossier, currentUser, tasks);
+      if (!check.allowed) {
+        setFormError(check.reason || 'Không thể đóng hồ sơ khi còn nhiệm vụ chưa hoàn thành');
+        return;
+      }
+    }
+
+    setFormError(null);
     onSaveDossier(editingDossier as Dossier);
     setIsModalOpen(false);
     setEditingDossier(null);
@@ -668,17 +682,70 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
             </div>
 
             {/* Footer Actions */}
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button
-                onClick={() => {
-                  const d = selectedDossier;
-                  setSelectedDossier(null);
-                  handleOpenEditModal(d);
-                }}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
-              >
-                Chỉnh sửa thông tin hồ sơ
-              </button>
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+              <div>
+                {canDeleteDossier(selectedDossier, currentUser, incomingDocs, outgoingDocs, tasks, attachments).allowed && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const check = canDeleteDossier(selectedDossier, currentUser, incomingDocs, outgoingDocs, tasks, attachments);
+                      if (!check.allowed) {
+                        alert(check.reason);
+                        return;
+                      }
+                      if (confirm(`Bạn có chắc muốn xóa hồ sơ ${selectedDossier.code} - ${selectedDossier.title}?`)) {
+                        onDeleteDossier(selectedDossier.id);
+                        setSelectedDossier(null);
+                      }
+                    }}
+                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Xóa hồ sơ rỗng / tạo nhầm (Hình 3.34)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa hồ sơ rỗng</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {selectedDossier.status === 'OPEN' && isLeaderOrAdmin(currentUser) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const check = canCloseDossier(selectedDossier, currentUser, tasks);
+                      if (!check.allowed) {
+                        alert(check.reason);
+                        return;
+                      }
+                      if (confirm(`Xác nhận Nghiệm thu & Đóng hồ sơ vụ việc [${selectedDossier.code}]? Hồ sơ sẽ được chuyển sang trạng thái ĐÃ ĐÓNG và lưu trữ lịch sử theo quy định (Hình 3.33).`)) {
+                        const closedDossier: Dossier = {
+                          ...selectedDossier,
+                          status: 'CLOSED',
+                          endDate: new Date().toISOString().split('T')[0],
+                        };
+                        onSaveDossier(closedDossier);
+                        setSelectedDossier(closedDossier);
+                      }
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                    title="Lãnh đạo nghiệm thu và đóng hồ sơ vụ việc (Hình 3.33)"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>Nghiệm thu & Đóng hồ sơ</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    const d = selectedDossier;
+                    setSelectedDossier(null);
+                    handleOpenEditModal(d);
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                >
+                  Chỉnh sửa thông tin hồ sơ
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -706,6 +773,15 @@ export const DossiersView: React.FC<DossiersViewProps> = ({
             </div>
 
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs custom-scrollbar">
+              {formError && (
+                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-xs text-rose-800 font-medium flex items-start gap-2">
+                  <Lock className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-bold text-rose-950">Không thể đóng hồ sơ</strong>
+                    <p className="mt-0.5">{formError}</p>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">

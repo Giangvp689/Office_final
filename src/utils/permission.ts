@@ -81,12 +81,29 @@ export function canEditTask(task?: Task | null, user?: User | null): boolean {
 }
 
 /**
- * Thẩm quyền Xóa nhiệm vụ:
- * - Chỉ Lãnh đạo (LEADER) hoặc Quản trị viên (ADMIN) mới có thẩm quyền xóa nhiệm vụ.
+ * Thẩm quyền Quản lý tài khoản (Users) theo Bảng 4.3 trong Báo cáo:
+ * - CHỈ DUY NHẤT Quản trị viên (ADMIN) mới có quyền tạo mới tài khoản cán bộ, gán vai trò RBAC, đặt lại mật khẩu hoặc xóa/khóa tài khoản.
+ * - Lãnh đạo, Văn thư, Chuyên viên KHÔNG có quyền quản lý tài khoản của người khác.
  */
-export function canDeleteTask(user?: User | null): boolean {
+export function canManageUsers(user?: User | null): boolean {
   if (!user) return false;
-  return user.role === 'ADMIN' || user.role === 'LEADER';
+  return user.role === 'ADMIN';
+}
+
+/**
+ * Thẩm quyền Xóa nhiệm vụ (Hình 3.28 & Bảng 3.8):
+ * - Chỉ Lãnh đạo (LEADER) hoặc Quản trị viên (ADMIN) mới có thẩm quyền xóa nhiệm vụ.
+ * - KIỂM TRA TRẠNG THÁI: Nếu nhiệm vụ ĐÃ ĐƯỢC NGHIỆM THU (COMPLETED) -> Hệ thống từ chối xóa và dừng thao tác!
+ */
+export function canDeleteTask(task?: Task | null, user?: User | null): { allowed: boolean; reason?: string } {
+  if (!user) return { allowed: false, reason: 'Chưa đăng nhập' };
+  if (user.role !== 'ADMIN' && user.role !== 'LEADER') {
+    return { allowed: false, reason: 'Chỉ Lãnh đạo hoặc Quản trị viên mới có thẩm quyền xóa nhiệm vụ (Hình 3.28).' };
+  }
+  if (task && task.status === 'COMPLETED') {
+    return { allowed: false, reason: 'Từ chối xóa: Nhiệm vụ đã được Lãnh đạo nghiệm thu hoàn thành, không được phép xóa (Hình 3.28).' };
+  }
+  return { allowed: true };
 }
 
 /**
@@ -198,6 +215,146 @@ export function canRegisterIncomingDoc(user?: User | null): boolean {
 export function canDirectIncomingDoc(user?: User | null): boolean {
   if (!user) return false;
   return user.role === 'LEADER' || user.role === 'ADMIN';
+}
+
+/**
+ * Thẩm quyền Xóa văn bản đến (Hình 3.17 & Bảng 3.6):
+ * - CHỈ Văn thư (CLERK) hoặc Quản trị viên (ADMIN) mới có quyền xóa văn bản đến.
+ * - KIỂM TRA RÀNG BUỘC: Nếu văn bản đã phát sinh nhiệm vụ hoặc liên kết văn bản đi trả lời -> Báo lỗi vi phạm ràng buộc, giữ lại văn bản.
+ */
+export function canDeleteIncomingDoc(
+  doc?: IncomingDocument | null,
+  user?: User | null,
+  tasks: Task[] = [],
+  outgoingDocs: OutgoingDocument[] = []
+): { allowed: boolean; reason?: string } {
+  if (!user) return { allowed: false, reason: 'Chưa đăng nhập' };
+  if (user.role !== 'CLERK' && user.role !== 'ADMIN') {
+    return { allowed: false, reason: 'Chỉ Văn thư lưu trữ hoặc Quản trị viên mới có thẩm quyền xóa bản ghi văn bản đến (Hình 3.17).' };
+  }
+  if (!doc) return { allowed: true };
+
+  // Kiểm tra ràng buộc nhiệm vụ phát sinh từ văn bản
+  const hasLinkedTask = tasks.some(
+    (t) => t.incomingDocId === doc.id || t.linkedDocId === doc.id || doc.linkedTaskIds?.includes(t.id)
+  );
+  if (hasLinkedTask) {
+    return { allowed: false, reason: 'Không thể xóa: Văn bản này đã phát sinh nhiệm vụ xử lý trong hệ thống (Hình 3.17 & Bảng 3.6).' };
+  }
+
+  // Kiểm tra ràng buộc văn bản đi phúc đáp
+  const hasReplyOutgoing = outgoingDocs.some((o) => o.replyToDocId === doc.id);
+  if (hasReplyOutgoing) {
+    return { allowed: false, reason: 'Không thể xóa: Văn bản này đã có văn bản đi phúc đáp liên kết (Hình 3.17).' };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Thẩm quyền Xóa dự thảo văn bản đi (Hình 3.23 & Bảng 3.7):
+ * - NẾU VĂN BẢN ĐÃ KÝ (SIGNED) HOẶC ĐÃ PHÁT HÀNH (ISSUED / SENT): Hệ thống từ chối xóa và dừng thao tác!
+ * - NẾU VĂN BẢN ĐANG Ở TRẠNG THÁI NHÁP (DRAFT): Người tạo dự thảo (hoặc ADMIN) mới được xóa.
+ */
+export function canDeleteOutgoingDoc(
+  doc?: OutgoingDocument | null,
+  user?: User | null
+): { allowed: boolean; reason?: string } {
+  if (!user) return { allowed: false, reason: 'Chưa đăng nhập' };
+  if (!doc) return { allowed: true };
+
+  if (doc.status === 'SIGNED' || doc.status === 'ISSUED' || doc.status === 'SENT') {
+    return {
+      allowed: false,
+      reason: `Từ chối xóa: Văn bản đi đã ở trạng thái [${doc.status === 'SIGNED' ? 'Đã ký số' : 'Đã phát hành'}], theo quy định văn thư không được phép xóa (Hình 3.23 & Bảng 3.7).`,
+    };
+  }
+
+  if (user.role === 'ADMIN') return { allowed: true };
+
+  const isAuthor = doc.drafterId === user.id || doc.createdById === user.id;
+  if (!isAuthor) {
+    return {
+      allowed: false,
+      reason: 'Chỉ người soạn thảo dự thảo hoặc Quản trị viên mới có quyền xóa bản nháp này (Hình 3.23).',
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Thẩm quyền Nghiệm thu & Đóng hồ sơ công việc (Hình 3.33, Hình 3.71 & Bảng 3.9):
+ * - Chỉ Lãnh đạo cơ quan (LEADER) hoặc Quản trị viên (ADMIN) mới có quyền nghiệm thu và đóng hồ sơ.
+ * - ĐIỀU KIỆN KỸ THUẬT: Nếu hồ sơ còn nhiệm vụ chưa hoàn thành -> Cảnh báo từ chối đóng hồ sơ!
+ */
+export function canCloseDossier(
+  dossier?: Dossier | null,
+  user?: User | null,
+  tasks: Task[] = []
+): { allowed: boolean; reason?: string; pendingTaskCount?: number } {
+  if (!user) return { allowed: false, reason: 'Chưa đăng nhập' };
+  if (!isLeaderOrAdmin(user)) {
+    return { allowed: false, reason: 'Chỉ Lãnh đạo hoặc Quản trị viên mới có thẩm quyền Nghiệm thu & Đóng hồ sơ (Hình 3.33).' };
+  }
+  if (!dossier) return { allowed: true };
+
+  const pendingTasks = tasks.filter(
+    (t) =>
+      (t.dossierId === dossier.id || t.dossierId === dossier.code) &&
+      t.status !== 'COMPLETED' &&
+      t.status !== 'CANCELLED'
+  );
+
+  if (pendingTasks.length > 0) {
+    return {
+      allowed: false,
+      pendingTaskCount: pendingTasks.length,
+      reason: `Từ chối đóng hồ sơ: Hồ sơ vụ việc này vẫn còn ${pendingTasks.length} nhiệm vụ chưa hoàn thành. Cần hoàn tất tất cả công việc trước khi nghiệm thu đóng hồ sơ (Hình 3.33 & Bảng 3.9).`,
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Thẩm quyền Xóa hồ sơ công việc & tài liệu (Hình 3.34 & Bảng 3.9):
+ * - Chỉ Văn thư (CLERK), Lãnh đạo (LEADER) hoặc Admin.
+ * - RÀNG BUỘC TOÀN VẸN: Nếu hồ sơ đã đóng (CLOSED/ARCHIVED) hoặc đã chứa văn bản/nhiệm vụ -> Báo lỗi từ chối xóa!
+ * - Chỉ hồ sơ rỗng / tạo nhầm mới được xóa.
+ */
+export function canDeleteDossier(
+  dossier?: Dossier | null,
+  user?: User | null,
+  incomingDocs: IncomingDocument[] = [],
+  outgoingDocs: OutgoingDocument[] = [],
+  tasks: Task[] = [],
+  attachments: AttachmentFile[] = []
+): { allowed: boolean; reason?: string } {
+  if (!user) return { allowed: false, reason: 'Chưa đăng nhập' };
+  if (user.role !== 'CLERK' && user.role !== 'LEADER' && user.role !== 'ADMIN') {
+    return { allowed: false, reason: 'Chỉ Văn thư, Lãnh đạo hoặc Quản trị viên mới có quyền xóa hồ sơ (Hình 3.34).' };
+  }
+  if (!dossier) return { allowed: true };
+
+  if (dossier.status === 'CLOSED' || dossier.status === 'ARCHIVED') {
+    return { allowed: false, reason: 'Từ chối xóa: Hồ sơ đã được nghiệm thu đóng hoặc chuyển lưu trữ vĩnh viễn (Hình 3.34).' };
+  }
+
+  const linkedIn = incomingDocs.filter((d) => d.dossierId === dossier.id || d.dossierId === dossier.code);
+  const linkedOut = outgoingDocs.filter((d) => d.dossierId === dossier.id || d.dossierId === dossier.code);
+  const linkedTasks = tasks.filter((t) => t.dossierId === dossier.id || t.dossierId === dossier.code);
+  const linkedAtts = attachments.filter((a) => a.dossierId === dossier.id || a.dossierCode === dossier.code);
+
+  const totalLinked = linkedIn.length + linkedOut.length + linkedTasks.length + linkedAtts.length;
+  if (totalLinked > 0) {
+    return {
+      allowed: false,
+      reason: `Từ chối xóa: Hồ sơ đã liên kết với ${linkedIn.length} VB đến, ${linkedOut.length} VB đi, ${linkedTasks.length} nhiệm vụ và ${linkedAtts.length} tài liệu số hóa (Hình 3.34).`,
+    };
+  }
+
+  return { allowed: true };
 }
 
 /**

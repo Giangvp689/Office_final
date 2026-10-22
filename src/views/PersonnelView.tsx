@@ -23,6 +23,7 @@ import {
   UserCheck,
   Award,
 } from 'lucide-react';
+import { canManageUsers } from '../utils/permission';
 
 interface PersonnelViewProps {
   users: User[];
@@ -57,7 +58,8 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  const isAdminOrLeader = currentUser?.role === 'ADMIN' || currentUser?.role === 'LEADER';
+  // Theo Bảng 4.3 trong Báo cáo: Chỉ Quản trị viên (ADMIN) có quyền Quản lý tài khoản cán bộ & phân quyền RBAC
+  const isSystemAdmin = canManageUsers(currentUser);
   const isEditingSelf = Boolean(editingUser.id && editingUser.id === currentUser.id);
 
   // Get distinct departments from masterData + existing users
@@ -265,7 +267,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
           </p>
         </div>
 
-        {isAdminOrLeader && (
+        {isSystemAdmin && (
           <button
             id="add-user-btn"
             onClick={handleOpenAddModal}
@@ -407,26 +409,26 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                   >
                     <span className="text-[10px] text-slate-400">
                       Mật khẩu: <span className="font-mono text-slate-600">
-                        {isAdminOrLeader || u.id === currentUser.id ? (u.password || '123') : '••••••'}
+                        {isSystemAdmin || u.id === currentUser.id ? (u.password || '123') : '••••••'}
                       </span>
                     </span>
 
                     <div className="flex items-center gap-1">
-                      {(isAdminOrLeader || u.id === currentUser.id) && (
+                      {(isSystemAdmin || u.id === currentUser.id) && (
                         <button
                           onClick={() => handleOpenEditModal(u)}
                           className={`rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-xs ${
-                            u.id === currentUser.id && !isAdminOrLeader
+                            u.id === currentUser.id && !isSystemAdmin
                               ? 'bg-indigo-50 text-indigo-700 font-bold px-2 py-1 hover:bg-indigo-100 border border-indigo-200/60'
                               : 'p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'
                           }`}
                           title={u.id === currentUser.id ? 'Sửa thông tin cá nhân của bạn (ảnh, giới thiệu, SĐT)' : 'Sửa thông tin cán bộ'}
                         >
                           <Edit className="w-3.5 h-3.5" />
-                          {u.id === currentUser.id && !isAdminOrLeader && <span>Sửa hồ sơ</span>}
+                          {u.id === currentUser.id && !isSystemAdmin && <span>Sửa hồ sơ</span>}
                         </button>
                       )}
-                      {isAdminOrLeader && (
+                      {isSystemAdmin && (
                         <button
                           onClick={() => handleDelete(u.id, u.fullName)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
@@ -557,7 +559,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
 
             {/* Bottom Actions inside drawer */}
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3 mt-6">
-              {isAdminOrLeader ? (
+              {isSystemAdmin ? (
                 <button
                   onClick={() => handleDelete(selectedUser.id, selectedUser.fullName)}
                   className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
@@ -567,7 +569,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                 </button>
               ) : <div />}
 
-              {(isAdminOrLeader || selectedUser.id === currentUser.id) && (
+              {(isSystemAdmin || selectedUser.id === currentUser.id) && (
                 <button
                   onClick={() => {
                     const u = selectedUser;
@@ -597,14 +599,14 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-800 text-sm">
-                    {isEditingSelf && !isAdminOrLeader
+                    {isEditingSelf && !isSystemAdmin
                       ? 'Cập Nhật Hồ Sơ Cá Nhân & Giới Thiệu'
                       : isEditingExisting
                       ? `Cập Nhật Thông Tin Cán Bộ: ${editingUser.fullName}`
                       : 'Thêm Cán Bộ Công Chức Mới'}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    {isEditingSelf && !isAdminOrLeader
+                    {isEditingSelf && !isSystemAdmin
                       ? 'Tùy chỉnh ảnh đại diện, tiểu sử giới thiệu, số điện thoại và mật khẩu của bạn'
                       : 'Dữ liệu và ảnh đại diện sẽ được lưu trữ trực tiếp vào cơ sở dữ liệu MySQL'}
                   </p>
@@ -703,11 +705,11 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
                     Vai trò hệ thống <span className="text-rose-500">*</span>
-                    {!isAdminOrLeader && isEditingSelf && (
-                      <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên/Lãnh đạo đổi)</span>
+                    {!isSystemAdmin && (
+                      <span className="text-[10px] text-amber-600 font-normal ml-1">(Chỉ Quản trị viên ADMIN được đổi)</span>
                     )}
                   </label>
-                  {isAdminOrLeader ? (
+                  {isSystemAdmin ? (
                     <select
                       value={editingUser.role || 'STAFF'}
                       onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as UserRole })}

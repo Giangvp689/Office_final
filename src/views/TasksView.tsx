@@ -1244,14 +1244,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {canDeleteTask(currentUser) && (
+                            {canDeleteTask(t, currentUser).allowed && (
                               <button
                                 onClick={() => {
+                                  const check = canDeleteTask(t, currentUser);
+                                  if (!check.allowed) {
+                                    alert(check.reason);
+                                    return;
+                                  }
                                   if (confirm(`Bạn có chắc muốn xóa công việc ${t.title}?`)) {
                                     onDeleteTask(t.id);
                                   }
                                 }}
-                                title="Xóa công việc"
+                                title="Xóa công việc (Chỉ dành cho Lãnh đạo/Admin khi việc chưa hoàn thành)"
                                 className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg cursor-pointer transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1372,21 +1377,28 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const taskToDelete = selectedTask;
-                    if (confirm(`Bạn có chắc muốn xóa công việc ${taskToDelete.title}? Thao tác này sẽ xóa vĩnh viễn trên toàn hệ thống.`)) {
-                      setSelectedTask(null);
-                      onDeleteTask(taskToDelete.id);
-                    }
-                  }}
-                  title="Xóa công việc này"
-                  className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Xóa việc</span>
-                </button>
+                {canDeleteTask(selectedTask, currentUser).allowed && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const taskToDelete = selectedTask;
+                      const check = canDeleteTask(taskToDelete, currentUser);
+                      if (!check.allowed) {
+                        alert(check.reason);
+                        return;
+                      }
+                      if (confirm(`Bạn có chắc muốn xóa công việc ${taskToDelete.title}? Thao tác này sẽ xóa vĩnh viễn trên toàn hệ thống.`)) {
+                        setSelectedTask(null);
+                        onDeleteTask(taskToDelete.id);
+                      }
+                    }}
+                    title="Xóa công việc này (Chỉ dành cho Lãnh đạo khi việc chưa nghiệm thu)"
+                    className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Xóa việc</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedTask(null)}
                   className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-100 rounded-xl cursor-pointer transition-colors"
