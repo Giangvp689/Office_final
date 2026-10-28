@@ -16,6 +16,14 @@ export function isLeaderOrAdmin(user?: User | null): boolean {
 }
 
 /**
+ * Thẩm quyền Quản lý tài khoản cán bộ & phân quyền RBAC (Bảng 4.3).
+ */
+export function canManageUsers(user?: User | null): boolean {
+  if (!user) return false;
+  return user.role === 'ADMIN';
+}
+
+/**
  * Kiểm tra xem người dùng có phải Văn thư cơ quan hay không.
  */
 export function isClerk(user?: User | null): boolean {

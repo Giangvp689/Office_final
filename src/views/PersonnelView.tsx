@@ -23,7 +23,7 @@ import {
   UserCheck,
   Award,
 } from 'lucide-react';
-import { canManageUsers } from '../utils/permission';
+import { canManageUsers, isLeaderOrAdmin } from '../utils/permission';
 
 interface PersonnelViewProps {
   users: User[];
@@ -60,6 +60,7 @@ export const PersonnelView: React.FC<PersonnelViewProps> = ({
 
   // Theo Bảng 4.3 trong Báo cáo: Chỉ Quản trị viên (ADMIN) có quyền Quản lý tài khoản cán bộ & phân quyền RBAC
   const isSystemAdmin = canManageUsers(currentUser);
+  const isAdminOrLeader = isLeaderOrAdmin(currentUser);
   const isEditingSelf = Boolean(editingUser.id && editingUser.id === currentUser.id);
 
   // Get distinct departments from masterData + existing users
